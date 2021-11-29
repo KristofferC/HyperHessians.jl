@@ -2,7 +2,6 @@ module FastHessians
 
 using SIMD: SIMD, Vec, vstore
 using CommonSubexpressions: cse
-export HyperDual, hessian, HessianConfig, HessianConfigThreaded, Chunk
 
 include("rules.jl")
 
