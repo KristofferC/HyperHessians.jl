@@ -90,6 +90,33 @@ julia> cfg = FastHessians.HessianConfig(x, FastHessians.Chunk{8}());
 julia> FastHessians.hessian!(H, f, x, cfg)
 ```
 
+### Multi-threading
+
+In chunked mode it is possible to use multithreading to compute chunks in parallel.
+This is done by creating a `HessianConfigThreaded` object instead of a `HessianConfig` object.
+Below is a benchmark:
+
+```julia
+julia> using FastHessians, DiffTests, BenchmarkTools
+
+julia> Threads.nthreads()
+8
+
+julia> x = rand(128);
+
+julia> cfg = FastHessians.HessianConfig(x);
+
+julia> cfg_thread = FastHessians.HessianConfigThreaded(x);
+
+julia> H = similar(x, length(x), length(x));
+
+julia> @btime FastHessians.hessian!(H, DiffTests.ackley, x, cfg);
+  883.716 μs (0 allocations: 0 bytes)
+
+julia> @btime FastHessians.hessian!(H, DiffTests.ackley, x, cfg_thread);
+  128.609 μs (41 allocations: 3.89 KiB)
+```
+
 ## Performance
 
 To get an estimate of the performance of FastHessians we here benchmark it

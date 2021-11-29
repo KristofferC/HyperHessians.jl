@@ -41,8 +41,8 @@ for f in (DiffTests.rosenbrock_1,
             @test H ≈ hessian(f, x, cfg)
 
             cfg_threaded = HessianConfigThreaded(x, Chunk{chunk}())
-            @test H ≈ hessian(f, x, cfg)
-            @test H ≈ hessian(f, x, cfg)
+            @test H ≈ hessian(f, x, cfg_threaded)
+            @test H ≈ hessian(f, x, cfg_threaded)
         end
     end
 end
