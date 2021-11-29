@@ -1,5 +1,5 @@
 
-using FastHessians
+using FastHessians: FastHessians, hessian, hessian!, Chunk, HessianConfig, HessianConfigThreaded, HyperDual
 using DiffTests
 using ForwardDiff
 using Test
