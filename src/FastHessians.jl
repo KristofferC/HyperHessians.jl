@@ -163,7 +163,7 @@ function HessianConfig(x::AbstractVector{T}, chunk=Chunk(x)::Chunk) where {T}
     return HessianConfig(duals, seeds)
 end
 
-struct HessianConfigThreaded{D <: AbstractVector{<:HyperDual}, S}
+struct HessianConfigThreaded{D <: AbstractVector{<:HyperDual}, S} <: AbstractHessianConfig
     duals::Vector{D}
     seeds::S
 end
@@ -177,6 +177,7 @@ function HessianConfigThreaded(x::AbstractVector{T}, chunk=Chunk(x)::Chunk) wher
 end
 
 (chunksize(cfg::HessianConfigThreaded)::Int) = length(cfg.seeds)
+HessianConfig(cfg::HessianConfigThreaded) = HessianConfig(first(cfg.duals), cfg.seeds)
 
 
 ###########
@@ -262,8 +263,11 @@ end
 hessian(f, x::AbstractVector)                             = hessian!(similar(x, axes(x,1), axes(x,1)), f, x, HessianConfig(x))
 hessian(f, x::AbstractVector, cfg::AbstractHessianConfig) = hessian!(similar(x, axes(x,1), axes(x,1)), f, x, cfg)
 
-function hessian!(H::AbstractMatrix, f, x::AbstractVector{T}, cfg::HessianConfig) where {T,N}
+function hessian!(H::AbstractMatrix, f, x::AbstractVector{T}, cfg::AbstractHessianConfig) where {T,N}
     if chunksize(cfg) == length(x)
+        if cfg isa HessianConfigThreaded
+            cfg = HessianConfig(cfg)
+        end
         return hessian_vector!(H, f, x, cfg)
     else
         return hessian_chunk!(H, f, x, cfg)
@@ -304,10 +308,9 @@ end
 
 function hessian_chunk!(H::AbstractMatrix, f, x::AbstractVector{T}, cfg::HessianConfigThreaded) where {T,N}
     @assert size(H,1) == size(H,2) == length(x)
-    n = length(x)
     n_chunks = ceil(Int, length(x) / chunksize(cfg))
     Threads.@threads for k in 1:((n_chunks*(n_chunks+1)) ÷ 2)
-        i, j = linear_to_cartesian(n, k)
+        i, j = linear_to_cartesian(n_chunks, k)
         duals = cfg.duals[Threads.threadid()]
         seed!(duals, x, cfg.seeds, i, j)
         v = f(duals)
