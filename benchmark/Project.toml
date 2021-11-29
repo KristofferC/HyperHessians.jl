@@ -1,0 +1,8 @@
+[deps]
+BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
+DiffTests = "de460e47-3fe3-5279-bb4a-814414816d5d"
+FastHessians = "06b494a0-c8e0-40cc-ad32-d99506a00a6c"
+ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
+Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
+SIMD = "fdea26ae-647d-5447-a871-4b548cad5224"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"

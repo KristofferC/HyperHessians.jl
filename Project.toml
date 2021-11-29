@@ -1,0 +1,18 @@
+name = "FastHessians"
+uuid = "06b494a0-c8e0-40cc-ad32-d99506a00a6c"
+authors = ["KristofferC <kcarlsson89@gmail.com>"]
+version = "0.1.0"
+
+[deps]
+CommonSubexpressions = "bbf7d656-a473-5ed7-a52c-81e309532950"
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+SIMD = "fdea26ae-647d-5447-a871-4b548cad5224"
+
+[extras]
+DiffTests = "de460e47-3fe3-5279-bb4a-814414816d5d"
+ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
+StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["DiffTests", "ForwardDiff", "StaticArrays", "Test"]
