@@ -92,7 +92,7 @@ julia> FastHessians.hessian!(H, f, x, cfg)
 
 ### Multi-threading
 
-In chunked mode it is possible to use multithreading to compute chunks in parallel.
+In chunked mode (when the chunk size is smaller than the input vector length) it is possible to use multithreading to compute chunks in parallel.
 This is done by creating a `HessianConfigThreaded` object instead of a `HessianConfig` object.
 Below is a benchmark:
 
