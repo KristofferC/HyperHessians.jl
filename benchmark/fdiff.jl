@@ -1,4 +1,4 @@
-using FastHessians, ForwardDiff, DiffTests, BenchmarkTools, Test, Printf
+using HyperHessians, ForwardDiff, DiffTests, BenchmarkTools, Test, Printf
 
 
 struct Result
@@ -12,7 +12,7 @@ function run_benchmark()
     results = Result[]
     for f in (DiffTests.ackley,DiffTests.rosenbrock_1) # DiffTests.VECTOR_TO_NUMBER_FUNCS
         @info f
-        # ForwardDiff and FastHessians should use the same default chunk size for these sizes
+        # ForwardDiff and HyperHessians should use the same default chunk size for these sizes
         for n in (1, 8, 128)
             x = rand(n)
             H_fd = similar(x, length(x), length(x))
@@ -21,9 +21,9 @@ function run_benchmark()
             time_fd = @benchmark ForwardDiff.hessian!($H_fd, $f, $x, $cfg_fd)
             
             H_fh = similar(x, length(x), length(x))
-            cfg_fh = FastHessians.HessianConfig(x) 
-            # FastHessians.hessian!(H_fh, f, x, cfg_fh)
-            time_fh = @benchmark FastHessians.hessian!($H_fh, $f, $x, $cfg_fh)
+            cfg_fh = HyperHessians.HessianConfig(x) 
+            # HyperHessians.hessian!(H_fh, f, x, cfg_fh)
+            time_fh = @benchmark HyperHessians.hessian!($H_fh, $f, $x, $cfg_fh)
 
             push!(results, Result(f, n, minimum(time_fd.times), minimum(time_fh.times)))
             @test H_fd ≈ H_fh
@@ -48,7 +48,7 @@ end
 
 function print_results(io::IO, results)
     print(io, """
-    | Function      | input length | Time ForwardDiff | Time FastHessians | Speedup |
+    | Function      | input length | Time ForwardDiff | Time HyperHessians | Speedup |
     | ------------- | ------------ | ---------------- | ----------------- | --------|
     """)
 

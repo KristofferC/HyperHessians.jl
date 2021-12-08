@@ -1,4 +1,4 @@
-name = "FastHessians"
+name = "HyperHessians"
 uuid = "06b494a0-c8e0-40cc-ad32-d99506a00a6c"
 authors = ["KristofferC <kcarlsson89@gmail.com>"]
 version = "0.1.0"

@@ -1,5 +1,5 @@
 
-using FastHessians: FastHessians, hessian, hessian!, Chunk, HessianConfig, HessianConfigThreaded, HyperDual
+using HyperHessians: HyperHessians, hessian, hessian!, Chunk, HessianConfig, HessianConfigThreaded, HyperDual
 using DiffTests
 using ForwardDiff
 using Test
@@ -23,7 +23,7 @@ for f in (DiffTests.rosenbrock_1,
           DiffTests.ackley,
           DiffTests.self_weighted_logit,
           DiffTests.nested_array_mul,)
-    for n in (1, 4, FastHessians.DEFAULT_CHUNK_THRESHOLD, FastHessians.DEFAULT_CHUNK_THRESHOLD + 7)
+    for n in (1, 4, HyperHessians.DEFAULT_CHUNK_THRESHOLD, HyperHessians.DEFAULT_CHUNK_THRESHOLD + 7)
         if n == 1 && (f == DiffTests.rosenbrock_4 || f == DiffTests.nested_array_mul)
             continue
         end
@@ -76,7 +76,7 @@ end # testset
 
 @testset "No spurious promotions primitives" begin
 h = HyperDual(0.8f0, Vec(0.7f0, 0.7f0), Vec(0.7f0, 0.7f0))
-for (fsym, _, _) in FastHessians.DIFF_RULES
+for (fsym, _, _) in HyperHessians.DIFF_RULES
     if fsym in (:asec, :acsc, :asecd)
         hv = inv(h)
     else

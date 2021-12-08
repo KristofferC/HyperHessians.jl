@@ -1,4 +1,4 @@
-module FastHessians
+module HyperHessians
 
 using SIMD: SIMD, Vec, vstore
 using CommonSubexpressions: cse
@@ -213,7 +213,7 @@ end
 @noinline check_scalar(x) =
     x isa Number || throw(error("expected a scalar to be returned from function passed to `hessian`"))
 
-function extract_hessian!(H::AbstractMatrix, v)
+function extract_hessian!(H::AbstractMatrix, v::HyperDual)
     Base.require_one_based_indexing(H)
     @inbounds for i in 1:size(H, 2)
         H[:, i] .= Tuple(v.ϵ12[i])
@@ -245,6 +245,16 @@ function extract_hessian!(H::AbstractMatrix, v::HyperDual{N}, block_i::Int, bloc
         end
     end
     return H
+end
+
+
+function extract_gradient!(G::AbstractVector, v::HyperDual, block_i::Int)
+    index_i = (block_i-1) * N + 1
+    range_i = index_i : (index_i + N -1)
+    for (I, i) in enumerate(range_i)
+        G[i] .= v.ϵ1[I]
+    end
+    return G
 end
 
 

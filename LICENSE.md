@@ -1,4 +1,4 @@
-The FastHessians.jl package is licensed under the MIT "Expat" License:
+The HyperHessians.jl package is licensed under the MIT "Expat" License:
 
 > Copyright (c) 2021: Julia Computing, Kristoffer Carlsson.
 >
