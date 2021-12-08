@@ -55,10 +55,13 @@ cfg = HyperHessians.HessianConfig(x, chunk_size) # creating the config object
 The larger the chunk size the larger part of the Hessian is computed on every call to `f` (if the chunk size is equal to
 the input vector, the whole hessian is computed in one call to `f`).
 However, with a larger chunk size the special numbers FastHessian use become larger and if they become too large this can lead to inefficient execution.
+
 A choice of a chunk size is, therefore, a trade-off and the optimal one is likely to be dependent on the particular function getting differentiated.
 A decent overall choice seems to be a chunk size of 8.
 It is also in general a good idea to pick a chunk size as a multiple of 4 to use SIMD effectively.
+
 The `chunk_size` argument can be left out and HyperHessians will try to determine a reasonable choice.
+
 If the chunk size `c` is smaller than the input vector with length `n`, the function will be called `k = ceil(Int, n / c); k(k+1)÷2` times, each time computing a part of the hessian:
 
 ```julia
