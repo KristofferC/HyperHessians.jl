@@ -5,6 +5,26 @@ using CommonSubexpressions: cse
 
 include("rules.jl")
 
+################
+# Tagging
+################
+
+"""
+    SmallTag{H}
+
+Compact tag carrying only a small hash, used to prevent perturbation confusion
+without embedding large function types in `HyperDual` signatures.
+"""
+struct SmallTag{H} end
+
+smalltag(::Type{F}, ::Type{V}, ::Val{N}) where {F, V, N} = SmallTag{UInt(hash(F) ⊻ hash(V) ⊻ hash(N))}()
+smalltag(f, ::Type{V}, ::Val{N}) where {V, N} = smalltag(typeof(f), V, Val(N))
+smalltag(::Nothing, ::Type{V}, ::Val{N}) where {V, N} = SmallTag{UInt(0)}()
+
+struct PerturbationConfusion{Expected, Observed} <: Exception end
+Base.showerror(io::IO, ::PerturbationConfusion{E, O}) where {E, O} =
+    print(io, "perturbation confusion: expected tag ", E, ", observed ", O)
+
 #=
 # HyperDual Numbers
 
@@ -42,87 +62,106 @@ This gives us the first and second derivatives via f' and f''.
 
 # This is currently "artifically" restricted to "square" HyperDuals where
 # ϵ1 and ϵ2 have the same length.
-struct HyperDual{N, T} <: Real
+struct HyperDual{Tag, N, T} <: Real
     v::T
     ϵ1::Vec{N, T} # Vec{M,T}
     ϵ2::Vec{N, T}
     ϵ12::NTuple{N, Vec{N, T}} # NTuple{M, Vec{N,T}}
 end
-HyperDual(v::T, ϵ1::Vec{N, T}, ϵ2::Vec{N, T}) where {N, T} = HyperDual(v, ϵ1, ϵ2, ntuple(i -> zero(Vec{N, T}), Val(N)))
-HyperDual{N}(v::T) where {N, T} = HyperDual(v, zero(Vec{N, T}), zero(Vec{N, T}))
-HyperDual{N, T}(v) where {N, T} = HyperDual{N}(T(v))
+HyperDual{Tag}(v::T, ϵ1::Vec{N, T}, ϵ2::Vec{N, T}) where {Tag, N, T} =
+    HyperDual{Tag, N, T}(v, ϵ1, ϵ2, ntuple(i -> zero(Vec{N, T}), Val(N)))
+HyperDual{Tag}(v::T, ϵ1::Vec{N, T}, ϵ2::Vec{N, T}, ϵ12::NTuple{N, Vec{N, T}}) where {Tag, N, T} =
+    HyperDual{Tag, N, T}(v, ϵ1, ϵ2, ϵ12)
+HyperDual{Tag, N}(v::T) where {Tag, N, T} = HyperDual{Tag}(v, zero(Vec{N, T}), zero(Vec{N, T}))
+HyperDual{Tag, N, T}(v) where {Tag, N, T} = HyperDual{Tag, N}(T(v))
 
-function HyperDual(v::T1, ϵ1::Vec{N, T2}, ϵ2::Vec{N, T2}, ϵ12::NTuple{N, Vec{N, T2}}) where {N, T1, T2}
+function HyperDual{Tag}(v::T1, ϵ1::Vec{N, T2}, ϵ2::Vec{N, T2}, ϵ12::NTuple{N, Vec{N, T2}}) where {Tag, N, T1, T2}
     T = promote_type(T1, T2)
-    return HyperDual(T(v), convert(Vec{N, T}, ϵ1), convert(Vec{N, T}, ϵ2), convert.(Vec{N, T}, ϵ12))
+    return HyperDual{Tag}(T(v), convert(Vec{N, T}, ϵ1), convert(Vec{N, T}, ϵ2), convert.(Vec{N, T}, ϵ12))
 end
 
-Base.promote_rule(::Type{HyperDual{N, T1}}, ::Type{HyperDual{N, T2}}) where {N, T1, T2} = HyperDual{N, promote_type(T1, T2)}
-Base.promote_rule(::Type{HyperDual{N, T1}}, ::Type{T2}) where {N, T1, T2 <: Real} = HyperDual{N, promote_type(T1, T2)}
-Base.convert(::Type{HyperDual{N, T1}}, h::HyperDual{N, T2}) where {N, T1, T2} =
-    HyperDual{N, T1}(T1(h.v), convert(Vec{N, T1}, h.ϵ1), convert(Vec{N, T1}, h.ϵ2), convert.(Vec{N, T1}, h.ϵ12))
-Base.convert(::Type{HyperDual{N, T}}, x::Real) where {N, T} = HyperDual{N, T}(T(x))
+HyperDual(tag::Tag, v::T, ϵ1::Vec{N, T}, ϵ2::Vec{N, T}) where {Tag, N, T} =
+    HyperDual{Tag}(v, ϵ1, ϵ2)
+HyperDual(tag::Tag, v::T, ϵ1::Vec{N, T}, ϵ2::Vec{N, T}, ϵ12::NTuple{N, Vec{N, T}}) where {Tag, N, T} =
+    HyperDual{Tag}(v, ϵ1, ϵ2, ϵ12)
 
-# Make this look nicer
-function Base.show(io::IO, h::HyperDual)
-    print(io, h.v, " + ", Tuple(h.ϵ1), "ϵ1", " + ", Tuple(h.ϵ2), "ϵ2", " + ", map(Tuple, h.ϵ12), "ϵ12")
-    return
+@inline _check_tag(::Type{Tag}, ::Type{Tag}) where {Tag} = nothing
+@inline function _check_tag(::Type{Expected}, ::Type{Observed}) where {Expected, Observed}
+    throw(PerturbationConfusion{Expected, Observed}())
 end
+@inline _check_tag(expected, observed) = _check_tag(typeof(expected), typeof(observed))
 
-Base.one(::Type{HyperDual{N, T}}) where {N, T} = HyperDual{N}(one(T))
-Base.zero(::Type{HyperDual{N, T}}) where {N, T} = HyperDual{N}(zero(T))
-Base.one(::HyperDual{N, T}) where {N, T} = one(HyperDual{N, T})
-Base.zero(::HyperDual{N, T}) where {N, T} = zero(HyperDual{N, T})
-Base.float(h::HyperDual{N, T}) where {N, T} = convert(HyperDual{N, float(T)}, h)
+@inline _check_same_tag(::HyperDual{Tag1}, ::HyperDual{Tag2}) where {Tag1, Tag2} =
+    _check_tag(Tag1, Tag2)
+
+Base.promote_rule(::Type{HyperDual{Tag1, N, T1}}, ::Type{HyperDual{Tag2, N, T2}}) where {Tag1, Tag2, N, T1, T2} =
+    (_check_tag(Tag1, Tag2); HyperDual{Tag1, N, promote_type(T1, T2)})
+Base.promote_rule(::Type{HyperDual{Tag, N, T1}}, ::Type{T2}) where {Tag, N, T1, T2 <: Real} = HyperDual{Tag, N, promote_type(T1, T2)}
+Base.convert(::Type{HyperDual{Tag, N, T1}}, h::HyperDual{Tag, N, T2}) where {Tag, N, T1, T2} =
+    HyperDual{Tag, N, T1}(T1(h.v), convert(Vec{N, T1}, h.ϵ1), convert(Vec{N, T1}, h.ϵ2), convert.(Vec{N, T1}, h.ϵ12))
+Base.convert(::Type{HyperDual{Tag, N, T}}, x::Real) where {Tag, N, T} = HyperDual{Tag, N, T}(T(x))
+
+Base.one(::Type{HyperDual{Tag, N, T}}) where {Tag, N, T} = HyperDual{Tag, N}(one(T))
+Base.zero(::Type{HyperDual{Tag, N, T}}) where {Tag, N, T} = HyperDual{Tag, N}(zero(T))
+Base.one(::HyperDual{Tag, N, T}) where {Tag, N, T} = one(HyperDual{Tag, N, T})
+Base.zero(::HyperDual{Tag, N, T}) where {Tag, N, T} = zero(HyperDual{Tag, N, T})
+Base.float(h::HyperDual{Tag, N, T}) where {Tag, N, T} = convert(HyperDual{Tag, N, float(T)}, h)
 
 # Unary
-@inline Base.:(-)(h::HyperDual{N}) where {N} = HyperDual(-h.v, -h.ϵ1, -h.ϵ2, ntuple(i -> -h.ϵ12[i], Val(N)))
+@inline Base.:(-)(h::HyperDual{Tag, N}) where {Tag, N} = HyperDual{Tag}(-h.v, -h.ϵ1, -h.ϵ2, ntuple(i -> -h.ϵ12[i], Val(N)))
 @inline Base.:(+)(h::HyperDual) = h
 
 # Binary
 for f in (:+, :-)
     @eval begin
-        @inline Base.$f(h1::HyperDual{N, T}, h2::HyperDual{N, T}) where {N, T} =
-            HyperDual($f(h1.v, h2.v), $f(h1.ϵ1, h2.ϵ1), $f(h1.ϵ2, h2.ϵ2), ntuple(i -> $f(h1.ϵ12[i], h2.ϵ12[i]), Val(N)))
-        @inline Base.$f(h1::HyperDual{N, T1}, h2::HyperDual{N, T2}) where {N, T1, T2} = $f(promote(h1, h2)...)
-        @inline Base.$f(h::HyperDual{N}, r::Real) where {N} =
-            HyperDual($f(h.v, r), h.ϵ1, h.ϵ2, h.ϵ12)
-        @inline Base.$f(r::Real, h::HyperDual{N}) where {N} =
-            HyperDual($f(r, h.v), h.ϵ1, h.ϵ2, h.ϵ12)
+        @inline Base.$f(h1::HyperDual{Tag, N, T}, h2::HyperDual{Tag, N, T}) where {Tag, N, T} =
+            HyperDual{Tag}($f(h1.v, h2.v), $f(h1.ϵ1, h2.ϵ1), $f(h1.ϵ2, h2.ϵ2), ntuple(i -> $f(h1.ϵ12[i], h2.ϵ12[i]), Val(N)))
+        @inline Base.$f(h1::HyperDual{Tag1, N, T1}, h2::HyperDual{Tag2, N, T2}) where {Tag1, Tag2, N, T1, T2} =
+            (_check_same_tag(h1, h2); $f(promote(h1, h2)...))
+        @inline Base.$f(h::HyperDual{Tag, N}, r::Real) where {Tag, N} =
+            HyperDual{Tag}($f(h.v, r), h.ϵ1, h.ϵ2, h.ϵ12)
+        @inline Base.$f(r::Real, h::HyperDual{Tag, N}) where {Tag, N} =
+            HyperDual{Tag}($f(r, h.v), h.ϵ1, h.ϵ2, h.ϵ12)
     end
 end
 
 for f in (:*, :/)
-    @eval @inline Base.$f(h::HyperDual{N}, r::Real) where {N} =
-        HyperDual($f(h.v, r), $f(h.ϵ1, r), $f(h.ϵ2, r), ntuple(i -> $f(h.ϵ12[i], r), Val(N)))
-    @eval @inline Base.$f(r::Real, h::HyperDual{N}) where {N} =
-        HyperDual($f(r, h.v), $f(r, h.ϵ1), $f(r, h.ϵ2), ntuple(i -> $f(r, h.ϵ12[i]), Val(N)))
+    @eval @inline Base.$f(h::HyperDual{Tag, N}, r::Real) where {Tag, N} =
+        HyperDual{Tag}($f(h.v, r), $f(h.ϵ1, r), $f(h.ϵ2, r), ntuple(i -> $f(h.ϵ12[i], r), Val(N)))
+    @eval @inline Base.$f(r::Real, h::HyperDual{Tag, N}) where {Tag, N} =
+        HyperDual{Tag}($f(r, h.v), $f(r, h.ϵ1), $f(r, h.ϵ2), ntuple(i -> $f(r, h.ϵ12[i]), Val(N)))
 end
 
-@inline Base.:(/)(h1::HyperDual{N, T}, h2::HyperDual{N, T}) where {N, T} = h1 * inv(h2)
+@inline Base.:(/)(h1::HyperDual{Tag1, N, T1}, h2::HyperDual{Tag2, N, T2}) where {Tag1, Tag2, N, T1, T2} =
+    (_check_same_tag(h1, h2); h1 * inv(h2))
 
 # muladd: x*y + z
-@inline Base.muladd(x::HyperDual{N}, y::Real, z::HyperDual{N}) where {N} = x * y + z
-@inline Base.muladd(x::Real, y::HyperDual{N}, z::HyperDual{N}) where {N} = x * y + z
-@inline Base.muladd(x::HyperDual{N}, y::HyperDual{N}, z::Real) where {N} = x * y + z
-@inline Base.muladd(x::HyperDual{N}, y::Real, z::Real) where {N} = x * y + z
-@inline Base.muladd(x::Real, y::HyperDual{N}, z::Real) where {N} = x * y + z
-@inline Base.muladd(x::Real, y::Real, z::HyperDual{N}) where {N} = muladd(x, y, z.v) + z - z.v
-@inline Base.muladd(x::HyperDual{N}, y::HyperDual{N}, z::HyperDual{N}) where {N} = x * y + z
+@inline Base.muladd(x::HyperDual{Tag, N}, y::Real, z::HyperDual{Tag, N}) where {Tag, N} = x * y + z
+@inline Base.muladd(x::Real, y::HyperDual{Tag, N}, z::HyperDual{Tag, N}) where {Tag, N} = x * y + z
+@inline Base.muladd(x::HyperDual{Tag, N}, y::HyperDual{Tag, N}, z::Real) where {Tag, N} = x * y + z
+@inline Base.muladd(x::HyperDual{Tag, N}, y::Real, z::Real) where {Tag, N} = x * y + z
+@inline Base.muladd(x::Real, y::HyperDual{Tag, N}, z::Real) where {Tag, N} = x * y + z
+@inline Base.muladd(x::Real, y::Real, z::HyperDual{Tag, N}) where {Tag, N} = muladd(x, y, z.v) + z - z.v
+@inline Base.muladd(x::HyperDual{Tag, N}, y::HyperDual{Tag, N}, z::HyperDual{Tag, N}) where {Tag, N} = x * y + z
 
 # Get's rid of a bunch of boundserror throwing in the LLVM IR, not sure it matters for runtime performance...
 unsafe_getindex(v::SIMD.Vec, i::SIMD.IntegerTypes) = SIMD.Intrinsics.extractelement(v.data, i - 1)
 @inline ⊗(v1::Vec{N}, v2::Vec{N}) where {N} = ntuple(i -> unsafe_getindex(v1, i) * v2, Val(N))
 
-@inline Base.:(*)(h1::HyperDual{N, T1}, h2::HyperDual{N, T2}) where {N, T1, T2} = *(promote(h1, h2)...)
-@inline function Base.:(*)(h1::HyperDual{N, T}, h2::HyperDual{N, T}) where {N, T}
+@inline Base.:(*)(h1::HyperDual{Tag, N, T1}, h2::HyperDual{Tag, N, T2}) where {Tag, N, T1, T2} =
+    *(promote(h1, h2)...)
+@inline function Base.:(*)(h1::HyperDual{Tag1, N, T1}, h2::HyperDual{Tag2, N, T2}) where {Tag1, Tag2, N, T1, T2}
+    _check_same_tag(h1, h2)
+    return *(promote(h1, h2)...)
+end
+@inline function Base.:(*)(h1::HyperDual{Tag, N, T}, h2::HyperDual{Tag, N, T}) where {Tag, N, T}
     r = h1.v * h2.v
     ϵ1 = muladd(h1.v, h2.ϵ1, h1.ϵ1 * h2.v)
     ϵ2 = muladd(h1.v, h2.ϵ2, h1.ϵ2 * h2.v)
     ϵ12_1 = h1.ϵ1 ⊗ h2.ϵ2
     ϵ12_2 = h2.ϵ1 ⊗ h1.ϵ2
     ϵ12 = ntuple(i -> muladd(h1.v, h2.ϵ12[i], muladd(h1.ϵ12[i], h2.v, ϵ12_1[i] + ϵ12_2[i])), Val(N))
-    return HyperDual(r, ϵ1, ϵ2, ϵ12)
+    return HyperDual{Tag}(r, ϵ1, ϵ2, ϵ12)
 end
 @inline Base.literal_pow(::typeof(^), x::HyperDual, ::Val{0}) = one(typeof(x))
 @inline Base.literal_pow(::typeof(^), x::HyperDual, ::Val{1}) = x
@@ -136,27 +175,27 @@ for (f, f′, f′′) in DIFF_RULES
         f′ = $f′
         f′′ = $f′′
         x23 = (f′′ * h.ϵ1) ⊗ h.ϵ2
-        return HyperDual(v, h.ϵ1 * f′, h.ϵ2 * f′, ntuple(i -> h.ϵ12[i] * f′ + x23[i], Val(N)))
+        return HyperDual{Tag}(v, h.ϵ1 * f′, h.ϵ2 * f′, ntuple(i -> h.ϵ12[i] * f′ + x23[i], Val(N)))
     end
     cse_expr = cse(expr; warn = false)
-    @eval @inline function Base.$f(h::HyperDual{N, T}) where {N, T}
+    @eval @inline function Base.$f(h::HyperDual{Tag, N, T}) where {Tag, N, T}
         x = h.v
         $cse_expr
     end
 end
 
-@inline function Base.sin(h::HyperDual{N}) where {N}
+@inline function Base.sin(h::HyperDual{Tag, N}) where {Tag, N}
     s, c = sincos(h.v)
     f′, f′′ = c, -s
     x23 = (f′′ * h.ϵ1) ⊗ h.ϵ2
-    return HyperDual(s, h.ϵ1 * f′, h.ϵ2 * f′, ntuple(i -> h.ϵ12[i] * f′ + x23[i], Val(N)))
+    return HyperDual{Tag}(s, h.ϵ1 * f′, h.ϵ2 * f′, ntuple(i -> h.ϵ12[i] * f′ + x23[i], Val(N)))
 end
 
-@inline function Base.cos(h::HyperDual{N}) where {N}
+@inline function Base.cos(h::HyperDual{Tag, N}) where {Tag, N}
     s, c = sincos(h.v)
     f′, f′′ = -s, -c
     x23 = (f′′ * h.ϵ1) ⊗ h.ϵ2
-    return HyperDual(c, h.ϵ1 * f′, h.ϵ2 * f′, ntuple(i -> h.ϵ12[i] * f′ + x23[i], Val(N)))
+    return HyperDual{Tag}(c, h.ϵ1 * f′, h.ϵ2 * f′, ntuple(i -> h.ϵ12[i] * f′ + x23[i], Val(N)))
 end
 
 
@@ -189,19 +228,27 @@ chunksize(::Chunk{N}) where {N} = N::Int
 
 abstract type AbstractHessianConfig end
 
-struct HessianConfig{D <: AbstractVector{<:HyperDual}, S} <: AbstractHessianConfig
+struct HessianConfig{Tag, D <: AbstractVector{<:HyperDual{Tag}}, S} <: AbstractHessianConfig
     duals::D
     seeds::S
 end
 (chunksize(cfg::HessianConfig)::Int) = length(cfg.seeds)
+tagtype(::HessianConfig{Tag}) where {Tag} = Tag
 
-function HessianConfig(x::AbstractVector{T}, chunk = Chunk(x)::Chunk) where {T}
+function HessianConfig(f, x::AbstractVector{T}, chunk = Chunk(x)::Chunk) where {T}
     N = chunksize(chunk)
     @assert 0 < N
-    duals = similar(x, HyperDual{N, T}) # not Vector
+    tag = smalltag(f, T, Val(N))
+    Tag = typeof(tag)
+    duals = similar(x, HyperDual{Tag, N, T}) # not Vector
     seeds = collect(construct_seeds(NTuple{N, T}))
-    return HessianConfig(duals, seeds)
+    return HessianConfig{Tag, typeof(duals), typeof(seeds)}(duals, seeds)
 end
+
+# Tag checking is intentionally a no-op in hot paths; tags are baked into the
+# dual types themselves, so mixing contexts will already error when combining
+# duals with different tags. This avoids per-call hashing overhead.
+@inline checktag(cfg::HessianConfig, f, x) = nothing
 
 ###########
 # Seeding #
@@ -215,11 +262,11 @@ end
 @generated construct_seeds(::Type{NTuple{N, T}}) where {N, T} =
     Expr(:tuple, [:(single_seed(NTuple{N, T}, Val{$i}())) for i in 1:N]...)
 
-seed_epsilon_1(d::HyperDual{N, T}, ϵ1) where {N, T} = HyperDual{N, T}(d.v, ϵ1, d.ϵ2, d.ϵ12)
-seed_epsilon_2(d::HyperDual{N, T}, ϵ2) where {N, T} = HyperDual{N, T}(d.v, d.ϵ1, ϵ2, d.ϵ12)
+seed_epsilon_1(d::HyperDual{Tag, N, T}, ϵ1) where {Tag, N, T} = HyperDual{Tag, N, T}(d.v, ϵ1, d.ϵ2, d.ϵ12)
+seed_epsilon_2(d::HyperDual{Tag, N, T}, ϵ2) where {Tag, N, T} = HyperDual{Tag, N, T}(d.v, d.ϵ1, ϵ2, d.ϵ12)
 
-function seed!(d::AbstractVector{<:HyperDual{N}}, x, seeds, block_i, block_j) where {N}
-    d .= HyperDual{N}.(x)
+function seed!(d::AbstractVector{<:HyperDual{Tag, N}}, x, seeds, block_i, block_j) where {Tag, N}
+    d .= HyperDual{Tag, N}.(x)
     index_i = (block_i - 1) * N + 1
     index_j = (block_j - 1) * N + 1
     range_i = index_i:min(length(x), (index_i + N - 1))
@@ -254,7 +301,7 @@ function symmetrize!(H::AbstractMatrix)
     return H
 end
 
-function extract_hessian!(H::AbstractMatrix, v::HyperDual{N}, block_i::Int, block_j::Int) where {N}
+function extract_hessian!(H::AbstractMatrix, v::HyperDual{Tag, N}, block_i::Int, block_j::Int) where {Tag, N}
     index_i = (block_i - 1) * N + 1
     index_j = (block_j - 1) * N + 1
     range_i = index_i:(index_i + N - 1)
@@ -271,7 +318,7 @@ function extract_hessian!(H::AbstractMatrix, v::HyperDual{N}, block_i::Int, bloc
 end
 
 
-function extract_gradient!(G::AbstractVector, v::HyperDual{N}, block_i::Int) where {N}
+function extract_gradient!(G::AbstractVector, v::HyperDual{Tag, N}, block_i::Int) where {Tag, N}
     Base.require_one_based_indexing(G)
     index_i = (block_i - 1) * N + 1
     range_i = index_i:min(length(G), (index_i + N - 1))
@@ -288,13 +335,15 @@ end
 
 # Scalar
 function hessian(f, x::Real)
-    dual = HyperDual(x, Vec(one(x)), Vec(one(x)))
+    tag = smalltag(f, typeof(x), Val(1))
+    Tag = typeof(tag)
+    dual = HyperDual{Tag}(x, Vec(one(x)), Vec(one(x)))
     v = f(dual)
     check_scalar(v)
     return @inbounds v.ϵ12[1][1]
 end
 
-hessian(f, x::AbstractVector) = hessian!(similar(x, axes(x, 1), axes(x, 1)), f, x, HessianConfig(x))
+hessian(f, x::AbstractVector) = hessian!(similar(x, axes(x, 1), axes(x, 1)), f, x, HessianConfig(f, x))
 hessian(f, x::AbstractVector, cfg::AbstractHessianConfig) = hessian!(similar(x, axes(x, 1), axes(x, 1)), f, x, cfg)
 
 function hessian!(H::AbstractMatrix, f, x::AbstractVector{T}, cfg::AbstractHessianConfig) where {T}
@@ -307,7 +356,8 @@ end
 
 function hessian_vector!(H::AbstractMatrix, f, x::AbstractVector, cfg::HessianConfig)
     @assert size(H, 1) == size(H, 2) == length(x)
-    cfg.duals .= HyperDual.(x, cfg.seeds, cfg.seeds)
+    Tag = tagtype(cfg)
+    cfg.duals .= HyperDual{Tag}.(x, cfg.seeds, cfg.seeds)
     v = f(cfg.duals)
     check_scalar(v)
     return extract_hessian!(H, v)
@@ -339,7 +389,7 @@ function hessiangradvalue!(H::AbstractMatrix, G::AbstractVector, f, x::AbstractV
 end
 
 function hessiangradvalue!(H::AbstractMatrix, G::AbstractVector, f, x::AbstractVector)
-    cfg = HessianConfig(x)
+    cfg = HessianConfig(f, x)
     return hessiangradvalue!(H, G, f, x, cfg)
 end
 
@@ -351,13 +401,14 @@ function hessiangradvalue(f, x::AbstractVector, cfg::AbstractHessianConfig)
 end
 
 function hessiangradvalue(f, x::AbstractVector)
-    cfg = HessianConfig(x)
+    cfg = HessianConfig(f, x)
     return hessiangradvalue(f, x, cfg)
 end
 
 function hessiangradvalue_vector!(H::AbstractMatrix, G::AbstractVector, f, x::AbstractVector, cfg::HessianConfig)
     @assert size(H, 1) == size(H, 2) == length(x)
-    cfg.duals .= HyperDual.(x, cfg.seeds, cfg.seeds)
+    Tag = tagtype(cfg)
+    cfg.duals .= HyperDual{Tag}.(x, cfg.seeds, cfg.seeds)
     v = f(cfg.duals)
     check_scalar(v)
     G .= Tuple(v.ϵ1)

@@ -21,7 +21,7 @@ function run_benchmark()
             time_fd = @benchmark ForwardDiff.hessian!($H_fd, $f, $x, $cfg_fd)
 
             H_fh = similar(x, length(x), length(x))
-            cfg_fh = HyperHessians.HessianConfig(x)
+            cfg_fh = HyperHessians.HessianConfig(f, x)
             # HyperHessians.hessian!(H_fh, f, x, cfg_fh)
             time_fh = @benchmark HyperHessians.hessian!($H_fh, $f, $x, $cfg_fh)
 

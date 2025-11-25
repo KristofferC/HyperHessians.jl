@@ -1,4 +1,4 @@
-using HyperHessians: HyperHessians, hessian, hessian!, hessiangradvalue, hessiangradvalue!, Chunk, HessianConfig, HyperDual
+using HyperHessians: HyperHessians, hessian, hessian!, hessiangradvalue, hessiangradvalue!, Chunk, HessianConfig, HyperDual, smalltag
 using DiffTests
 using ForwardDiff
 using Test
@@ -33,7 +33,7 @@ end # testset
                 end
                 @info "f=$f, n=$n, chunk=$chunk"
 
-                cfg = HessianConfig(x, Chunk{chunk}())
+                cfg = HessianConfig(f, x, Chunk{chunk}())
                 @test H ≈ hessian(f, x, cfg)
                 @test H ≈ hessian(f, x, cfg)
 
@@ -65,7 +65,7 @@ end
     x = rand(8)
     H = zeros(length(x), length(x))
     G = zeros(length(x))
-    cfg_chunk = HessianConfig(x, Chunk{4}())
+    cfg_chunk = HessianConfig(f, x, Chunk{4}())
     value = hessiangradvalue!(H, G, f, x, cfg_chunk)
     @test value ≈ f(x)
     @test G ≈ ForwardDiff.gradient(f, x)
@@ -73,7 +73,7 @@ end
 
     H2 = similar(H)
     G2 = similar(G)
-    cfg_vec = HessianConfig(x, Chunk{length(x)}())
+    cfg_vec = HessianConfig(f, x, Chunk{length(x)}())
     value_vec = hessiangradvalue!(H2, G2, f, x, cfg_vec)
     @test value_vec ≈ f(x)
     @test G2 ≈ ForwardDiff.gradient(f, x)
@@ -96,7 +96,9 @@ using StaticArrays
 end # testset
 
 @testset "No spurious promotions primitives" begin
-    h = HyperDual(0.8f0, Vec(0.7f0, 0.7f0), Vec(0.7f0, 0.7f0))
+    tag = smalltag(:primitives, Float32, Val(2))
+    Tag = typeof(tag)
+    h = HyperDual{Tag}(0.8f0, Vec(0.7f0, 0.7f0), Vec(0.7f0, 0.7f0))
     for (fsym, _, _) in HyperHessians.DIFF_RULES
         if fsym in (:asec, :acsc, :asecd)
             hv = inv(h)
@@ -106,7 +108,7 @@ end # testset
         f = @eval $fsym
         try
             v = f(hv)
-            @test v isa HyperDual{2, Float32}
+            @test v isa HyperDual{Tag, 2, Float32}
         catch e
             e isa DomainError || rethrow()
         end

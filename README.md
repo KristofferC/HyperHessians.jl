@@ -5,7 +5,6 @@ It works similar to `ForwardDiff.hessian` but should have better run-time and co
 
 There are some limitations compared to ForwardDiff.jl:
 - Only support for basic numeric types (`Float64`, `Float32`, etc.).
-- Currently no "tagging" of numbers to avoid perturbation confusion.
 - Not as many primitives implemented.
 
 ## Usage
@@ -49,7 +48,7 @@ Step 1 and 2 are done by creating a `HessianConfig` object:
 ```julia
 x = rand(32); # input array
 chunk_size = HyperHessians.Chunk{8}() # chosen chunk size
-cfg = HyperHessians.HessianConfig(x, chunk_size) # creating the config object
+cfg = HyperHessians.HessianConfig(f, x, chunk_size) # creating the config object (tagged to f)
 ```
 
 The larger the chunk size the larger part of the Hessian is computed on every call to `f` (if the chunk size is equal to
@@ -69,7 +68,7 @@ julia> mysum(x) = (@info "got called"; sum(x));
 
 julia> x = rand(8); n = length(x); c = 4;
 
-julia> cfg = HyperHessians.HessianConfig(x, HyperHessians.Chunk{c}());
+julia> cfg = HyperHessians.HessianConfig(mysum, x, HyperHessians.Chunk{c}());
 
 julia> HyperHessians.hessian(mysum, x, cfg)
 [ Info: got called
@@ -88,7 +87,7 @@ julia> x = rand(8);
 
 julia> H = similar(x, 8, 8);
 
-julia> cfg = HyperHessians.HessianConfig(x, HyperHessians.Chunk{8}());
+julia> cfg = HyperHessians.HessianConfig(f, x, HyperHessians.Chunk{8}());
 
 julia> HyperHessians.hessian!(H, f, x, cfg)
 ```
