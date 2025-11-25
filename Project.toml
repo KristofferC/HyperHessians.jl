@@ -10,6 +10,7 @@ SIMD = "fdea26ae-647d-5447-a871-4b548cad5224"
 [compat]
 CommonSubexpressions = "0.3"
 SIMD = "3"
+julia = "1.10"
 
 [extras]
 DiffTests = "de460e47-3fe3-5279-bb4a-814414816d5d"

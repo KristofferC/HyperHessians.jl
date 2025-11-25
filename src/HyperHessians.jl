@@ -5,6 +5,41 @@ using CommonSubexpressions: cse
 
 include("rules.jl")
 
+#=
+# HyperDual Numbers
+
+A HyperDual number extends dual numbers to compute second derivatives (Hessians).
+A HyperDual is defined as:
+
+    h = v + ϵ₁ᵀa + ϵ₂ᵀb + ϵ₁ᵀAϵ₂
+
+where:
+- v is the primal value
+- ϵ₁, ϵ₂ are independent infinitesimals with ϵ₁² = ϵ₂² = 0
+- a, b are vectors (first derivative components)
+- A is a matrix (second derivative / Hessian component)
+- The cross term ϵ₁ᵢϵ₂ⱼ ≠ 0 captures mixed partials
+
+## Multiplication rule
+
+For h₁ = v₁ + ϵ₁ᵀa₁ + ϵ₂ᵀb₁ + ϵ₁ᵀA₁ϵ₂ and h₂ = v₂ + ϵ₁ᵀa₂ + ϵ₂ᵀb₂ + ϵ₁ᵀA₂ϵ₂:
+
+    h₁ * h₂ = v₁v₂
+            + ϵ₁ᵀ(v₁a₂ + a₁v₂)
+            + ϵ₂ᵀ(v₁b₂ + b₁v₂)
+            + ϵ₁ᵀ(v₁A₂ + A₁v₂ + a₁b₂ᵀ + a₂b₁ᵀ)ϵ₂
+
+This follows from the product rule and ϵ² = 0.
+
+## Chain rule for f(h)
+
+For a scalar function f applied to h = v + ϵ₁ᵀa + ϵ₂ᵀb + ϵ₁ᵀAϵ₂:
+
+    f(h) = f(v) + ϵ₁ᵀ(f'(v)a) + ϵ₂ᵀ(f'(v)b) + ϵ₁ᵀ(f'(v)A + f''(v)abᵀ)ϵ₂
+
+This gives us the first and second derivatives via f' and f''.
+=#
+
 # This is currently "artifically" restricted to "square" HyperDuals where
 # ϵ1 and ϵ2 have the same length.
 struct HyperDual{N, T} <: Real
