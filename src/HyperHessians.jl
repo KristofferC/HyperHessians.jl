@@ -23,8 +23,10 @@ function HyperDual(v::T1, ϵ1::Vec{N,T2}, ϵ2::Vec{N,T2}, ϵ12::NTuple{N, Vec{N,
 end
 
 Base.promote_rule(::Type{HyperDual{N,T1}}, ::Type{HyperDual{N,T2}}) where {N,T1,T2} = HyperDual{N, promote_type(T1, T2)}
+Base.promote_rule(::Type{HyperDual{N,T1}}, ::Type{T2}) where {N,T1,T2<:Real} = HyperDual{N, promote_type(T1, T2)}
 Base.convert(::Type{HyperDual{N,T1}}, h::HyperDual{N,T2}) where {N,T1,T2} =
     HyperDual{N,T1}(T1(h.v), convert(Vec{N,T1}, h.ϵ1), convert(Vec{N,T1}, h.ϵ2), convert.(Vec{N,T1}, h.ϵ12))
+Base.convert(::Type{HyperDual{N,T}}, x::Real) where {N,T} = HyperDual{N,T}(T(x))
 
 # Make this look nicer
 function Base.show(io::IO, h::HyperDual)
@@ -62,6 +64,15 @@ for f in (:*, :/)
 end
 
 @inline Base.:(/)(h1::HyperDual{N,T}, h2::HyperDual{N,T}) where {N,T} = h1 * inv(h2)
+
+# muladd: x*y + z
+@inline Base.muladd(x::HyperDual{N}, y::Real, z::HyperDual{N}) where {N} = x * y + z
+@inline Base.muladd(x::Real, y::HyperDual{N}, z::HyperDual{N}) where {N} = x * y + z
+@inline Base.muladd(x::HyperDual{N}, y::HyperDual{N}, z::Real) where {N} = x * y + z
+@inline Base.muladd(x::HyperDual{N}, y::Real, z::Real) where {N} = x * y + z
+@inline Base.muladd(x::Real, y::HyperDual{N}, z::Real) where {N} = x * y + z
+@inline Base.muladd(x::Real, y::Real, z::HyperDual{N}) where {N} = muladd(x, y, z.v) + z - z.v
+@inline Base.muladd(x::HyperDual{N}, y::HyperDual{N}, z::HyperDual{N}) where {N} = x * y + z
 
 # Get's rid of a bunch of boundserror throwing in the LLVM IR, not sure it matters for runtime performance...
 unsafe_getindex(v::SIMD.Vec, i::SIMD.IntegerTypes) = SIMD.Intrinsics.extractelement(v.data, i-1)
