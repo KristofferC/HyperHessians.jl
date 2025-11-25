@@ -122,12 +122,8 @@ const DEFAULT_CHUNK_THRESHOLD = 8
 
 struct Chunk{N} end
 
-const CHUNKS = [Chunk{i}() for i in 1:DEFAULT_CHUNK_THRESHOLD]
-
 function Chunk(input_length::Integer)
-    N = pickchunksize(input_length)
-    0 < N <= DEFAULT_CHUNK_THRESHOLD && return CHUNKS[N] # TODO: Check if this matters
-    return Chunk{N}()
+    return Chunk{pickchunksize(input_length)}()
 end
 
 Chunk(x::AbstractArray) = Chunk(length(x))
@@ -140,7 +136,7 @@ function pickchunksize(input_length)
     return 8
 end
 
-(chunksize(::Chunk{N})::Int) where {N} = N
+chunksize(::Chunk{N}) where {N} = N::Int
 
 
 ##################
@@ -162,23 +158,6 @@ function HessianConfig(x::AbstractVector{T}, chunk=Chunk(x)::Chunk) where {T}
     seeds = collect(construct_seeds(NTuple{N,T}))
     return HessianConfig(duals, seeds)
 end
-
-struct HessianConfigThreaded{D <: AbstractVector{<:HyperDual}, S} <: AbstractHessianConfig
-    duals::Vector{D}
-    seeds::S
-end
-
-function HessianConfigThreaded(x::AbstractVector{T}, chunk=Chunk(x)::Chunk) where {T}
-    N = chunksize(chunk)
-    @assert 0 < N
-    duals = [similar(x, HyperDual{N,T}) for i in 1:Threads.nthreads()] # not Vector
-    seeds = collect(construct_seeds(NTuple{N,T}))
-    return HessianConfigThreaded(duals, seeds)
-end
-
-(chunksize(cfg::HessianConfigThreaded)::Int) = length(cfg.seeds)
-HessianConfig(cfg::HessianConfigThreaded) = HessianConfig(first(cfg.duals), cfg.seeds)
-
 
 ###########
 # Seeding #
@@ -248,11 +227,12 @@ function extract_hessian!(H::AbstractMatrix, v::HyperDual{N}, block_i::Int, bloc
 end
 
 
-function extract_gradient!(G::AbstractVector, v::HyperDual, block_i::Int)
+function extract_gradient!(G::AbstractVector, v::HyperDual{N}, block_i::Int) where {N}
+    Base.require_one_based_indexing(G)
     index_i = (block_i-1) * N + 1
-    range_i = index_i : (index_i + N -1)
+    range_i = index_i : min(length(G), (index_i + N -1))
     for (I, i) in enumerate(range_i)
-        G[i] .= v.ϵ1[I]
+        G[i] = v.ϵ1[I]
     end
     return G
 end
@@ -275,9 +255,6 @@ hessian(f, x::AbstractVector, cfg::AbstractHessianConfig) = hessian!(similar(x, 
 
 function hessian!(H::AbstractMatrix, f, x::AbstractVector{T}, cfg::AbstractHessianConfig) where {T}
     if chunksize(cfg) == length(x)
-        if cfg isa HessianConfigThreaded
-            cfg = HessianConfig(cfg)
-        end
         return hessian_vector!(H, f, x, cfg)
     else
         return hessian_chunk!(H, f, x, cfg)
@@ -307,30 +284,62 @@ function hessian_chunk!(H::AbstractMatrix, f, x::AbstractVector{T}, cfg::Hessian
     return H
 end
 
-#=
-# Threaded chunk mode
-function linear_to_cartesian(n::Int, k::Int)
-    k -= 1
-    n += 1
-    i = n - 2 - floor(sqrt(-8*k + 4*n*(n-1)-7)/2 - 0.5)
-    j = k + i + 1 - n*(n-1)/2 + (n-i)*((n-i)-1)/2
-    return round(Int, i+1), round(Int, j)
+function hessiangradvalue!(H::AbstractMatrix, G::AbstractVector, f, x::AbstractVector{T}, cfg::AbstractHessianConfig) where {T}
+    @assert size(H,1) == size(H,2) == length(x)
+    @assert length(G) == length(x)
+    if chunksize(cfg) == length(x)
+        return hessiangradvalue_vector!(H, G, f, x, cfg)
+    else
+        return hessiangradvalue_chunk!(H, G, f, x, cfg)
+    end
 end
 
-function hessian_chunk!(H::AbstractMatrix, f, x::AbstractVector{T}, cfg::HessianConfigThreaded) where {T,N}
+function hessiangradvalue!(H::AbstractMatrix, G::AbstractVector, f, x::AbstractVector)
+    cfg = HessianConfig(x)
+    return hessiangradvalue!(H, G, f, x, cfg)
+end
+
+function hessiangradvalue(f, x::AbstractVector, cfg::AbstractHessianConfig)
+    G = similar(x, axes(x,1))
+    H = similar(x, axes(x,1), axes(x,1))
+    value = hessiangradvalue!(H, G, f, x, cfg)
+    return (value=value, gradient=G, hessian=H)
+end
+
+function hessiangradvalue(f, x::AbstractVector)
+    cfg = HessianConfig(x)
+    return hessiangradvalue(f, x, cfg)
+end
+
+function hessiangradvalue_vector!(H::AbstractMatrix, G::AbstractVector, f, x::AbstractVector, cfg::HessianConfig)
     @assert size(H,1) == size(H,2) == length(x)
+    cfg.duals .= HyperDual.(x, cfg.seeds, cfg.seeds)
+    v = f(cfg.duals)
+    check_scalar(v)
+    G .= Tuple(v.ϵ1)
+    extract_hessian!(H, v)
+    return v.v
+end
+
+function hessiangradvalue_chunk!(H::AbstractMatrix, G::AbstractVector, f, x::AbstractVector{T}, cfg::HessianConfig) where {T}
+    @assert size(H,1) == size(H,2) == length(x)
+    @assert length(G) == length(x)
     n_chunks = ceil(Int, length(x) / chunksize(cfg))
-    Threads.@threads for k in 1:((n_chunks*(n_chunks+1)) ÷ 2)
-        i, j = linear_to_cartesian(n_chunks, k)
-        duals = cfg.duals[Threads.threadid()]
-        seed!(duals, x, cfg.seeds, i, j)
-        v = f(duals)
-        check_scalar(v)
-        extract_hessian!(H, v, i, j)
+    value = zero(T)
+    for i in 1:n_chunks
+        for j in i:n_chunks
+            seed!(cfg.duals, x, cfg.seeds, i, j)
+            v = f(cfg.duals)
+            check_scalar(v)
+            value = v.v
+            extract_hessian!(H, v, i, j)
+            if j == i
+                extract_gradient!(G, v, i)
+            end
+        end
     end
     symmetrize!(H)
-    return H
+    return value
 end
-=#
 
 end # module

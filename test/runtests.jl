@@ -1,5 +1,5 @@
 
-using HyperHessians: HyperHessians, hessian, hessian!, Chunk, HessianConfig, HyperDual
+using HyperHessians: HyperHessians, hessian, hessian!, hessiangradvalue, hessiangradvalue!, Chunk, HessianConfig, HyperDual
 using DiffTests
 using ForwardDiff
 using Test
@@ -36,9 +36,6 @@ for f in (DiffTests.rosenbrock_1,
             @test H ≈ hessian(f, x, cfg)
             @test H ≈ hessian(f, x, cfg)
 
-            # cfg_threaded = HessianConfigThreaded(x, Chunk{chunk}())
-            # @test H ≈ hessian(f, x, cfg_threaded)
-            # @test H ≈ hessian(f, x, cfg_threaded)
         end
     end
 end
@@ -54,20 +51,45 @@ function ackley_stable(x::AbstractVector{T}) where {T}
 end
 
 @testset "Float32" begin
-x = rand(Float32, 8)
-@test hessian(ackley_stable, x) isa Matrix{Float32}
-@test hessian(ackley_stable, x)  ≈ ForwardDiff.hessian(ackley_stable, x)
-@test hessian(DiffTests.ackley, x) ≈ ForwardDiff.hessian(DiffTests.ackley, x)
+    x = rand(Float32, 8)
+    @test hessian(ackley_stable, x) isa Matrix{Float32}
+    @test hessian(ackley_stable, x)  ≈ ForwardDiff.hessian(ackley_stable, x)
+    @test hessian(DiffTests.ackley, x) ≈ ForwardDiff.hessian(DiffTests.ackley, x)
+end
+
+@testset "hessiangradvalue" begin
+    f = DiffTests.ackley
+    x = rand(8)
+    H = zeros(length(x), length(x))
+    G = zeros(length(x))
+    cfg_chunk = HessianConfig(x, Chunk{4}())
+    value = hessiangradvalue!(H, G, f, x, cfg_chunk)
+    @test value ≈ f(x)
+    @test G ≈ ForwardDiff.gradient(f, x)
+    @test H ≈ ForwardDiff.hessian(f, x)
+
+    H2 = similar(H)
+    G2 = similar(G)
+    cfg_vec = HessianConfig(x, Chunk{length(x)}())
+    value_vec = hessiangradvalue!(H2, G2, f, x, cfg_vec)
+    @test value_vec ≈ f(x)
+    @test G2 ≈ ForwardDiff.gradient(f, x)
+    @test H2 ≈ ForwardDiff.hessian(f, x)
+
+    res = hessiangradvalue(f, x, cfg_vec)
+    @test res.value ≈ f(x)
+    @test res.gradient ≈ ForwardDiff.gradient(f, x)
+    @test res.hessian ≈ ForwardDiff.hessian(f, x)
 end
 
 
 using StaticArrays
 @testset "StaticArrays" begin
-x = rand(SVector{4})
-f = DiffTests.rosenbrock_3
-@test ForwardDiff.hessian(f, x) ≈ hessian(f, x)
-@test hessian(f, x) isa MMatrix
-@test_broken hessian(f, x) isa SMatrix
+    x = rand(SVector{4})
+    f = DiffTests.rosenbrock_3
+    @test ForwardDiff.hessian(f, x) ≈ hessian(f, x)
+    @test hessian(f, x) isa MMatrix
+    @test_broken hessian(f, x) isa SMatrix
 end # testset
 
 @testset "No spurious promotions primitives" begin
