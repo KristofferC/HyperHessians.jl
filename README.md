@@ -93,6 +93,37 @@ julia> cfg = HyperHessians.HessianConfig(x, HyperHessians.Chunk{8}());
 julia> HyperHessians.hessian!(H, f, x, cfg)
 ```
 
+### Computing Hessian, Gradient, and Value Together
+
+Use `hessiangradvalue` to compute all three in a single pass:
+
+```julia
+julia> f = x -> sum(x.^3);
+
+julia> x = [1.0, 2.0, 3.0, 4.0];
+
+julia> result = HyperHessians.hessiangradvalue(f, x);
+
+julia> result.value
+100.0
+
+julia> result.gradient
+4-element Vector{Float64}:
+  3.0
+ 12.0
+ 27.0
+ 48.0
+
+julia> result.hessian
+4×4 Matrix{Float64}:
+ 6.0   0.0   0.0   0.0
+ 0.0  12.0   0.0   0.0
+ 0.0   0.0  18.0   0.0
+ 0.0   0.0   0.0  24.0
+```
+
+There is also an in-place variant `hessiangradvalue!(H, G, f, x, cfg)` that returns the value.
+
 ## Performance
 
 To get an estimate of the performance of HyperHessians we here benchmark it
