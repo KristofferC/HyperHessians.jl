@@ -1,13 +1,9 @@
 
-using HyperHessians: HyperHessians, hessian, hessian!, Chunk, HessianConfig, HessianConfigThreaded, HyperDual
+using HyperHessians: HyperHessians, hessian, hessian!, Chunk, HessianConfig, HyperDual
 using DiffTests
 using ForwardDiff
 using Test
 using SIMD
-
-if Threads.nthreads() == 1
-    @warn "Not properly testing threaded behavior"
-end
 
 @testset "scalar" begin
 f(x) = exp(x) / sqrt(sin(x)^3 + cos(x)^3);
@@ -35,14 +31,14 @@ for f in (DiffTests.rosenbrock_1,
                 continue
             end
             @info "f=$f, n=$n, chunk=$chunk"
-           
+
             cfg = HessianConfig(x, Chunk{chunk}())
             @test H ≈ hessian(f, x, cfg)
             @test H ≈ hessian(f, x, cfg)
 
-            cfg_threaded = HessianConfigThreaded(x, Chunk{chunk}())
-            @test H ≈ hessian(f, x, cfg_threaded)
-            @test H ≈ hessian(f, x, cfg_threaded)
+            # cfg_threaded = HessianConfigThreaded(x, Chunk{chunk}())
+            # @test H ≈ hessian(f, x, cfg_threaded)
+            # @test H ≈ hessian(f, x, cfg_threaded)
         end
     end
 end
@@ -83,7 +79,7 @@ for (fsym, _, _) in HyperHessians.DIFF_RULES
         hv = h
     end
     f = @eval $fsym
-    try 
+    try
         v = f(hv)
         @test v isa HyperDual{2, Float32}
     catch e

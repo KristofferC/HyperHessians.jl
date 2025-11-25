@@ -43,7 +43,7 @@ For best performance we want to do the following things:
 1. Cache the input array of custom numbers that FastHessian uses so they can be resued upon multiple calls to `hessian`.
 2. Decide on a good "chunk size" which is roughly the size of the section of the hessian computed for every call to the function.
 3. Pre-allocate the output hessian matrix.
-  
+
 Step 1 and 2 are done by creating a `HessianConfig` object:
 
 ```julia
@@ -93,33 +93,6 @@ julia> cfg = HyperHessians.HessianConfig(x, HyperHessians.Chunk{8}());
 julia> HyperHessians.hessian!(H, f, x, cfg)
 ```
 
-### Multi-threading
-
-In chunked mode (when the chunk size is smaller than the input vector length) it is possible to use multithreading to compute chunks in parallel.
-This is done by creating a `HessianConfigThreaded` object instead of a `HessianConfig` object.
-Below is a benchmark:
-
-```julia
-julia> using HyperHessians, DiffTests, BenchmarkTools
-
-julia> Threads.nthreads()
-8
-
-julia> x = rand(128);
-
-julia> cfg = HyperHessians.HessianConfig(x);
-
-julia> cfg_thread = HyperHessians.HessianConfigThreaded(x);
-
-julia> H = similar(x, length(x), length(x));
-
-julia> @btime HyperHessians.hessian!(H, DiffTests.ackley, x, cfg);
-  883.716 μs (0 allocations: 0 bytes)
-
-julia> @btime HyperHessians.hessian!(H, DiffTests.ackley, x, cfg_thread);
-  128.609 μs (41 allocations: 3.89 KiB)
-```
-
 ## Performance
 
 To get an estimate of the performance of HyperHessians we here benchmark it
@@ -135,5 +108,3 @@ The results can be reproduced with `benchmark/fdiff.jl`.
 | `rosenbrock_1` | 1 | 84.264 ns | 36.022 ns | 2.3
 | `rosenbrock_1` | 8 | 1.119 μs | 379.582 ns | 2.9
 | `rosenbrock_1` | 128 | 3.392 ms | 854.630 μs | 4.0
-
-

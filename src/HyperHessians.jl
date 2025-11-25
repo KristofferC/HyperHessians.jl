@@ -11,7 +11,7 @@ struct HyperDual{N, T} <: Real
     v::T
     ϵ1::Vec{N,T} # Vec{M,T}
     ϵ2::Vec{N,T}
-    ϵ12::NTuple{N, Vec{N,T}} # NTuple{M, Vec{N,T}} 
+    ϵ12::NTuple{N, Vec{N,T}} # NTuple{M, Vec{N,T}}
 end
 HyperDual(v::T, ϵ1::Vec{N,T}, ϵ2::Vec{N,T}) where {N, T} = HyperDual(v, ϵ1, ϵ2, ntuple(i -> zero(Vec{N,T}), Val(N)))
 HyperDual{N}(v::T) where {N, T} = HyperDual(v, zero(Vec{N,T}),zero(Vec{N,T}))
@@ -23,7 +23,7 @@ function HyperDual(v::T1, ϵ1::Vec{N,T2}, ϵ2::Vec{N,T2}, ϵ12::NTuple{N, Vec{N,
 end
 
 Base.promote_rule(::Type{HyperDual{N,T1}}, ::Type{HyperDual{N,T2}}) where {N,T1,T2} = HyperDual{N, promote_type(T1, T2)}
-Base.convert(::Type{HyperDual{N,T1}}, h::HyperDual{N,T2}) where {N,T1,T2} = 
+Base.convert(::Type{HyperDual{N,T1}}, h::HyperDual{N,T2}) where {N,T1,T2} =
     HyperDual{N,T1}(T1(h.v), convert(Vec{N,T1}, h.ϵ1), convert(Vec{N,T1}, h.ϵ2), convert.(Vec{N,T1}, h.ϵ12))
 
 # Make this look nicer
@@ -224,7 +224,7 @@ end
 function symmetrize!(H::AbstractMatrix)
     Base.require_one_based_indexing(H)
     for i in 1:size(H, 1)
-        for j in i:size(H,2) 
+        for j in i:size(H,2)
             H[j,i] = H[i,j]
         end
     end
@@ -273,7 +273,7 @@ end
 hessian(f, x::AbstractVector)                             = hessian!(similar(x, axes(x,1), axes(x,1)), f, x, HessianConfig(x))
 hessian(f, x::AbstractVector, cfg::AbstractHessianConfig) = hessian!(similar(x, axes(x,1), axes(x,1)), f, x, cfg)
 
-function hessian!(H::AbstractMatrix, f, x::AbstractVector{T}, cfg::AbstractHessianConfig) where {T,N}
+function hessian!(H::AbstractMatrix, f, x::AbstractVector{T}, cfg::AbstractHessianConfig) where {T}
     if chunksize(cfg) == length(x)
         if cfg isa HessianConfigThreaded
             cfg = HessianConfig(cfg)
@@ -292,7 +292,7 @@ function hessian_vector!(H::AbstractMatrix, f, x::AbstractVector, cfg::HessianCo
     return extract_hessian!(H, v)
 end
 
-function hessian_chunk!(H::AbstractMatrix, f, x::AbstractVector{T}, cfg::HessianConfig) where {T,N}
+function hessian_chunk!(H::AbstractMatrix, f, x::AbstractVector{T}, cfg::HessianConfig) where {T}
     @assert size(H,1) == size(H,2) == length(x)
     n_chunks = ceil(Int, length(x) / chunksize(cfg))
     for i in 1:n_chunks
@@ -307,6 +307,7 @@ function hessian_chunk!(H::AbstractMatrix, f, x::AbstractVector{T}, cfg::Hessian
     return H
 end
 
+#=
 # Threaded chunk mode
 function linear_to_cartesian(n::Int, k::Int)
     k -= 1
@@ -330,5 +331,6 @@ function hessian_chunk!(H::AbstractMatrix, f, x::AbstractVector{T}, cfg::Hessian
     symmetrize!(H)
     return H
 end
+=#
 
 end # module
