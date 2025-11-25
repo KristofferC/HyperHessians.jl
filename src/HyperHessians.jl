@@ -44,35 +44,36 @@ This gives us the first and second derivatives via f' and f''.
 # ϵ1 and ϵ2 have the same length.
 struct HyperDual{N, T} <: Real
     v::T
-    ϵ1::Vec{N,T} # Vec{M,T}
-    ϵ2::Vec{N,T}
-    ϵ12::NTuple{N, Vec{N,T}} # NTuple{M, Vec{N,T}}
+    ϵ1::Vec{N, T} # Vec{M,T}
+    ϵ2::Vec{N, T}
+    ϵ12::NTuple{N, Vec{N, T}} # NTuple{M, Vec{N,T}}
 end
-HyperDual(v::T, ϵ1::Vec{N,T}, ϵ2::Vec{N,T}) where {N, T} = HyperDual(v, ϵ1, ϵ2, ntuple(i -> zero(Vec{N,T}), Val(N)))
-HyperDual{N}(v::T) where {N, T} = HyperDual(v, zero(Vec{N,T}),zero(Vec{N,T}))
-HyperDual{N,T}(v) where {N, T} = HyperDual{N}(T(v))
+HyperDual(v::T, ϵ1::Vec{N, T}, ϵ2::Vec{N, T}) where {N, T} = HyperDual(v, ϵ1, ϵ2, ntuple(i -> zero(Vec{N, T}), Val(N)))
+HyperDual{N}(v::T) where {N, T} = HyperDual(v, zero(Vec{N, T}), zero(Vec{N, T}))
+HyperDual{N, T}(v) where {N, T} = HyperDual{N}(T(v))
 
-function HyperDual(v::T1, ϵ1::Vec{N,T2}, ϵ2::Vec{N,T2}, ϵ12::NTuple{N, Vec{N,T2}}) where {N, T1, T2}
+function HyperDual(v::T1, ϵ1::Vec{N, T2}, ϵ2::Vec{N, T2}, ϵ12::NTuple{N, Vec{N, T2}}) where {N, T1, T2}
     T = promote_type(T1, T2)
-    HyperDual(T(v), convert(Vec{N,T}, ϵ1), convert(Vec{N,T}, ϵ2), convert.(Vec{N,T}, ϵ12))
+    return HyperDual(T(v), convert(Vec{N, T}, ϵ1), convert(Vec{N, T}, ϵ2), convert.(Vec{N, T}, ϵ12))
 end
 
-Base.promote_rule(::Type{HyperDual{N,T1}}, ::Type{HyperDual{N,T2}}) where {N,T1,T2} = HyperDual{N, promote_type(T1, T2)}
-Base.promote_rule(::Type{HyperDual{N,T1}}, ::Type{T2}) where {N,T1,T2<:Real} = HyperDual{N, promote_type(T1, T2)}
-Base.convert(::Type{HyperDual{N,T1}}, h::HyperDual{N,T2}) where {N,T1,T2} =
-    HyperDual{N,T1}(T1(h.v), convert(Vec{N,T1}, h.ϵ1), convert(Vec{N,T1}, h.ϵ2), convert.(Vec{N,T1}, h.ϵ12))
-Base.convert(::Type{HyperDual{N,T}}, x::Real) where {N,T} = HyperDual{N,T}(T(x))
+Base.promote_rule(::Type{HyperDual{N, T1}}, ::Type{HyperDual{N, T2}}) where {N, T1, T2} = HyperDual{N, promote_type(T1, T2)}
+Base.promote_rule(::Type{HyperDual{N, T1}}, ::Type{T2}) where {N, T1, T2 <: Real} = HyperDual{N, promote_type(T1, T2)}
+Base.convert(::Type{HyperDual{N, T1}}, h::HyperDual{N, T2}) where {N, T1, T2} =
+    HyperDual{N, T1}(T1(h.v), convert(Vec{N, T1}, h.ϵ1), convert(Vec{N, T1}, h.ϵ2), convert.(Vec{N, T1}, h.ϵ12))
+Base.convert(::Type{HyperDual{N, T}}, x::Real) where {N, T} = HyperDual{N, T}(T(x))
 
 # Make this look nicer
 function Base.show(io::IO, h::HyperDual)
-    print(io, h.v, " + ", Tuple(h.ϵ1), "ϵ1", " + ", Tuple(h.ϵ2), "ϵ2", " + ",  map(Tuple, h.ϵ12), "ϵ12")
+    print(io, h.v, " + ", Tuple(h.ϵ1), "ϵ1", " + ", Tuple(h.ϵ2), "ϵ2", " + ", map(Tuple, h.ϵ12), "ϵ12")
+    return
 end
 
 Base.one(::Type{HyperDual{N, T}}) where {N, T} = HyperDual{N}(one(T))
 Base.zero(::Type{HyperDual{N, T}}) where {N, T} = HyperDual{N}(zero(T))
-Base.one(::HyperDual{N, T}) where {N, T} = one(HyperDual{N,T})
-Base.zero(::HyperDual{N, T}) where {N, T} = zero(HyperDual{N,T})
-Base.float(h::HyperDual{N,T}) where {N,T} = convert(HyperDual{N,float(T)}, h)
+Base.one(::HyperDual{N, T}) where {N, T} = one(HyperDual{N, T})
+Base.zero(::HyperDual{N, T}) where {N, T} = zero(HyperDual{N, T})
+Base.float(h::HyperDual{N, T}) where {N, T} = convert(HyperDual{N, float(T)}, h)
 
 # Unary
 @inline Base.:(-)(h::HyperDual{N}) where {N} = HyperDual(-h.v, -h.ϵ1, -h.ϵ2, ntuple(i -> -h.ϵ12[i], Val(N)))
@@ -81,9 +82,9 @@ Base.float(h::HyperDual{N,T}) where {N,T} = convert(HyperDual{N,float(T)}, h)
 # Binary
 for f in (:+, :-)
     @eval begin
-        @inline Base.$f(h1::HyperDual{N,T}, h2::HyperDual{N,T}) where {N,T} =
+        @inline Base.$f(h1::HyperDual{N, T}, h2::HyperDual{N, T}) where {N, T} =
             HyperDual($f(h1.v, h2.v), $f(h1.ϵ1, h2.ϵ1), $f(h1.ϵ2, h2.ϵ2), ntuple(i -> $f(h1.ϵ12[i], h2.ϵ12[i]), Val(N)))
-        @inline Base.$f(h1::HyperDual{N,T1}, h2::HyperDual{N,T2}) where {N,T1,T2} = $f(promote(h1, h2)...)
+        @inline Base.$f(h1::HyperDual{N, T1}, h2::HyperDual{N, T2}) where {N, T1, T2} = $f(promote(h1, h2)...)
         @inline Base.$f(h::HyperDual{N}, r::Real) where {N} =
             HyperDual($f(h.v, r), h.ϵ1, h.ϵ2, h.ϵ12)
         @inline Base.$f(r::Real, h::HyperDual{N}) where {N} =
@@ -98,7 +99,7 @@ for f in (:*, :/)
         HyperDual($f(r, h.v), $f(r, h.ϵ1), $f(r, h.ϵ2), ntuple(i -> $f(r, h.ϵ12[i]), Val(N)))
 end
 
-@inline Base.:(/)(h1::HyperDual{N,T}, h2::HyperDual{N,T}) where {N,T} = h1 * inv(h2)
+@inline Base.:(/)(h1::HyperDual{N, T}, h2::HyperDual{N, T}) where {N, T} = h1 * inv(h2)
 
 # muladd: x*y + z
 @inline Base.muladd(x::HyperDual{N}, y::Real, z::HyperDual{N}) where {N} = x * y + z
@@ -110,11 +111,11 @@ end
 @inline Base.muladd(x::HyperDual{N}, y::HyperDual{N}, z::HyperDual{N}) where {N} = x * y + z
 
 # Get's rid of a bunch of boundserror throwing in the LLVM IR, not sure it matters for runtime performance...
-unsafe_getindex(v::SIMD.Vec, i::SIMD.IntegerTypes) = SIMD.Intrinsics.extractelement(v.data, i-1)
+unsafe_getindex(v::SIMD.Vec, i::SIMD.IntegerTypes) = SIMD.Intrinsics.extractelement(v.data, i - 1)
 @inline ⊗(v1::Vec{N}, v2::Vec{N}) where {N} = ntuple(i -> unsafe_getindex(v1, i) * v2, Val(N))
 
-@inline Base.:(*)(h1::HyperDual{N,T1}, h2::HyperDual{N,T2}) where {N,T1,T2} = *(promote(h1, h2)...)
-@inline function Base.:(*)(h1::HyperDual{N,T}, h2::HyperDual{N,T}) where {N,T}
+@inline Base.:(*)(h1::HyperDual{N, T1}, h2::HyperDual{N, T2}) where {N, T1, T2} = *(promote(h1, h2)...)
+@inline function Base.:(*)(h1::HyperDual{N, T}, h2::HyperDual{N, T}) where {N, T}
     r = h1.v * h2.v
     ϵ1 = muladd(h1.v, h2.ϵ1, h1.ϵ1 * h2.v)
     ϵ2 = muladd(h1.v, h2.ϵ2, h1.ϵ2 * h2.v)
@@ -125,8 +126,8 @@ unsafe_getindex(v::SIMD.Vec, i::SIMD.IntegerTypes) = SIMD.Intrinsics.extractelem
 end
 @inline Base.literal_pow(::typeof(^), x::HyperDual, ::Val{0}) = one(typeof(x))
 @inline Base.literal_pow(::typeof(^), x::HyperDual, ::Val{1}) = x
-@inline Base.literal_pow(::typeof(^), x::HyperDual, ::Val{2}) = x*x
-@inline Base.literal_pow(::typeof(^), x::HyperDual, ::Val{3}) = x*x*x
+@inline Base.literal_pow(::typeof(^), x::HyperDual, ::Val{2}) = x * x
+@inline Base.literal_pow(::typeof(^), x::HyperDual, ::Val{3}) = x * x * x
 
 for (f, f′, f′′) in DIFF_RULES
     expr = quote
@@ -135,10 +136,10 @@ for (f, f′, f′′) in DIFF_RULES
         f′ = $f′
         f′′ = $f′′
         x23 = (f′′ * h.ϵ1) ⊗ h.ϵ2
-        return HyperDual(v, h.ϵ1 * f′, h.ϵ2 * f′, ntuple(i -> h.ϵ12[i]*f′ + x23[i], Val(N)))
+        return HyperDual(v, h.ϵ1 * f′, h.ϵ2 * f′, ntuple(i -> h.ϵ12[i] * f′ + x23[i], Val(N)))
     end
-    cse_expr = cse(expr; warn=false)
-    @eval @inline function Base.$f(h::HyperDual{N,T}) where {N,T}
+    cse_expr = cse(expr; warn = false)
+    @eval @inline function Base.$f(h::HyperDual{N, T}) where {N, T}
         x = h.v
         $cse_expr
     end
@@ -148,23 +149,20 @@ end
     s, c = sincos(h.v)
     f′, f′′ = c, -s
     x23 = (f′′ * h.ϵ1) ⊗ h.ϵ2
-    return HyperDual(s, h.ϵ1 * f′, h.ϵ2 * f′, ntuple(i -> h.ϵ12[i]*f′ + x23[i], Val(N)))
+    return HyperDual(s, h.ϵ1 * f′, h.ϵ2 * f′, ntuple(i -> h.ϵ12[i] * f′ + x23[i], Val(N)))
 end
 
 @inline function Base.cos(h::HyperDual{N}) where {N}
     s, c = sincos(h.v)
-    f′,  f′′ = -s, -c
+    f′, f′′ = -s, -c
     x23 = (f′′ * h.ϵ1) ⊗ h.ϵ2
-    return HyperDual(c, h.ϵ1 * f′,  h.ϵ2 * f′, ntuple(i -> h.ϵ12[i]*f′ + x23[i], Val(N)))
+    return HyperDual(c, h.ϵ1 * f′, h.ϵ2 * f′, ntuple(i -> h.ϵ12[i] * f′ + x23[i], Val(N)))
 end
-
 
 
 ##########
 # Chunks #
 ##########
-
-const DEFAULT_CHUNK_THRESHOLD = 8
 
 struct Chunk{N} end
 
@@ -174,7 +172,7 @@ end
 
 Chunk(x::AbstractArray) = Chunk(length(x))
 
-# TODO: MOre testing needed here.
+# TODO: More testing needed here.
 function pickchunksize(input_length)
     input_length == 1 && return 1
     input_length == 2 && return 2
@@ -197,11 +195,11 @@ struct HessianConfig{D <: AbstractVector{<:HyperDual}, S} <: AbstractHessianConf
 end
 (chunksize(cfg::HessianConfig)::Int) = length(cfg.seeds)
 
-function HessianConfig(x::AbstractVector{T}, chunk=Chunk(x)::Chunk) where {T}
+function HessianConfig(x::AbstractVector{T}, chunk = Chunk(x)::Chunk) where {T}
     N = chunksize(chunk)
     @assert 0 < N
-    duals = similar(x, HyperDual{N,T}) # not Vector
-    seeds = collect(construct_seeds(NTuple{N,T}))
+    duals = similar(x, HyperDual{N, T}) # not Vector
+    seeds = collect(construct_seeds(NTuple{N, T}))
     return HessianConfig(duals, seeds)
 end
 
@@ -209,23 +207,23 @@ end
 # Seeding #
 ###########
 
-@generated function single_seed(::Type{NTuple{N,T}}, ::Val{i}) where {N,T,i}
+@generated function single_seed(::Type{NTuple{N, T}}, ::Val{i}) where {N, T, i}
     ex = Expr(:tuple, [ifelse(i === j, :(one(T)), :(zero(T))) for j in 1:N]...)
     return :(Vec($(ex)))
 end
 
-@generated construct_seeds(::Type{NTuple{N,T}}) where {N,T} =
-    Expr(:tuple, [:(single_seed(NTuple{N,T}, Val{$i}())) for i in 1:N]...)
+@generated construct_seeds(::Type{NTuple{N, T}}) where {N, T} =
+    Expr(:tuple, [:(single_seed(NTuple{N, T}, Val{$i}())) for i in 1:N]...)
 
-seed_epsilon_1(d::HyperDual{N,T}, ϵ1) where {N,T} = HyperDual{N,T}(d.v, ϵ1, d.ϵ2, d.ϵ12)
-seed_epsilon_2(d::HyperDual{N,T}, ϵ2) where {N,T} = HyperDual{N,T}(d.v, d.ϵ1, ϵ2, d.ϵ12)
+seed_epsilon_1(d::HyperDual{N, T}, ϵ1) where {N, T} = HyperDual{N, T}(d.v, ϵ1, d.ϵ2, d.ϵ12)
+seed_epsilon_2(d::HyperDual{N, T}, ϵ2) where {N, T} = HyperDual{N, T}(d.v, d.ϵ1, ϵ2, d.ϵ12)
 
 function seed!(d::AbstractVector{<:HyperDual{N}}, x, seeds, block_i, block_j) where {N}
     d .= HyperDual{N}.(x)
-    index_i = (block_i-1) * N + 1
-    index_j = (block_j-1) * N + 1
-    range_i = index_i : min(length(x), (index_i + N -1))
-    range_j = index_j : min(length(x), (index_j + N -1))
+    index_i = (block_i - 1) * N + 1
+    index_j = (block_j - 1) * N + 1
+    range_i = index_i:min(length(x), (index_i + N - 1))
+    range_j = index_j:min(length(x), (index_j + N - 1))
     chunks_i = length(range_i)
     chunks_j = length(range_j)
 
@@ -249,18 +247,18 @@ end
 function symmetrize!(H::AbstractMatrix)
     Base.require_one_based_indexing(H)
     for i in 1:size(H, 1)
-        for j in i:size(H,2)
-            H[j,i] = H[i,j]
+        for j in i:size(H, 2)
+            H[j, i] = H[i, j]
         end
     end
     return H
 end
 
 function extract_hessian!(H::AbstractMatrix, v::HyperDual{N}, block_i::Int, block_j::Int) where {N}
-    index_i = (block_i-1) * N + 1
-    index_j = (block_j-1) * N + 1
-    range_i = index_i : (index_i + N -1)
-    range_j = index_j : (index_j + N -1)
+    index_i = (block_i - 1) * N + 1
+    index_j = (block_j - 1) * N + 1
+    range_i = index_i:(index_i + N - 1)
+    range_j = index_j:(index_j + N - 1)
 
     for (I, i) in enumerate(range_i)
         for (J, j) in enumerate(range_j)
@@ -275,8 +273,8 @@ end
 
 function extract_gradient!(G::AbstractVector, v::HyperDual{N}, block_i::Int) where {N}
     Base.require_one_based_indexing(G)
-    index_i = (block_i-1) * N + 1
-    range_i = index_i : min(length(G), (index_i + N -1))
+    index_i = (block_i - 1) * N + 1
+    range_i = index_i:min(length(G), (index_i + N - 1))
     for (I, i) in enumerate(range_i)
         G[i] = v.ϵ1[I]
     end
@@ -296,8 +294,8 @@ function hessian(f, x::Real)
     return @inbounds v.ϵ12[1][1]
 end
 
-hessian(f, x::AbstractVector)                             = hessian!(similar(x, axes(x,1), axes(x,1)), f, x, HessianConfig(x))
-hessian(f, x::AbstractVector, cfg::AbstractHessianConfig) = hessian!(similar(x, axes(x,1), axes(x,1)), f, x, cfg)
+hessian(f, x::AbstractVector) = hessian!(similar(x, axes(x, 1), axes(x, 1)), f, x, HessianConfig(x))
+hessian(f, x::AbstractVector, cfg::AbstractHessianConfig) = hessian!(similar(x, axes(x, 1), axes(x, 1)), f, x, cfg)
 
 function hessian!(H::AbstractMatrix, f, x::AbstractVector{T}, cfg::AbstractHessianConfig) where {T}
     if chunksize(cfg) == length(x)
@@ -308,7 +306,7 @@ function hessian!(H::AbstractMatrix, f, x::AbstractVector{T}, cfg::AbstractHessi
 end
 
 function hessian_vector!(H::AbstractMatrix, f, x::AbstractVector, cfg::HessianConfig)
-    @assert size(H,1) == size(H,2) == length(x)
+    @assert size(H, 1) == size(H, 2) == length(x)
     cfg.duals .= HyperDual.(x, cfg.seeds, cfg.seeds)
     v = f(cfg.duals)
     check_scalar(v)
@@ -316,7 +314,7 @@ function hessian_vector!(H::AbstractMatrix, f, x::AbstractVector, cfg::HessianCo
 end
 
 function hessian_chunk!(H::AbstractMatrix, f, x::AbstractVector{T}, cfg::HessianConfig) where {T}
-    @assert size(H,1) == size(H,2) == length(x)
+    @assert size(H, 1) == size(H, 2) == length(x)
     n_chunks = ceil(Int, length(x) / chunksize(cfg))
     for i in 1:n_chunks
         for j in i:n_chunks
@@ -331,7 +329,7 @@ function hessian_chunk!(H::AbstractMatrix, f, x::AbstractVector{T}, cfg::Hessian
 end
 
 function hessiangradvalue!(H::AbstractMatrix, G::AbstractVector, f, x::AbstractVector{T}, cfg::AbstractHessianConfig) where {T}
-    @assert size(H,1) == size(H,2) == length(x)
+    @assert size(H, 1) == size(H, 2) == length(x)
     @assert length(G) == length(x)
     if chunksize(cfg) == length(x)
         return hessiangradvalue_vector!(H, G, f, x, cfg)
@@ -346,10 +344,10 @@ function hessiangradvalue!(H::AbstractMatrix, G::AbstractVector, f, x::AbstractV
 end
 
 function hessiangradvalue(f, x::AbstractVector, cfg::AbstractHessianConfig)
-    G = similar(x, axes(x,1))
-    H = similar(x, axes(x,1), axes(x,1))
+    G = similar(x, axes(x, 1))
+    H = similar(x, axes(x, 1), axes(x, 1))
     value = hessiangradvalue!(H, G, f, x, cfg)
-    return (value=value, gradient=G, hessian=H)
+    return (; value = value, gradient = G, hessian = H)
 end
 
 function hessiangradvalue(f, x::AbstractVector)
@@ -358,7 +356,7 @@ function hessiangradvalue(f, x::AbstractVector)
 end
 
 function hessiangradvalue_vector!(H::AbstractMatrix, G::AbstractVector, f, x::AbstractVector, cfg::HessianConfig)
-    @assert size(H,1) == size(H,2) == length(x)
+    @assert size(H, 1) == size(H, 2) == length(x)
     cfg.duals .= HyperDual.(x, cfg.seeds, cfg.seeds)
     v = f(cfg.duals)
     check_scalar(v)
@@ -368,7 +366,7 @@ function hessiangradvalue_vector!(H::AbstractMatrix, G::AbstractVector, f, x::Ab
 end
 
 function hessiangradvalue_chunk!(H::AbstractMatrix, G::AbstractVector, f, x::AbstractVector{T}, cfg::HessianConfig) where {T}
-    @assert size(H,1) == size(H,2) == length(x)
+    @assert size(H, 1) == size(H, 2) == length(x)
     @assert length(G) == length(x)
     n_chunks = ceil(Int, length(x) / chunksize(cfg))
     value = zero(T)

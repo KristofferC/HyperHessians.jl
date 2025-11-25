@@ -40,7 +40,7 @@ When the input is a vector, the basic usage will, however, not give the best per
 
 For best performance we want to do the following things:
 
-1. Cache the input array of custom numbers that FastHessian uses so they can be resued upon multiple calls to `hessian`.
+1. Cache the input array of custom numbers that HyperHessians uses so they can be reused upon multiple calls to `hessian`.
 2. Decide on a good "chunk size" which is roughly the size of the section of the hessian computed for every call to the function.
 3. Pre-allocate the output hessian matrix.
 
@@ -54,7 +54,7 @@ cfg = HyperHessians.HessianConfig(x, chunk_size) # creating the config object
 
 The larger the chunk size the larger part of the Hessian is computed on every call to `f` (if the chunk size is equal to
 the input vector, the whole hessian is computed in one call to `f`).
-However, with a larger chunk size the special numbers FastHessian use become larger and if they become too large this can lead to inefficient execution.
+However, with a larger chunk size the special numbers HyperHessians uses become larger and if they become too large this can lead to inefficient execution.
 
 A choice of a chunk size is, therefore, a trade-off and the optimal one is likely to be dependent on the particular function getting differentiated.
 A decent overall choice seems to be a chunk size of 8.
@@ -81,7 +81,7 @@ julia> k=ceil(Int, n / c); k*(k+1)÷2
 ```
 
 Finally, it is also a good idea to allocate the output hessian and use the in-place `hessian!` function instead.
-Putting it all together, the result would something look like this:
+Putting it all together, the result would look something like this:
 
 ```julia
 julia> x = rand(8);
@@ -102,9 +102,9 @@ The results can be reproduced with `benchmark/fdiff.jl`.
 
 | Function      | input length | Time ForwardDiff | Time HyperHessians | Speedup |
 | ------------- | ------------ | ---------------- | ----------------- | --------|
-| `ackley` | 1 | 126.322 ns | 64.480 ns | 2.0
-| `ackley` | 8 | 1.636 μs | 446.505 ns | 3.7
-| `ackley` | 128 | 3.533 ms | 823.218 μs | 4.3
-| `rosenbrock_1` | 1 | 84.264 ns | 36.022 ns | 2.3
-| `rosenbrock_1` | 8 | 1.119 μs | 379.582 ns | 2.9
-| `rosenbrock_1` | 128 | 3.392 ms | 854.630 μs | 4.0
+| `ackley` | 1 | 54.053 ns | 36.725 ns | 1.5
+| `ackley` | 8 | 751.448 ns | 461.276 ns | 1.6
+| `ackley` | 128 | 2.085 ms | 957.194 μs | 2.2
+| `rosenbrock_1` | 1 | 24.666 ns | 7.436 ns | 3.3
+| `rosenbrock_1` | 8 | 967.438 ns | 436.330 ns | 2.2
+| `rosenbrock_1` | 128 | 3.175 ms | 1.031 ms | 3.1
