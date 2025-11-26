@@ -7,10 +7,10 @@ using LogExpFunctions
 
 const LOGEXPFUNCTIONS_DIFF_RULES = [
     (:xlogx, :(1 + log(x)), :(1 / x))
-    (:logistic, :(v*(1 - v)), :(f′*(1 - 2*v)))
-    (:logit, :(inv(x * (1 - x))), :(f′ * f′ * (2*x - 1)))
-    (:log1psq, :(2 * x / (1 + x^2)), :(-(2 * (x^2 - 1))/(1 + x^2)^2))
-    (:log1pexp, :(logistic(x)), :(f′*(1 - f′)))
+    (:logistic, :(v * (1 - v)), :(f′ * (1 - 2 * v)))
+    (:logit, :(inv(x * (1 - x))), :(f′ * f′ * (2 * x - 1)))
+    (:log1psq, :(2 * x / (1 + x^2)), :(-(2 * (x^2 - 1)) / (1 + x^2)^2))
+    (:log1pexp, :(logistic(x)), :(f′ * (1 - f′)))
     (:log1mexp, :(-exp(x - v)), :(-f′ * f′ * exp(-x)))
     (:log2mexp, :(-exp(x - v)), :(-f′ * f′ * 2 * exp(-x)))
     (:logexpm1, :(exp(x - v)), :(-f′ * f′ * exp(-x)))

@@ -94,7 +94,7 @@ end
         :log1pmx => 1.3,
         :logmxp1 => 1.4,
     )
-    Ext = Base.get_extension(HyperHessians,:HyperHessiansLogExpFunctionsExt)
+    Ext = Base.get_extension(HyperHessians, :HyperHessiansLogExpFunctionsExt)
     for (fsym, _, _) in Ext.LOGEXPFUNCTIONS_DIFF_RULES
         x = xs[fsym]
         f = getfield(LogExpFunctions, fsym)
