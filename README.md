@@ -148,7 +148,7 @@ julia> HyperHessians.hessian(f, x) * v
   0.1676492989193555
 ```
 
-You can supply a `HessianConfig` to reuse storage and tune chunk size, e.g. `hvp(f, x, v, cfg)`. For non-allocating use, call `hvp!(hv, f, x, v[, cfg])` with a preallocated `hv`.
+You can supply a `DirectionalHVPConfig` to reuse storage and tune chunk size, e.g. `cfg = HyperHessians.DirectionalHVPConfig(x, HyperHessians.Chunk{8}()); hvp(f, x, v, cfg)`. For non-allocating use, call `hvp!(hv, f, x, v[, cfg])` with a preallocated `hv` and a reused config.
 
 ## Performance
 

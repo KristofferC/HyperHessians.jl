@@ -1,4 +1,4 @@
-using HyperHessians: HyperHessians, hessian, hessian!, hessiangradvalue, hessiangradvalue!, hvp, hvp!, Chunk, HessianConfig, HyperDual
+using HyperHessians: HyperHessians, hessian, hessian!, hessiangradvalue, hessiangradvalue!, hvp, hvp!, Chunk, HessianConfig, DirectionalHVPConfig, HyperDual
 using DiffTests
 using ForwardDiff
 using Test
@@ -72,7 +72,7 @@ end
             H = ForwardDiff.hessian(f, x)
 
             for chunk in (1, max(1, n ÷ 2), n)
-                cfg = HessianConfig(x, Chunk{chunk}())
+                cfg = DirectionalHVPConfig(x, Chunk{chunk}())
                 @test hvp(f, x, v, cfg) ≈ H * v
             end
         end
@@ -141,7 +141,7 @@ end # testset
         f = @eval $fsym
         try
             v = f(hv)
-            @test v isa HyperDual{2, Float32}
+            @test v isa HyperDual{2, 2, Float32}
         catch e
             e isa DomainError || rethrow()
         end
