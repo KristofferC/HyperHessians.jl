@@ -50,3 +50,20 @@ end
         end
     end
 end
+
+@testset "hessian! zero allocations" begin
+    f = x -> sum(abs2, x)
+    n = 8
+    x = rand(n)
+    H = zeros(n, n)
+
+    # Full chunk (vector path)
+    cfg_full = HessianConfig(x, Chunk{n}())
+    hessian!(H, f, x, cfg_full)
+    @test @allocated(hessian!(H, f, x, cfg_full)) == 0
+
+    # Chunked path
+    cfg_chunk = HessianConfig(x, Chunk{4}())
+    hessian!(H, f, x, cfg_chunk)
+    @test @allocated(hessian!(H, f, x, cfg_chunk)) == 0
+end

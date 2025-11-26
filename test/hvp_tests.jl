@@ -45,3 +45,21 @@ end
     @test hv32 isa Vector{Float32}
     @test hv32 ≈ ForwardDiff.hessian(ackley_stable, x32) * v32
 end
+
+@testset "hvp! zero allocations" begin
+    f = x -> sum(abs2, x)
+    n = 8
+    x = rand(n)
+    v = rand(n)
+    hv = zeros(n)
+
+    # Full chunk (vector path)
+    cfg_full = DirectionalHVPConfig(x, Chunk{n}())
+    hvp!(hv, f, x, v, cfg_full)
+    @test @allocated(hvp!(hv, f, x, v, cfg_full)) == 0
+
+    # Chunked path
+    cfg_chunk = DirectionalHVPConfig(x, Chunk{4}())
+    hvp!(hv, f, x, v, cfg_chunk)
+    @test @allocated(hvp!(hv, f, x, v, cfg_chunk)) == 0
+end
