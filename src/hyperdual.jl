@@ -88,10 +88,11 @@ end
 for f in (:*, :/)
     @eval @inline Base.$f(h::HyperDual{N1, N2}, r::Real) where {N1, N2} =
         HyperDual($f(h.v, r), $f(h.ϵ1, r), $f(h.ϵ2, r), ntuple(i -> $f(h.ϵ12[i], r), Val(N1)))
-    @eval @inline Base.$f(r::Real, h::HyperDual{N1, N2}) where {N1, N2} =
-        HyperDual($f(r, h.v), $f(r, h.ϵ1), $f(r, h.ϵ2), ntuple(i -> $f(r, h.ϵ12[i]), Val(N1)))
 end
+@inline Base.:(*)(r::Real, h::HyperDual{N1, N2}) where {N1, N2} =
+    HyperDual(r * h.v, r * h.ϵ1, r * h.ϵ2, ntuple(i -> r * h.ϵ12[i], Val(N1)))
 
+@inline Base.:(/)(r::Real, h::HyperDual{N1, N2}) where {N1, N2} = r * inv(h)
 @inline Base.:(/)(h1::HyperDual{N1, N2, T}, h2::HyperDual{N1, N2, T}) where {N1, N2, T} = h1 * inv(h2)
 
 @inline Base.muladd(x::HyperDual{N1, N2}, y::Real, z::HyperDual{N1, N2}) where {N1, N2} = x * y + z

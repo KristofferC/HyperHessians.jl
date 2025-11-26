@@ -66,3 +66,15 @@
         @test res.ϵ12[1][1] ≈ fd2 atol = 1.0e-9 rtol = 1.0e-7
     end
 end
+
+@testset "real divided by HyperDual uses inverse rule" begin
+    seed = Vec{1, Float64}((1.0,))
+    zero_seed = Vec{1, Float64}((0.0,))
+    h = HyperDual(2.0, seed, seed, (zero_seed,))
+    expected = inv(h)
+    res = 1 / h
+    @test res.v == expected.v
+    @test Tuple(res.ϵ1) == Tuple(expected.ϵ1)
+    @test Tuple(res.ϵ2) == Tuple(expected.ϵ2)
+    @test Tuple(res.ϵ12[1]) == Tuple(expected.ϵ12[1])
+end
