@@ -1,5 +1,9 @@
 module HyperHessians
 
+if VERSION >= v"1.11.0-"
+    eval(Meta.parse("public hessian, hessian!, hessiangradvalue, hessiangradvalue!, hvp, hvp!, HessianConfig, DirectionalHVPConfig, Chunk"))
+end
+
 using SIMD: SIMD, Vec, vstore
 using CommonSubexpressions: cse
 
