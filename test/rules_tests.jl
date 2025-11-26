@@ -97,7 +97,7 @@ end
     Ext = Base.get_extension(HyperHessians,:HyperHessiansLogExpFunctionsExt)
     for (fsym, _, _) in Ext.LOGEXPFUNCTIONS_DIFF_RULES
         x = xs[fsym]
-        f = getfield(Base, fsym)
+        f = getfield(LogExpFunctions, fsym)
         h = HyperDual(x, seed, seed, (zero_seed,))
         res = f(h)
         fd1 = ForwardDiff.derivative(f, x)
