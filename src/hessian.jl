@@ -33,7 +33,11 @@ end
 
 @generated function single_seed(::Type{NTuple{N, T}}, ::Val{i}) where {N, T, i}
     ex = Expr(:tuple, [ifelse(i === j, :(one(T)), :(zero(T))) for j in 1:N]...)
-    return :(Vec($(ex)))
+    if USE_TUPLES
+        return ex
+    else
+        return :(Vec($(ex)))
+    end
 end
 
 @generated construct_seeds(::Type{NTuple{N, T}}) where {N, T} =
@@ -104,7 +108,8 @@ function extract_gradient!(G::AbstractVector, v::HyperDual{N1, N2}, block_i::Int
 end
 
 function hessian(f, x::Real)
-    dual = HyperDual(x, Vec(one(x)), Vec(one(x)))
+    one_seed = single_seed(NTuple{1, typeof(x)}, Val(1))
+    dual = HyperDual(x, one_seed, one_seed)
     v = f(dual)
     check_scalar(v)
     return @inbounds v.ϵ12[1][1]
@@ -228,7 +233,7 @@ end
     # Seed ε₁ with identity directions and ε₂ with the directional vector v;
     # the mixed term ε₁ᵀ A ε₂ yields (H * v)[i] in ϵ₁₂[i][1].
     @inbounds for i in eachindex(x)
-        cfg.duals[i] = HyperDual(x[i], cfg.seeds[i], Vec((v[i],)))
+        cfg.duals[i] = HyperDual(x[i], cfg.seeds[i], (@static USE_TUPLES ? (v[i],) : Vec((v[i],))))
     end
     out = f(cfg.duals)
     check_scalar(out)
@@ -257,9 +262,9 @@ function hvp_chunk_dir!(hv::AbstractVector{T}, f, x::AbstractVector{T}, v::Abstr
 
     for i in 1:n_chunks
         # Reset ε₁ to zero and ε₂ to the direction for this chunk pass.
-        zeroϵ1 = zero(cfg.seeds[1])
+        zeroϵ1 = zero_ϵ(cfg.seeds[1])
         @inbounds for j in eachindex(x)
-            cfg.duals[j] = HyperDual(x[j], zeroϵ1, Vec((v[j],)))
+            cfg.duals[j] = HyperDual(x[j], zeroϵ1, (@static USE_TUPLES ? (v[j],) : Vec((v[j],))))
         end
 
         range_i = seed_hvp_dir!(cfg.duals, x, cfg.seeds, v, i)

@@ -1,4 +1,4 @@
-using HyperHessians: HyperHessians, hessian, hessian!, hessiangradvalue, hessiangradvalue!, hvp, hvp!, Chunk, HessianConfig, DirectionalHVPConfig, HyperDual
+using HyperHessians: HyperHessians, hessian, hessian!, hessiangradvalue, hessiangradvalue!, hvp, hvp!, Chunk, HessianConfig, DirectionalHVPConfig, HyperDual, ϵT, USE_TUPLES
 using DiffTests
 using ForwardDiff
 using DiffResults

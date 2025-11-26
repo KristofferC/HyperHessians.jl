@@ -1,7 +1,7 @@
 module HyperHessiansStaticArraysExt
 
 using HyperHessians
-using HyperHessians: HyperDual, check_scalar, construct_seeds
+using HyperHessians: HyperDual, check_scalar, construct_seeds, ϵT, USE_TUPLES
 using StaticArrays
 using SIMD: Vec
 
@@ -20,7 +20,11 @@ end
 @generated function hyperdualize_dir(x::S, v::S) where {S <: StaticVector}
     N = length(x)
     T = eltype(S)
-    dual_exprs = [:(HyperDual(x[$i], seeds[$i], Vec((v[$i],)))) for i in 1:N]
+    if USE_TUPLES
+        dual_exprs = [:(HyperDual(x[$i], seeds[$i], (v[$i],))) for i in 1:N]
+    else
+        dual_exprs = [:(HyperDual(x[$i], seeds[$i], Vec((v[$i],)))) for i in 1:N]
+    end
     return quote
         $(Expr(:meta, :inline))
         seeds = construct_seeds(NTuple{$N, $T})

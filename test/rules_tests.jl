@@ -1,8 +1,8 @@
 function check_against_ForwardDiff(f, x, ::Type{T} = Float64) where {T}
     # @show f, x, T
     T == Float32 && return
-    seed = Vec{1, T}((one(T),))
-    zero_seed = Vec{1, T}((zero(T),))
+    seed = ϵT{1, T}((one(T),))
+    zero_seed = ϵT{1, T}((zero(T),))
     xT = T(x)
     h = HyperDual(xT, seed, seed, (zero_seed,))
     res = f(h)
@@ -146,8 +146,8 @@ end
 end
 
 @testset "real divided by HyperDual uses inverse rule" begin
-    seed = Vec{1, Float64}((one(Float64),))
-    zero_seed = Vec{1, Float64}((zero(Float64),))
+    seed = ϵT{1, Float64}((1.0,))
+    zero_seed = ϵT{1, Float64}((0.0,))
     h = HyperDual(2.0, seed, seed, (zero_seed,))
     expected = inv(h)
     res = 1 / h

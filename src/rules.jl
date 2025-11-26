@@ -85,8 +85,8 @@ function rule_expr(f, f′, f′′)
         f = $f(x)
         f′ = $f′
         f′′ = $f′′
-        x23 = (f′′ * h.ϵ1) ⊗ h.ϵ2
-        return HyperDual(f, h.ϵ1 * f′, h.ϵ2 * f′, ntuple(i -> h.ϵ12[i] * f′ + x23[i], Val(N1)))
+        x23 = (f′′ ⊙ h.ϵ1) ⊗ h.ϵ2
+        return HyperDual(f, h.ϵ1 ⊙ f′, h.ϵ2 ⊙ f′, ntuple(i -> h.ϵ12[i] ⊙ f′ ⊕ x23[i], Val(N1)))
     end
     # Drop line number metadata so debug output is cleaner and CSE vars are shorter.
     return Base.remove_linenums!(ex)
@@ -95,29 +95,29 @@ end
 @inline function Base.sin(h::HyperDual{N1, N2}) where {N1, N2}
     s, c = sincos(h.v)
     f′, f′′ = c, -s
-    x23 = (f′′ * h.ϵ1) ⊗ h.ϵ2
-    return HyperDual(s, h.ϵ1 * f′, h.ϵ2 * f′, ntuple(i -> h.ϵ12[i] * f′ + x23[i], Val(N1)))
+    x23 = (f′′ ⊙ h.ϵ1) ⊗ h.ϵ2
+    return HyperDual(s, h.ϵ1 ⊙ f′, h.ϵ2 ⊙ f′, ntuple(i -> h.ϵ12[i] ⊙ f′ ⊕ x23[i], Val(N1)))
 end
 
 @inline function Base.cos(h::HyperDual{N1, N2}) where {N1, N2}
     s, c = sincos(h.v)
     f′, f′′ = -s, -c
-    x23 = (f′′ * h.ϵ1) ⊗ h.ϵ2
-    return HyperDual(c, h.ϵ1 * f′, h.ϵ2 * f′, ntuple(i -> h.ϵ12[i] * f′ + x23[i], Val(N1)))
+    x23 = (f′′ ⊙ h.ϵ1) ⊗ h.ϵ2
+    return HyperDual(c, h.ϵ1 ⊙ f′, h.ϵ2 ⊙ f′, ntuple(i -> h.ϵ12[i] ⊙ f′ ⊕ x23[i], Val(N1)))
 end
 
 @inline function Base.sinpi(h::HyperDual{N1, N2}) where {N1, N2}
     s, c = sincospi(h.v)
     f′, f′′ = π * c, -π^2 * s
-    x23 = (f′′ * h.ϵ1) ⊗ h.ϵ2
-    return HyperDual(s, h.ϵ1 * f′, h.ϵ2 * f′, ntuple(i -> h.ϵ12[i] * f′ + x23[i], Val(N1)))
+    x23 = (f′′ ⊙ h.ϵ1) ⊗ h.ϵ2
+    return HyperDual(s, h.ϵ1 ⊙ f′, h.ϵ2 ⊙ f′, ntuple(i -> h.ϵ12[i] ⊙ f′ ⊕ x23[i], Val(N1)))
 end
 
 @inline function Base.cospi(h::HyperDual{N1, N2}) where {N1, N2}
     s, c = sincospi(h.v)
     f′, f′′ = -π * s, -π^2 * c
-    x23 = (f′′ * h.ϵ1) ⊗ h.ϵ2
-    return HyperDual(c, h.ϵ1 * f′, h.ϵ2 * f′, ntuple(i -> h.ϵ12[i] * f′ + x23[i], Val(N1)))
+    x23 = (f′′ ⊙ h.ϵ1) ⊗ h.ϵ2
+    return HyperDual(c, h.ϵ1 ⊙ f′, h.ϵ2 ⊙ f′, ntuple(i -> h.ϵ12[i] ⊙ f′ ⊕ x23[i], Val(N1)))
 end
 
 
