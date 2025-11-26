@@ -9,9 +9,11 @@ SIMD = "fdea26ae-647d-5447-a871-4b548cad5224"
 
 [weakdeps]
 DiffResults = "163ba53b-c6d8-5494-b064-1a9d43ac40c5"
+StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 
 [extensions]
 HyperHessiansDiffResultsExt = "DiffResults"
+HyperHessiansStaticArraysExt = "StaticArrays"
 
 [compat]
 CommonSubexpressions = "0.3"
