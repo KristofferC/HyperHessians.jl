@@ -1,3 +1,14 @@
+@testset "hessiangradvalue! DimensionMismatch" begin
+    f(x) = sum(abs2, x)
+    x = [1.0, 2.0, 3.0]
+    cfg = HessianConfig(x)
+    cfg_chunked = HessianConfig(x, Chunk{2}())
+    @test_throws DimensionMismatch hessiangradvalue!(zeros(2, 2), zeros(3), f, x, cfg)
+    @test_throws DimensionMismatch hessiangradvalue!(zeros(3, 3), zeros(2), f, x, cfg)
+    @test_throws DimensionMismatch hessiangradvalue!(zeros(2, 2), zeros(3), f, x, cfg_chunked)
+    @test_throws DimensionMismatch hessiangradvalue!(zeros(3, 3), zeros(2), f, x, cfg_chunked)
+end
+
 @testset "hessiangradvalue" begin
     f = DiffTests.ackley
     x = rand(8)
