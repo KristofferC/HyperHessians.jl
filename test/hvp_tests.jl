@@ -1,3 +1,16 @@
+@testset "DirectionalHVPConfig errors" begin
+    x = [1.0, 2.0, 3.0]
+    @test_throws ArgumentError DirectionalHVPConfig(x, Chunk{0}())
+end
+
+@testset "hvp! DimensionMismatch" begin
+    f(x) = sum(abs2, x)
+    x = [1.0, 2.0, 3.0]
+    cfg = DirectionalHVPConfig(x)
+    @test_throws DimensionMismatch hvp!(zeros(3), f, x, zeros(2), cfg)
+    @test_throws DimensionMismatch hvp!(zeros(2), f, x, zeros(3), cfg)
+end
+
 @testset "Hessian-vector products" begin
     # Test multiple functions and sizes like the correctness tests
     for f in (DiffTests.rosenbrock_1, DiffTests.ackley, DiffTests.self_weighted_logit)

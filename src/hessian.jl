@@ -8,7 +8,7 @@ end
 
 function HessianConfig(x::AbstractVector{T}, chunk = Chunk(x)::Chunk) where {T}
     N = chunksize(chunk)
-    @assert 0 < N
+    N > 0 || throw(ArgumentError(lazy"chunk size must be positive, got $N"))
     duals = similar(x, HyperDual{N, N, T}) # not Vector
     seeds = collect(construct_seeds(NTuple{N, T}))
     return HessianConfig(duals, seeds)
@@ -27,7 +27,7 @@ end
 
 function DirectionalHVPConfig(x::AbstractVector{T}, chunk = Chunk(x)::Chunk) where {T}
     N = chunksize(chunk)
-    @assert 0 < N
+    N > 0 || throw(ArgumentError(lazy"chunk size must be positive, got $N"))
     duals = similar(x, HyperDual{N, 1, T}) # directional: one ε₂ lane
     seeds = collect(construct_seeds(NTuple{N, T}))
     return DirectionalHVPConfig(duals, seeds)
@@ -124,7 +124,7 @@ function hessian!(H::AbstractMatrix, f, x::AbstractVector{T}, cfg::AbstractHessi
 end
 
 function hessian_vector!(H::AbstractMatrix, f, x::AbstractVector, cfg::HessianConfig)
-    @assert size(H, 1) == size(H, 2) == length(x)
+    size(H, 1) == size(H, 2) == length(x) || throw(DimensionMismatch(lazy"H must be square with size matching length(x)=$(length(x)), got size(H)=$(size(H))"))
     cfg.duals .= HyperDual.(x, cfg.seeds, cfg.seeds)
     v = f(cfg.duals)
     check_scalar(v)
@@ -132,7 +132,7 @@ function hessian_vector!(H::AbstractMatrix, f, x::AbstractVector, cfg::HessianCo
 end
 
 function hessian_chunk!(H::AbstractMatrix, f, x::AbstractVector{T}, cfg::HessianConfig) where {T}
-    @assert size(H, 1) == size(H, 2) == length(x)
+    size(H, 1) == size(H, 2) == length(x) || throw(DimensionMismatch(lazy"H must be square with size matching length(x)=$(length(x)), got size(H)=$(size(H))"))
     n_chunks = ceil(Int, length(x) / chunksize(cfg))
     for i in 1:n_chunks
         for j in i:n_chunks
@@ -147,8 +147,8 @@ function hessian_chunk!(H::AbstractMatrix, f, x::AbstractVector{T}, cfg::Hessian
 end
 
 function hessiangradvalue!(H::AbstractMatrix, G::AbstractVector, f, x::AbstractVector{T}, cfg::AbstractHessianConfig) where {T}
-    @assert size(H, 1) == size(H, 2) == length(x)
-    @assert length(G) == length(x)
+    size(H, 1) == size(H, 2) == length(x) || throw(DimensionMismatch(lazy"H must be square with size matching length(x)=$(length(x)), got size(H)=$(size(H))"))
+    length(G) == length(x) || throw(DimensionMismatch(lazy"G must have length $(length(x)), got $(length(G))"))
     if chunksize(cfg) == length(x)
         return hessiangradvalue_vector!(H, G, f, x, cfg)
     else
@@ -174,7 +174,7 @@ function hessiangradvalue(f, x::AbstractVector)
 end
 
 function hessiangradvalue_vector!(H::AbstractMatrix, G::AbstractVector, f, x::AbstractVector, cfg::HessianConfig)
-    @assert size(H, 1) == size(H, 2) == length(x)
+    size(H, 1) == size(H, 2) == length(x) || throw(DimensionMismatch(lazy"H must be square with size matching length(x)=$(length(x)), got size(H)=$(size(H))"))
     cfg.duals .= HyperDual.(x, cfg.seeds, cfg.seeds)
     v = f(cfg.duals)
     check_scalar(v)
@@ -184,8 +184,8 @@ function hessiangradvalue_vector!(H::AbstractMatrix, G::AbstractVector, f, x::Ab
 end
 
 function hessiangradvalue_chunk!(H::AbstractMatrix, G::AbstractVector, f, x::AbstractVector{T}, cfg::HessianConfig) where {T}
-    @assert size(H, 1) == size(H, 2) == length(x)
-    @assert length(G) == length(x)
+    size(H, 1) == size(H, 2) == length(x) || throw(DimensionMismatch(lazy"H must be square with size matching length(x)=$(length(x)), got size(H)=$(size(H))"))
+    length(G) == length(x) || throw(DimensionMismatch(lazy"G must have length $(length(x)), got $(length(G))"))
     n_chunks = ceil(Int, length(x) / chunksize(cfg))
     value = zero(T)
     for i in 1:n_chunks
@@ -217,8 +217,8 @@ hvp!(hv::AbstractVector, f::F, x::AbstractVector, v::AbstractVector) where {F} =
 hvp!(hv::AbstractVector, f::F, x::AbstractVector, v::AbstractVector, cfg::DirectionalHVPConfig) where {F} = hvp_dir!(hv, f, x, v, cfg)
 
 @inline function hvp_dir!(hv::AbstractVector{T}, f::F, x::AbstractVector{T}, v::AbstractVector{T}, cfg::DirectionalHVPConfig) where {T, F}
-    @assert length(x) == length(v)
-    @assert length(hv) == length(x)
+    length(x) == length(v) || throw(DimensionMismatch(lazy"x and v must have same length, got $(length(x)) and $(length(v))"))
+    length(hv) == length(x) || throw(DimensionMismatch(lazy"hv must have length $(length(x)), got $(length(hv))"))
     if chunksize(cfg) == length(x)
         return hvp_vector_dir!(hv, f, x, v, cfg)
     else

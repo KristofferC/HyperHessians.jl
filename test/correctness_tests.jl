@@ -4,6 +4,22 @@
     @test hessian(f, x) ≈ ForwardDiff.derivative(x -> ForwardDiff.derivative(f, x), x)
 end
 
+@testset "HessianConfig errors" begin
+    x = [1.0, 2.0, 3.0]
+    @test_throws ArgumentError HessianConfig(x, Chunk{0}())
+end
+
+@testset "hessian! DimensionMismatch" begin
+    f(x) = sum(abs2, x)
+    x = [1.0, 2.0, 3.0]
+    cfg = HessianConfig(x)
+    cfg_chunked = HessianConfig(x, Chunk{2}())
+    @test_throws DimensionMismatch hessian!(zeros(2, 3), f, x, cfg)
+    @test_throws DimensionMismatch hessian!(zeros(3, 2), f, x, cfg)
+    @test_throws DimensionMismatch hessian!(zeros(2, 2), f, x, cfg)
+    @test_throws DimensionMismatch hessian!(zeros(2, 2), f, x, cfg_chunked)
+end
+
 @testset "correctness" begin
     for f in (
             DiffTests.rosenbrock_1,
