@@ -124,6 +124,32 @@ julia> result.hessian
 
 There is also an in-place variant `hessiangradvalue!(H, G, f, x, cfg)` that returns the value.
 
+### Hessian–Vector Products
+
+Use `hvp(f, x, v)` to get `H(x) * v` without forming the full matrix:
+
+```julia
+julia> f = x -> sum(sin.(x) .* cos.(x));
+
+julia> x = [1.0, 2.0, 3.0];
+
+julia> v = [0.1, 0.2, 0.3];
+
+julia> HyperHessians.hvp(f, x, v)
+3-element Vector{Float64}:
+ -0.18185948536513638
+  0.3027209981231713
+  0.1676492989193555
+
+julia> HyperHessians.hessian(f, x) * v
+3-element Vector{Float64}:
+ -0.18185948536513638
+  0.3027209981231713
+  0.1676492989193555
+```
+
+You can supply a `DirectionalHVPConfig` to reuse storage and tune chunk size, e.g. `cfg = HyperHessians.DirectionalHVPConfig(x, HyperHessians.Chunk{8}()); hvp(f, x, v, cfg)`. For non-allocating use, call `hvp!(hv, f, x, v[, cfg])` with a preallocated `hv` and a reused config.
+
 ## Performance
 
 To get an estimate of the performance of HyperHessians we here benchmark it
