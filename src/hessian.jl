@@ -110,10 +110,10 @@ function hessian(f, x::Real)
     return @inbounds v.ϵ12[1][1]
 end
 
-hessian(f, x::AbstractVector) = hessian!(similar(x, axes(x, 1), axes(x, 1)), f, x, HessianConfig(x))
-hessian(f, x::AbstractVector, cfg::HessianConfig) = hessian!(similar(x, axes(x, 1), axes(x, 1)), f, x, cfg)
+hessian(f::F, x::AbstractVector) where {F} = hessian!(similar(x, axes(x, 1), axes(x, 1)), f, x, HessianConfig(x))
+hessian(f::F, x::AbstractVector, cfg::HessianConfig) where {F} = hessian!(similar(x, axes(x, 1), axes(x, 1)), f, x, cfg)
 
-function hessian!(H::AbstractMatrix, f, x::AbstractVector{T}, cfg::HessianConfig) where {T}
+function hessian!(H::AbstractMatrix, f::F, x::AbstractVector{T}, cfg::HessianConfig) where {F, T}
     if chunksize(cfg) == length(x)
         return hessian_vector!(H, f, x, cfg)
     else
@@ -144,7 +144,7 @@ function hessian_chunk!(H::AbstractMatrix, f, x::AbstractVector{T}, cfg::Hessian
     return H
 end
 
-function hessiangradvalue!(H::AbstractMatrix, G::AbstractVector, f, x::AbstractVector{T}, cfg::HessianConfig) where {T}
+function hessiangradvalue!(H::AbstractMatrix, G::AbstractVector, f::F, x::AbstractVector{T}, cfg::HessianConfig) where {F, T}
     size(H, 1) == size(H, 2) == length(x) || throw(DimensionMismatch(lazy"H must be square with size matching length(x)=$(length(x)), got size(H)=$(size(H))"))
     length(G) == length(x) || throw(DimensionMismatch(lazy"G must have length $(length(x)), got $(length(G))"))
     if chunksize(cfg) == length(x)
@@ -154,19 +154,19 @@ function hessiangradvalue!(H::AbstractMatrix, G::AbstractVector, f, x::AbstractV
     end
 end
 
-function hessiangradvalue!(H::AbstractMatrix, G::AbstractVector, f, x::AbstractVector)
+function hessiangradvalue!(H::AbstractMatrix, G::AbstractVector, f::F, x::AbstractVector) where {F}
     cfg = HessianConfig(x)
     return hessiangradvalue!(H, G, f, x, cfg)
 end
 
-function hessiangradvalue(f, x::AbstractVector, cfg::HessianConfig)
+function hessiangradvalue(f::F, x::AbstractVector, cfg::HessianConfig) where {F}
     G = similar(x, axes(x, 1))
     H = similar(x, axes(x, 1), axes(x, 1))
     value = hessiangradvalue!(H, G, f, x, cfg)
     return (; value = value, gradient = G, hessian = H)
 end
 
-function hessiangradvalue(f, x::AbstractVector)
+function hessiangradvalue(f::F, x::AbstractVector) where {F}
     cfg = HessianConfig(x)
     return hessiangradvalue(f, x, cfg)
 end

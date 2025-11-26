@@ -33,3 +33,21 @@ end
     @test res.gradient ≈ ForwardDiff.gradient(f, x)
     @test res.hessian ≈ ForwardDiff.hessian(f, x)
 end
+
+@testset "hessiangradvalue! zero allocations" begin
+    f = x -> sum(abs2, x)
+    n = 8
+    x = rand(n)
+    H = zeros(n, n)
+    G = zeros(n)
+
+    # Full chunk (vector path)
+    cfg_full = HessianConfig(x, Chunk{n}())
+    hessiangradvalue!(H, G, f, x, cfg_full)
+    @test @allocated(hessiangradvalue!(H, G, f, x, cfg_full)) == 0 broken = VERSION < v"1.11"
+
+    # Chunked path
+    cfg_chunk = HessianConfig(x, Chunk{4}())
+    hessiangradvalue!(H, G, f, x, cfg_chunk)
+    @test @allocated(hessiangradvalue!(H, G, f, x, cfg_chunk)) == 0 broken = VERSION < v"1.11"
+end
