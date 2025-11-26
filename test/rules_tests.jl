@@ -102,7 +102,6 @@ end
         res = f(h)
         fd1 = ForwardDiff.derivative(f, x)
         fd2 = ForwardDiff.derivative(z -> ForwardDiff.derivative(f, z), x)
-        @show fsym
         @test res.ϵ1[1] ≈ fd1 atol = 1.0e-10 rtol = 1.0e-8
         @test res.ϵ2[1] ≈ fd1 atol = 1.0e-10 rtol = 1.0e-8
         @test res.ϵ12[1][1] ≈ fd2 atol = 1.0e-9 rtol = 1.0e-7

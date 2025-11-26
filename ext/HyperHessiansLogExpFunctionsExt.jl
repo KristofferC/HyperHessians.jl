@@ -14,7 +14,7 @@ const LOGEXPFUNCTIONS_DIFF_RULES = [
     (:log1mexp, :(-exp(x - v)), :(-f′ * f′ * exp(-x)))
     (:log2mexp, :(-exp(x - v)), :(-f′ * f′ * 2 * exp(-x)))
     (:logexpm1, :(exp(x - v)), :(-f′ * f′ * exp(-x)))
-    (:log1pmx, :(-x / (1 + x)), :(1 / (1 + x)^2))
+    (:log1pmx, :(-x / (1 + x)), :(-1 / (1 + x)^2))
     (:logmxp1, :((1 - x) / x), :(-1 / x^2))
 ]
 
