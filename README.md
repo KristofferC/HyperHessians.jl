@@ -166,6 +166,24 @@ julia> HyperHessians.hessian(f, x) * v
 
 You can supply a `DirectionalHVPConfig` to reuse storage and tune chunk size, e.g. `cfg = HyperHessians.DirectionalHVPConfig(x, HyperHessians.Chunk{8}()); hvp(f, x, v, cfg)`. For non-allocating use, call `hvp!(hv, f, x, v[, cfg])` with a preallocated `hv` and a reused config.
 
+### StaticArrays support
+
+HyperHessians provides a non-allocating extension for `StaticVector` inputs:
+
+```julia
+julia> using StaticArrays
+
+julia> x = @SVector rand(4);
+
+julia> HyperHessians.hessian(x -> sum(abs2, x), x) isa SMatrix
+true
+
+julia> HyperHessians.hvp(x -> sum(sin.(x)), x, ones(SVector{4})) isa SVector
+true
+```
+
+`hessian`, `hessiangradvalue`, and `hvp` return StaticArrays and avoid heap allocations; bang-variants are intentionally omitted for StaticArrays because mutation is less common for immutable small arrays.
+
 ## Performance
 
 To get an estimate of the performance of HyperHessians we here benchmark it
