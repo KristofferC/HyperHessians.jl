@@ -174,9 +174,7 @@ Chunk(x::AbstractArray) = Chunk(length(x))
 
 # TODO: More testing needed here.
 function pickchunksize(input_length)
-    input_length == 1 && return 1
-    input_length == 2 && return 2
-    3 <= input_length <= 4 && return 4 # 3 seems to be very bad for some reason
+    input_length <= 8 && return input_length
     return 8
 end
 
@@ -384,6 +382,97 @@ function hessiangradvalue_chunk!(H::AbstractMatrix, G::AbstractVector, f, x::Abs
     end
     symmetrize!(H)
     return value
+end
+
+##############################
+# Hessian-vector interactions #
+##############################
+
+"""
+    hvp(f, x, v[, cfg])
+
+Compute the Hessian–vector product `H(x) * v`.
+"""
+function hvp(f, x::AbstractVector{T}, v::AbstractVector{T}, cfg::HessianConfig) where {T}
+    hv = similar(x, T)
+    return hvp!(hv, f, x, v, cfg)
+end
+
+hvp(f, x::AbstractVector, v::AbstractVector) = hvp(f, x, v, HessianConfig(x))
+
+function hvp!(hv::AbstractVector{T}, f::F, x::AbstractVector{T}, v::AbstractVector{T}, cfg::HessianConfig) where {T, F}
+    @assert length(x) == length(v)
+    @assert length(hv) == length(x)
+    if chunksize(cfg) == length(x)
+        return hvp_vector!(hv, f, x, v, cfg)
+    else
+        return hvp_chunk!(hv, f, x, v, cfg)
+    end
+end
+
+hvp!(hv::AbstractVector, f, x::AbstractVector, v::AbstractVector) = hvp!(hv, f, x, v, HessianConfig(x))
+
+@inline function hvp_vector!(hv::AbstractVector{T}, f, x::AbstractVector{T}, v::AbstractVector{T}, cfg::HessianConfig) where {T}
+    # ε₁ is seeded with the identity directions and ε₂ with diag(v); the mixed
+    # ε₁ᵀAε₂ term therefore accumulates ∑ⱼ Hᵢⱼ vⱼ in each slot, giving H * v.
+    @inbounds for i in eachindex(x)
+        cfg.duals[i] = HyperDual(x[i], cfg.seeds[i], cfg.seeds[i] * v[i])
+    end
+    out = f(cfg.duals)
+    check_scalar(out)
+
+    @inbounds for i in 1:length(x)
+        hv[i] = sum(Tuple(out.ϵ12[i]))
+    end
+    return hv
+end
+
+@inline function seed_hvp!(d::AbstractVector{<:HyperDual{N}}, x, seeds, v, block_i::Int, block_j::Int) where {N}
+    d .= HyperDual{N}.(x)
+    index_i = (block_i - 1) * N + 1
+    index_j = (block_j - 1) * N + 1
+    range_i = index_i:min(length(x), (index_i + N - 1))
+    range_j = index_j:min(length(x), (index_j + N - 1))
+    chunks_i = length(range_i)
+    chunks_j = length(range_j)
+
+    @inbounds for (offset, idx) in enumerate(range_i)
+        d[idx] = seed_epsilon_1(d[idx], seeds[offset])
+    end
+    @inbounds for (offset, idx) in enumerate(range_j)
+        d[idx] = seed_epsilon_2(d[idx], seeds[offset] * v[idx])
+    end
+    return range_i, range_j
+end
+
+function hvp_chunk!(hv::AbstractVector{T}, f, x::AbstractVector{T}, v::AbstractVector{T}, cfg::HessianConfig) where {T}
+    N = chunksize(cfg)
+    fill!(hv, zero(T))
+    n_chunks = ceil(Int, length(x) / N)
+
+    for i in 1:n_chunks
+        for j in 1:n_chunks
+            range_i, range_j = seed_hvp!(cfg.duals, x, cfg.seeds, v, i, j)
+            out = f(cfg.duals)
+            check_scalar(out)
+
+            @inbounds for (I, idx_i) in enumerate(range_i)
+                block = Tuple(out.ϵ12[I])
+                hv[idx_i] += sum(@inbounds block[J] for J in 1:length(range_j))
+            end
+        end
+    end
+    return hv
+end
+
+@inline function hvp_vector(f, x::AbstractVector{T}, v::AbstractVector{T}, cfg::HessianConfig) where {T}
+    hv = similar(x, T)
+    return hvp_vector!(hv, f, x, v, cfg)
+end
+
+function hvp_chunk(f, x::AbstractVector{T}, v::AbstractVector{T}, cfg::HessianConfig) where {T}
+    hv = similar(x, T)
+    return hvp_chunk!(hv, f, x, v, cfg)
 end
 
 end # module

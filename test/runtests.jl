@@ -1,4 +1,4 @@
-using HyperHessians: HyperHessians, hessian, hessian!, hessiangradvalue, hessiangradvalue!, Chunk, HessianConfig, HyperDual
+using HyperHessians: HyperHessians, hessian, hessian!, hessiangradvalue, hessiangradvalue!, hvp, Chunk, HessianConfig, HyperDual, apply_scalar_rule
 using DiffTests
 using ForwardDiff
 using Test
@@ -58,6 +58,21 @@ end
     @test hessian(ackley_stable, x) isa Matrix{Float32}
     @test hessian(ackley_stable, x) ≈ ForwardDiff.hessian(ackley_stable, x)
     @test hessian(DiffTests.ackley, x) ≈ ForwardDiff.hessian(DiffTests.ackley, x)
+end
+
+@testset "Hessian-vector products" begin
+    f = DiffTests.ackley
+    x = rand(7)
+    v = rand(7)
+
+    H = ForwardDiff.hessian(f, x)
+    cfg_vec = HessianConfig(x, Chunk{length(x)}())
+    cfg_chunk = HessianConfig(x, Chunk{4}())
+
+    hv_vec = hvp(f, x, v, cfg_vec)
+    hv_chunk = hvp(f, x, v, cfg_chunk)
+    @test hv_vec ≈ H * v
+    @test hv_chunk ≈ H * v
 end
 
 @testset "hessiangradvalue" begin
