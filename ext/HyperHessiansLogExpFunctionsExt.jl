@@ -2,7 +2,7 @@ module HyperHessiansLogExpFunctionsExt
 
 using HyperHessians
 using HyperHessians: changeprecision, rule_expr
-using CommonSubexpressions: cse 
+using CommonSubexpressions: cse
 using LogExpFunctions
 
 const LOGEXPFUNCTIONS_DIFF_RULES = [
