@@ -80,10 +80,13 @@ for f in (:+, :-)
         @inline Base.$f(h1::HyperDual{N1, N2, T1}, h2::HyperDual{N1, N2, T2}) where {N1, N2, T1, T2} = $f(promote(h1, h2)...)
         @inline Base.$f(h::HyperDual{N1, N2}, r::Real) where {N1, N2} =
             HyperDual($f(h.v, r), h.ϵ1, h.ϵ2, h.ϵ12)
-        @inline Base.$f(r::Real, h::HyperDual{N1, N2}) where {N1, N2} =
-            HyperDual($f(r, h.v), h.ϵ1, h.ϵ2, h.ϵ12)
     end
 end
+
+@inline Base.:+(r::Real, h::HyperDual{N1, N2}) where {N1, N2} =
+    HyperDual(r + h.v, h.ϵ1, h.ϵ2, h.ϵ12)
+@inline Base.:-(r::Real, h::HyperDual{N1, N2}) where {N1, N2} =
+    HyperDual(r - h.v, -h.ϵ1, -h.ϵ2, ntuple(i -> -h.ϵ12[i], Val(N1)))
 
 for f in (:*, :/)
     @eval @inline Base.$f(h::HyperDual{N1, N2}, r::Real) where {N1, N2} =

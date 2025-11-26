@@ -1,6 +1,7 @@
 using HyperHessians: HyperHessians, hessian, hessian!, hessiangradvalue, hessiangradvalue!, hvp, hvp!, Chunk, HessianConfig, DirectionalHVPConfig, HyperDual
 using DiffTests
 using ForwardDiff
+using DiffResults
 using Test
 using SIMD
 using StaticArrays
@@ -13,3 +14,4 @@ include("hessiangradvalue_tests.jl")
 include("float32_tests.jl")
 include("staticarrays_tests.jl")
 include("no_spurious_promotions_tests.jl")
+include("diffresults_tests.jl")
