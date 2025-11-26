@@ -1,4 +1,4 @@
-using HyperHessians: HyperHessians, hessian, hessian!, hessiangradvalue, hessiangradvalue!, Chunk, HessianConfig, HyperDual
+using HyperHessians: HyperHessians, hessian, hessian!, hessiangradvalue, hessiangradvalue!, hvp, hvp!, Chunk, HessianConfig, HyperDual
 using DiffTests
 using ForwardDiff
 using Test
@@ -58,6 +58,41 @@ end
     @test hessian(ackley_stable, x) isa Matrix{Float32}
     @test hessian(ackley_stable, x) ≈ ForwardDiff.hessian(ackley_stable, x)
     @test hessian(DiffTests.ackley, x) ≈ ForwardDiff.hessian(DiffTests.ackley, x)
+end
+
+@testset "Hessian-vector products" begin
+    # Test multiple functions and sizes like the correctness tests
+    for f in (DiffTests.rosenbrock_1, DiffTests.ackley, DiffTests.self_weighted_logit)
+        for n in (1, 4, 8, 15)
+            if n == 1 && f == DiffTests.rosenbrock_1
+                continue  # rosenbrock_1 needs n >= 2
+            end
+            x = rand(n)
+            v = rand(n)
+            H = ForwardDiff.hessian(f, x)
+
+            for chunk in (1, max(1, n ÷ 2), n)
+                cfg = HessianConfig(x, Chunk{chunk}())
+                @test hvp(f, x, v, cfg) ≈ H * v
+            end
+        end
+    end
+
+    # Test in-place hvp!
+    f = DiffTests.ackley
+    x = rand(8)
+    v = rand(8)
+    hv = zeros(8)
+    H = ForwardDiff.hessian(f, x)
+    hvp!(hv, f, x, v)
+    @test hv ≈ H * v
+
+    # Test Float32
+    x32 = rand(Float32, 6)
+    v32 = rand(Float32, 6)
+    hv32 = hvp(ackley_stable, x32, v32)
+    @test hv32 isa Vector{Float32}
+    @test hv32 ≈ ForwardDiff.hessian(ackley_stable, x32) * v32
 end
 
 @testset "hessiangradvalue" begin
