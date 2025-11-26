@@ -1,6 +1,4 @@
-abstract type AbstractHessianConfig end
-
-struct HessianConfig{D <: AbstractVector{<:HyperDual}, S} <: AbstractHessianConfig
+struct HessianConfig{D <: AbstractVector{<:HyperDual}, S}
     duals::D
     seeds::S
 end
@@ -113,9 +111,9 @@ function hessian(f, x::Real)
 end
 
 hessian(f, x::AbstractVector) = hessian!(similar(x, axes(x, 1), axes(x, 1)), f, x, HessianConfig(x))
-hessian(f, x::AbstractVector, cfg::AbstractHessianConfig) = hessian!(similar(x, axes(x, 1), axes(x, 1)), f, x, cfg)
+hessian(f, x::AbstractVector, cfg::HessianConfig) = hessian!(similar(x, axes(x, 1), axes(x, 1)), f, x, cfg)
 
-function hessian!(H::AbstractMatrix, f, x::AbstractVector{T}, cfg::AbstractHessianConfig) where {T}
+function hessian!(H::AbstractMatrix, f, x::AbstractVector{T}, cfg::HessianConfig) where {T}
     if chunksize(cfg) == length(x)
         return hessian_vector!(H, f, x, cfg)
     else
@@ -146,7 +144,7 @@ function hessian_chunk!(H::AbstractMatrix, f, x::AbstractVector{T}, cfg::Hessian
     return H
 end
 
-function hessiangradvalue!(H::AbstractMatrix, G::AbstractVector, f, x::AbstractVector{T}, cfg::AbstractHessianConfig) where {T}
+function hessiangradvalue!(H::AbstractMatrix, G::AbstractVector, f, x::AbstractVector{T}, cfg::HessianConfig) where {T}
     size(H, 1) == size(H, 2) == length(x) || throw(DimensionMismatch(lazy"H must be square with size matching length(x)=$(length(x)), got size(H)=$(size(H))"))
     length(G) == length(x) || throw(DimensionMismatch(lazy"G must have length $(length(x)), got $(length(G))"))
     if chunksize(cfg) == length(x)
@@ -161,7 +159,7 @@ function hessiangradvalue!(H::AbstractMatrix, G::AbstractVector, f, x::AbstractV
     return hessiangradvalue!(H, G, f, x, cfg)
 end
 
-function hessiangradvalue(f, x::AbstractVector, cfg::AbstractHessianConfig)
+function hessiangradvalue(f, x::AbstractVector, cfg::HessianConfig)
     G = similar(x, axes(x, 1))
     H = similar(x, axes(x, 1), axes(x, 1))
     value = hessiangradvalue!(H, G, f, x, cfg)
