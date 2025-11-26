@@ -1,10 +1,10 @@
 module HyperHessiansDiffResultsExt
 
 using HyperHessians
-using HyperHessians: HessianConfig, hessiangradvalue!, AbstractHessianConfig
+using HyperHessians: HessianConfig, hessiangradvalue!
 using DiffResults
 
-function HyperHessians.hessian!(result::DiffResults.DiffResult, f, x::AbstractVector, cfg::AbstractHessianConfig = HessianConfig(x))
+function HyperHessians.hessian!(result::DiffResults.DiffResult, f, x::AbstractVector, cfg::HessianConfig = HessianConfig(x))
     H = DiffResults.hessian(result)
     G = DiffResults.gradient(result)
     val = hessiangradvalue!(H, G, f, x, cfg)
