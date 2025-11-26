@@ -1,12 +1,28 @@
 # HyperHessians.jl
 
 HyperHessians.jl is a package to compute hessians using forward mode automatic differentiation.
+
 It works similar to `ForwardDiff.hessian` but should have better run-time and compile-time performance in all cases.
 
 There are some limitations compared to ForwardDiff.jl:
 - Only support for basic numeric types (`Float64`, `Float32`, etc.).
 - Currently no "tagging" of numbers to avoid perturbation confusion.
 - Not as many primitives implemented.
+
+## API Summary
+
+| Function | Description |
+| -------- | ----------- |
+| `hessian(f, x)` | Compute Hessian of `f` at `x` (scalar or vector) |
+| `hessian!(H, f, x, cfg)` | In-place Hessian into pre-allocated `H` |
+| `hessiangradvalue(f, x)` | Compute Hessian, gradient, and value together |
+| `hessiangradvalue!(H, G, f, x, cfg)` | In-place variant, returns the value |
+| `hvp(f, x, v)` | Hessian–vector product `H(x) * v` |
+| `hvp!(hv, f, x, v, cfg)` | In-place Hessian–vector product |
+| `HessianConfig(x, chunk)` | Config for caching and chunk size control |
+| `DirectionalHVPConfig(x, chunk)` | Config for Hessian–vector products |
+| `Chunk{N}()` | Specify chunk size `N` |
+
 
 ## Usage
 
