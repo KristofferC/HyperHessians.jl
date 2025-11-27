@@ -1,3 +1,9 @@
+module NoSpuriousPromotionsTests
+
+using Test
+using HyperHessians
+using HyperHessians: HyperDual, ϵT
+
 @testset "No spurious promotions primitives" begin
     seed = ϵT{2, Float32}((0.7f0, 0.7f0))
     h = HyperDual(0.8f0, seed, seed)
@@ -12,3 +18,5 @@
         end
     end
 end
+
+end # module

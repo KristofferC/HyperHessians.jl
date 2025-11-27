@@ -1,3 +1,11 @@
+module StaticArraysTests
+
+using Test
+using HyperHessians: hessian, hvp, hessiangradvalue
+using DiffTests
+using ForwardDiff
+using StaticArrays
+
 @testset "StaticArrays" begin
     x = rand(SVector{4})
     f = DiffTests.rosenbrock_3
@@ -22,3 +30,5 @@
     @test res.hessian === expected_H
     @test @allocated(hessiangradvalue(g, x)) == 0 broken = VERSION < v"1.11"
 end
+
+end # module

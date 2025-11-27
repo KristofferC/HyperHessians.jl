@@ -1,3 +1,13 @@
+module HVPTests
+
+using Test
+using HyperHessians: hvp, hvp!, DirectionalHVPConfig, Chunk
+using DiffTests
+using ForwardDiff
+
+include(joinpath(@__DIR__, "helpers.jl"))
+using .Helpers: ackley_stable
+
 @testset "DirectionalHVPConfig errors" begin
     x = [1.0, 2.0, 3.0]
     @test_throws ArgumentError DirectionalHVPConfig(x, Chunk{0}())
@@ -63,3 +73,5 @@ end
     hvp!(hv, f, x, v, cfg_chunk)
     @test @allocated(hvp!(hv, f, x, v, cfg_chunk)) == 0
 end
+
+end # module

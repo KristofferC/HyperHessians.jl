@@ -1,3 +1,10 @@
+module CorrectnessTests
+
+using Test
+using HyperHessians: hessian, hessian!, HessianConfig, Chunk
+using DiffTests
+using ForwardDiff
+
 @testset "scalar" begin
     f(x) = exp(x) / sqrt(sin(x)^3 + cos(x)^3)
     x = rand()
@@ -67,3 +74,5 @@ end
     hessian!(H, f, x, cfg_chunk)
     @test @allocated(hessian!(H, f, x, cfg_chunk)) == 0
 end
+
+end # module

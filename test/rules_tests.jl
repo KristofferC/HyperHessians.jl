@@ -1,3 +1,12 @@
+module RulesTests
+
+using Test
+using HyperHessians
+using HyperHessians: HyperDual, ϵT
+using ForwardDiff
+using SpecialFunctions
+using LogExpFunctions
+
 function check_against_ForwardDiff(f, x, ::Type{T} = Float64) where {T}
     # @show f, x, T
     T == Float32 && return
@@ -156,3 +165,5 @@ end
     @test Tuple(res.ϵ2) == Tuple(expected.ϵ2)
     @test Tuple(res.ϵ12[1]) == Tuple(expected.ϵ12[1])
 end
+
+end # module

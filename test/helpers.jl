@@ -1,3 +1,5 @@
+module Helpers
+
 function ackley_stable(x::AbstractVector{T}) where {T}
     a, b, c = T(20.0), T(-0.2), T(2.0 * π)
     len_recip = T(inv(length(x)))
@@ -8,3 +10,5 @@ function ackley_stable(x::AbstractVector{T}) where {T}
             exp(len_recip * sum_cos) + a + exp(T(1))
     )
 end
+
+end # module
