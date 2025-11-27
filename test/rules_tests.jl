@@ -6,6 +6,7 @@ using HyperHessians: HyperDual, ϵT
 using ForwardDiff
 using SpecialFunctions
 using LogExpFunctions
+using NaNMath
 
 function check_against_ForwardDiff(f, x, ::Type{T} = Float64) where {T}
     # @show f, x, T
@@ -79,6 +80,7 @@ end
         :rad2deg => 0.7,
         :cospi => 0.2,
         :sinpi => 0.2,
+        :sinc => 0.3,
     )
     for (fsym, _, _) in HyperHessians.DIFF_RULES
         x = xs[fsym]
@@ -86,6 +88,17 @@ end
         for T in (Float64, Float32)
             check_against_ForwardDiff(f, x, T)
         end
+    end
+    # Manually defined rules (not in DIFF_RULES)
+    for (fsym, x) in [(:sin, 0.3), (:cos, 0.3), (:sinpi, 0.2), (:cospi, 0.2)]
+        f = getfield(Base, fsym)
+        for T in (Float64, Float32)
+            check_against_ForwardDiff(f, x, T)
+        end
+    end
+    # Test sinc at x=0 (special case)
+    for T in (Float64,)
+        check_against_ForwardDiff(sinc, zero(T), T)
     end
 end
 
@@ -148,6 +161,32 @@ end
     for (fsym, _, _) in Ext.LOGEXPFUNCTIONS_DIFF_RULES
         x = xs[fsym]
         f = getfield(LogExpFunctions, fsym)
+        for T in (Float64, Float32)
+            check_against_ForwardDiff(f, x, T)
+        end
+    end
+end
+
+@testset "NaNMath.jl rule derivatives vs ForwardDiff" begin
+    xs = Dict(
+        :sqrt => 1.2,
+        :sin => 0.3,
+        :cos => 0.4,
+        :tan => 0.3,
+        :asin => 0.3,
+        :acos => 0.3,
+        :acosh => 1.4,
+        :atanh => 0.2,
+        :log => 1.4,
+        :log2 => 1.5,
+        :log10 => 1.6,
+        :log1p => 0.2,
+        :lgamma => 1.7,
+    )
+    Ext = Base.get_extension(HyperHessians, :HyperHessiansNaNMathExt)
+    for (fsym, _, _) in Ext.NANMATH_DIFF_RULES
+        x = xs[fsym]
+        f = getfield(NaNMath, fsym)
         for T in (Float64, Float32)
             check_against_ForwardDiff(f, x, T)
         end
