@@ -1,7 +1,7 @@
 module HyperHessiansSpecialFunctionsExt
 
 using HyperHessians
-using HyperHessians: rule_expr, HyperDual, ⊗
+using HyperHessians: rule_expr, HyperDual, ⊗, ⊙, ⊕
 using CommonSubexpressions: cse
 using SpecialFunctions
 using SpecialFunctions: sqrtπ

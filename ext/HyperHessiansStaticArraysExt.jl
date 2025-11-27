@@ -3,7 +3,9 @@ module HyperHessiansStaticArraysExt
 using HyperHessians
 using HyperHessians: HyperDual, check_scalar, construct_seeds, ϵT, USE_SIMD
 using StaticArrays
-using SIMD: Vec
+if HyperHessians.USE_SIMD
+    using SIMD: Vec
+end
 
 @generated function hyperdualize(x::S) where {S <: StaticVector}
     N = length(x)

@@ -1,7 +1,7 @@
 module HyperHessiansLogExpFunctionsExt
 
 using HyperHessians
-using HyperHessians: changeprecision, rule_expr, HyperDual, ⊗
+using HyperHessians: changeprecision, rule_expr, HyperDual, ⊗, ⊙, ⊕
 using CommonSubexpressions: cse
 using LogExpFunctions
 
