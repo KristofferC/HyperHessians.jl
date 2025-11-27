@@ -5,6 +5,7 @@ using DiffResults
 using Test
 using SIMD
 using StaticArrays
+using LogExpFunctions
 
 include("helpers.jl")
 include("rules_tests.jl")
