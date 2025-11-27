@@ -72,6 +72,13 @@ end
 @inline convert_cross(::Type{ϵT{N, T}}, xs::NTuple{M, Any}) where {N, M, T} =
     ntuple(i -> to_ϵ(ϵT{N, T}, xs[i]), Val(M))
 
+@inline _muladd(a::Real, b::Vec{N, T}, c::Vec{N, T}) where {N, T} = muladd(a, b, c)
+@inline _muladd(a::Vec{N, T}, b::Real, c::Vec{N, T}) where {N, T} = muladd(a, b, c)
+@inline _muladd(a::Real, b::NTuple{N, A}, c::NTuple{N, C}) where {N, A, C} =
+    ntuple(i -> muladd(a, b[i], c[i]), Val(N))
+@inline _muladd(a::NTuple{N, A}, b::Real, c::NTuple{N, C}) where {N, A, C} =
+    ntuple(i -> muladd(a[i], b, c[i]), Val(N))
+
 struct HyperDual{N1, N2, T} <: Real
     v::T
     ϵ1::ϵT{N1, T}
@@ -138,13 +145,39 @@ Base.float(h::HyperDual{N1, N2, T}) where {N1, N2, T} = convert(HyperDual{N1, N2
 @inline Base.:(/)(r::Real, h::HyperDual{N1, N2}) where {N1, N2} = r * inv(h)
 @inline Base.:(/)(h1::HyperDual{N1, N2, T}, h2::HyperDual{N1, N2, T}) where {N1, N2, T} = h1 * inv(h2)
 
-@inline Base.muladd(x::HyperDual{N1, N2}, y::Real, z::HyperDual{N1, N2}) where {N1, N2} = x * y + z
-@inline Base.muladd(x::Real, y::HyperDual{N1, N2}, z::HyperDual{N1, N2}) where {N1, N2} = x * y + z
-@inline Base.muladd(x::HyperDual{N1, N2}, y::HyperDual{N1, N2}, z::Real) where {N1, N2} = x * y + z
-@inline Base.muladd(x::HyperDual{N1, N2}, y::Real, z::Real) where {N1, N2} = x * y + z
-@inline Base.muladd(x::Real, y::HyperDual{N1, N2}, z::Real) where {N1, N2} = x * y + z
-@inline Base.muladd(x::Real, y::Real, z::HyperDual{N1, N2}) where {N1, N2} = muladd(x, y, z.v) + z - z.v
-@inline Base.muladd(x::HyperDual{N1, N2}, y::HyperDual{N1, N2}, z::HyperDual{N1, N2}) where {N1, N2} = x * y + z
+@inline function Base.muladd(x::HyperDual{N1, N2, T}, y::Real, z::HyperDual{N1, N2, T}) where {N1, N2, T}
+    return HyperDual(
+        muladd(x.v, y, z.v),
+        _muladd(y, x.ϵ1, z.ϵ1),
+        _muladd(y, x.ϵ2, z.ϵ2),
+        ntuple(i -> _muladd(y, x.ϵ12[i], z.ϵ12[i]), Val(N1))
+    )
+end
+@inline function Base.muladd(x::Real, y::HyperDual{N1, N2, T}, z::HyperDual{N1, N2, T}) where {N1, N2, T}
+    return HyperDual(
+        muladd(x, y.v, z.v),
+        _muladd(x, y.ϵ1, z.ϵ1),
+        _muladd(x, y.ϵ2, z.ϵ2),
+        ntuple(i -> _muladd(x, y.ϵ12[i], z.ϵ12[i]), Val(N1)),
+    )
+end
+@inline function Base.muladd(x::HyperDual{N1, N2, T}, y::Real, z::Real) where {N1, N2, T}
+    return HyperDual(
+        muladd(x.v, y, z),
+        x.ϵ1 ⊙ y,
+        x.ϵ2 ⊙ y,
+        ntuple(i -> x.ϵ12[i] ⊙ y, Val(N1)),
+    )
+end
+@inline function Base.muladd(x::Real, y::HyperDual{N1, N2, T}, z::Real) where {N1, N2, T}
+    return HyperDual(
+        muladd(x, y.v, z),
+        y.ϵ1 ⊙ x,
+        y.ϵ2 ⊙ x,
+        ntuple(i -> y.ϵ12[i] ⊙ x, Val(N1)),
+    )
+end
+@inline Base.muladd(x::Real, y::Real, z::HyperDual{N1, N2, T}) where {N1, N2, T} = muladd(x, y, z.v) + z - z.v
 
 unsafe_getindex(v::SIMD.Vec, i::SIMD.IntegerTypes) = SIMD.Intrinsics.extractelement(v.data, i - 1)
 @inline ⊗(v1::Vec{N1, T}, v2::Vec{N2, T}) where {N1, N2, T} = ntuple(i -> unsafe_getindex(v1, i) * v2, Val(N1))
@@ -153,11 +186,11 @@ unsafe_getindex(v::SIMD.Vec, i::SIMD.IntegerTypes) = SIMD.Intrinsics.extractelem
 @inline Base.:(*)(h1::HyperDual{N1, N2, T1}, h2::HyperDual{N1, N2, T2}) where {N1, N2, T1, T2} = *(promote(h1, h2)...)
 @inline function Base.:(*)(h1::HyperDual{N1, N2, T}, h2::HyperDual{N1, N2, T}) where {N1, N2, T}
     r = h1.v * h2.v
-    ϵ1 = (h1.v ⊙ h2.ϵ1) ⊕ (h1.ϵ1 ⊙ h2.v)
-    ϵ2 = (h1.v ⊙ h2.ϵ2) ⊕ (h1.ϵ2 ⊙ h2.v)
+    ϵ1 = _muladd(h1.v, h2.ϵ1, h1.ϵ1 ⊙ h2.v)
+    ϵ2 = _muladd(h1.v, h2.ϵ2, h1.ϵ2 ⊙ h2.v)
     ϵ12_1 = h1.ϵ1 ⊗ h2.ϵ2
     ϵ12_2 = h2.ϵ1 ⊗ h1.ϵ2
-    ϵ12 = ntuple(i -> h1.v ⊙ h2.ϵ12[i] ⊕ (h1.ϵ12[i] ⊙ h2.v ⊕ (ϵ12_1[i] ⊕ ϵ12_2[i])), Val(N1))
+    ϵ12 = ntuple(i -> _muladd(h1.v, h2.ϵ12[i], _muladd(h1.ϵ12[i], h2.v, ϵ12_1[i] ⊕ ϵ12_2[i])), Val(N1))
     return HyperDual(r, ϵ1, ϵ2, ϵ12)
 end
 @inline Base.literal_pow(::typeof(^), x::HyperDual, ::Val{0}) = one(typeof(x))
