@@ -1,3 +1,10 @@
+module HessianGradValueTests
+
+using Test
+using HyperHessians: hessiangradvalue, hessiangradvalue!, HessianConfig, Chunk
+using DiffTests
+using ForwardDiff
+
 @testset "hessiangradvalue! DimensionMismatch" begin
     f(x) = sum(abs2, x)
     x = [1.0, 2.0, 3.0]
@@ -51,3 +58,5 @@ end
     hessiangradvalue!(H, G, f, x, cfg_chunk)
     @test @allocated(hessiangradvalue!(H, G, f, x, cfg_chunk)) == 0 broken = VERSION < v"1.11"
 end
+
+end # module
