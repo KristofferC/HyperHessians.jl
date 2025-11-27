@@ -1,4 +1,4 @@
-using HyperHessians: HyperHessians, hessian, hessian!, hessiangradvalue, hessiangradvalue!, hvp, hvp!, Chunk, HessianConfig, DirectionalHVPConfig, HyperDual
+using HyperHessians: HyperHessians, gradient, gradient!, gradientvalue, gradientvalue!, hessian, hessian!, hessiangradvalue, hessiangradvalue!, hvp, hvp!, Chunk, GradientConfig, HessianConfig, DirectionalHVPConfig, HyperDual
 using DiffTests
 using ForwardDiff
 using DiffResults
@@ -11,6 +11,7 @@ using SpecialFunctions
 include("helpers.jl")
 include("rules_tests.jl")
 include("correctness_tests.jl")
+include("gradient_tests.jl")
 include("hvp_tests.jl")
 include("hessiangradvalue_tests.jl")
 include("float32_tests.jl")

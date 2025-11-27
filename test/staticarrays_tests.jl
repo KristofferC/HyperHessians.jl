@@ -10,6 +10,10 @@
     @test H === expected_H
     @test @allocated(hessian(g, x)) == 0 broken = VERSION < v"1.11"
 
+    grad = gradient(g, x)
+    @test grad === 2 .* x
+    @test @allocated(gradient(g, x)) == 0 broken = VERSION < v"1.11"
+
     dir = SVector{4}(1.0, 2.0, 3.0, 4.0)
     hv = hvp(g, x, dir)
     @test hv isa SVector

@@ -13,12 +13,17 @@ There are some limitations compared to ForwardDiff.jl:
 
 | Function | Description |
 | -------- | ----------- |
+| `gradient(f, x)` | Compute gradient of `f` at `x` (scalar or vector) |
+| `gradient!(G, f, x, cfg)` | In-place gradient into pre-allocated `G` |
+| `gradientvalue(f, x)` | Compute gradient and value together |
+| `gradientvalue!(G, f, x, cfg)` | In-place variant, returns the value |
 | `hessian(f, x)` | Compute Hessian of `f` at `x` (scalar or vector) |
 | `hessian!(H, f, x, cfg)` | In-place Hessian into pre-allocated `H` |
 | `hessiangradvalue(f, x)` | Compute Hessian, gradient, and value together |
 | `hessiangradvalue!(H, G, f, x, cfg)` | In-place variant, returns the value |
 | `hvp(f, x, v)` | Hessian–vector product `H(x) * v` |
 | `hvp!(hv, f, x, v, cfg)` | In-place Hessian–vector product |
+| `GradientConfig(x, chunk)` | Config for caching and chunk size control for gradients |
 | `HessianConfig(x, chunk)` | Config for caching and chunk size control |
 | `DirectionalHVPConfig(x, chunk)` | Config for Hessian–vector products |
 | `Chunk{N}()` | Specify chunk size `N` |
@@ -48,6 +53,22 @@ julia> f(x) = exp(x) / sqrt(sin(x)^3 + cos(x)^3);
 
 julia> HyperHessians.hessian(f, 2.0)
 82.55705026089272
+```
+
+### Gradients
+Gradients use the same chunking machinery. The second infinitesimal lane is kept at length 1 and zero-seeded (SIMD vectors cannot have length 0), so you still get Hessian-level performance for first derivatives only.
+
+```julia
+julia> f(x) = sum(@. sin(x) + x^3);
+
+julia> x = rand(4);
+
+julia> HyperHessians.gradient(f, x)
+4-element Vector{Float64}:
+ 3.9405259914760657
+ 2.7449876657764715
+ 3.9647348856217144
+ 2.8837995563513097
 ```
 
 When the input is a vector, the basic usage will, however, not give the best performance.

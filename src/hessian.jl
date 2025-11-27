@@ -31,6 +31,20 @@ function DirectionalHVPConfig(x::AbstractVector{T}, chunk = Chunk(x)::Chunk) whe
     return DirectionalHVPConfig(duals, seeds)
 end
 
+struct GradientConfig{D <: AbstractVector{<:HyperDual}, S}
+    duals::D
+    seeds::S
+end
+(chunksize(cfg::GradientConfig)::Int) = length(cfg.seeds)
+
+function GradientConfig(x::AbstractVector{T}, chunk = Chunk(x)::Chunk) where {T}
+    N = chunksize(chunk)
+    N > 0 || throw(ArgumentError(lazy"chunk size must be positive, got $N"))
+    duals = similar(x, HyperDual{N, 1, T}) # keep ε₂ length 1 and zero-seeded
+    seeds = collect(construct_seeds(NTuple{N, T}))
+    return GradientConfig(duals, seeds)
+end
+
 @generated function single_seed(::Type{NTuple{N, T}}, ::Val{i}) where {N, T, i}
     ex = Expr(:tuple, [ifelse(i === j, :(one(T)), :(zero(T))) for j in 1:N]...)
     return :(Vec($(ex)))
@@ -54,6 +68,20 @@ function seed!(d::AbstractVector{<:HyperDual{N1, N2}}, x, seeds, block_i, block_
     d[range_i] .= seed_epsilon_1.(view(d, range_i), view(seeds, 1:chunks_i))
     d[range_j] .= seed_epsilon_2.(view(d, range_j), view(seeds, 1:chunks_j))
     return d
+end
+
+@inline function seed_gradient!(d::AbstractVector{<:HyperDual{N1, N2, T}}, x, seeds, block_i, zeroϵ1, zeroϵ2) where {N1, N2, T}
+    index_i = (block_i - 1) * N1 + 1
+    range_i = index_i:min(length(x), (index_i + N1 - 1))
+
+    @inbounds for j in eachindex(x)
+        d[j] = HyperDual(x[j], zeroϵ1, zeroϵ2)
+    end
+
+    @inbounds for (offset, idx) in enumerate(range_i)
+        d[idx] = seed_epsilon_1(d[idx], seeds[offset])
+    end
+    return range_i
 end
 
 @noinline check_scalar(x) =
@@ -103,6 +131,13 @@ function extract_gradient!(G::AbstractVector, v::HyperDual{N1, N2}, block_i::Int
     return G
 end
 
+function gradient(f, x::Real)
+    dual = HyperDual(x, Vec(one(x)), Vec(zero(x)))
+    v = f(dual)
+    check_scalar(v)
+    return @inbounds v.ϵ1[1]
+end
+
 function hessian(f, x::Real)
     dual = HyperDual(x, Vec(one(x)), Vec(one(x)))
     v = f(dual)
@@ -142,6 +177,69 @@ function hessian_chunk!(H::AbstractMatrix, f, x::AbstractVector{T}, cfg::Hessian
     end
     symmetrize!(H)
     return H
+end
+
+gradient(f::F, x::AbstractVector) where {F} = gradient!(similar(x, axes(x, 1)), f, x, GradientConfig(x))
+gradient(f::F, x::AbstractVector, cfg::GradientConfig) where {F} = gradient!(similar(x, axes(x, 1)), f, x, cfg)
+
+gradient!(G::AbstractVector, f::F, x::AbstractVector) where {F} = gradient!(G, f, x, GradientConfig(x))
+function gradient!(G::AbstractVector, f::F, x::AbstractVector{T}, cfg::GradientConfig) where {F, T}
+    length(G) == length(x) || throw(DimensionMismatch(lazy"G must have length $(length(x)), got $(length(G))"))
+    if chunksize(cfg) == length(x)
+        gradientvalue_vector!(G, f, x, cfg)
+    else
+        gradientvalue_chunk!(G, f, x, cfg)
+    end
+    return G
+end
+
+function gradientvalue(f::F, x::AbstractVector) where {F}
+    cfg = GradientConfig(x)
+    return gradientvalue(f, x, cfg)
+end
+function gradientvalue(f::F, x::AbstractVector, cfg::GradientConfig) where {F}
+    G = similar(x, axes(x, 1))
+    value = gradientvalue!(G, f, x, cfg)
+    return (; value = value, gradient = G)
+end
+
+gradientvalue!(G::AbstractVector, f::F, x::AbstractVector) where {F} = gradientvalue!(G, f, x, GradientConfig(x))
+function gradientvalue!(G::AbstractVector, f::F, x::AbstractVector{T}, cfg::GradientConfig) where {F, T}
+    length(G) == length(x) || throw(DimensionMismatch(lazy"G must have length $(length(x)), got $(length(G))"))
+    if chunksize(cfg) == length(x)
+        return gradientvalue_vector!(G, f, x, cfg)
+    else
+        return gradientvalue_chunk!(G, f, x, cfg)
+    end
+end
+
+function gradientvalue_vector!(G::AbstractVector, f, x::AbstractVector{T}, cfg::GradientConfig) where {T}
+    length(G) == length(x) || throw(DimensionMismatch(lazy"G must have length $(length(x)), got $(length(G))"))
+    zeroϵ2 = zero(Vec{1, T})
+    @inbounds for i in eachindex(x)
+        cfg.duals[i] = HyperDual(x[i], cfg.seeds[i], zeroϵ2)
+    end
+    v = f(cfg.duals)
+    check_scalar(v)
+    G .= Tuple(v.ϵ1)
+    return v.v
+end
+
+function gradientvalue_chunk!(G::AbstractVector, f, x::AbstractVector{T}, cfg::GradientConfig) where {T}
+    length(G) == length(x) || throw(DimensionMismatch(lazy"G must have length $(length(x)), got $(length(G))"))
+    N = chunksize(cfg)
+    n_chunks = ceil(Int, length(x) / N)
+    zeroϵ1 = zero(cfg.seeds[1])
+    zeroϵ2 = zero(Vec{1, T})
+    value = zero(T)
+    for i in 1:n_chunks
+        seed_gradient!(cfg.duals, x, cfg.seeds, i, zeroϵ1, zeroϵ2)
+        v = f(cfg.duals)
+        check_scalar(v)
+        value = v.v
+        extract_gradient!(G, v, i)
+    end
+    return value
 end
 
 function hessiangradvalue!(H::AbstractMatrix, G::AbstractVector, f::F, x::AbstractVector{T}, cfg::HessianConfig) where {F, T}

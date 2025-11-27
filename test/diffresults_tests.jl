@@ -9,3 +9,14 @@
     @test DiffResults.gradient(res) ≈ ForwardDiff.gradient(f, x)
     @test DiffResults.hessian(res) ≈ ForwardDiff.hessian(f, x)
 end
+
+@testset "DiffResults gradient extension" begin
+    f = DiffTests.ackley
+    x = rand(5)
+
+    res = DiffResults.GradientResult(x)
+    HyperHessians.gradient!(res, f, x)
+
+    @test DiffResults.value(res) ≈ f(x)
+    @test DiffResults.gradient(res) ≈ ForwardDiff.gradient(f, x)
+end
