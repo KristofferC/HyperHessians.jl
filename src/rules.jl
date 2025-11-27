@@ -50,6 +50,7 @@ const DIFF_RULES = [
     (:acoth    , :(1 / (1 - x^2))                                 , :(2 * x * f′^2))
     (:deg2rad  , :(π / 180)                                       , :(0))
     (:rad2deg  , :(180 / π)                                       , :(0))
+    (:sinc     , :(cosc(x))                                       , :(iszero(x) ? -π^2 / 3 : -π^2 * f - 2 * f′ / x))
 ]
 # runic: on
 
@@ -111,7 +112,6 @@ end
     x23 = (f′′ ⊙ h.ϵ1) ⊗ h.ϵ2
     return HyperDual(c, h.ϵ1 ⊙ f′, h.ϵ2 ⊙ f′, ntuple(i -> h.ϵ12[i] ⊙ f′ ⊕ x23[i], Val(N1)))
 end
-
 
 for (f, f′, f′′) in DIFF_RULES
     expr = rule_expr(f, f′, f′′)
