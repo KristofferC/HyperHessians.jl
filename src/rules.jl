@@ -14,8 +14,6 @@ const DIFF_RULES = [
     (:exp2     , :(f * log(2))                                    , :(f′ * log(2)))
     (:exp10    , :(f * log(10))                                   , :(f′ * log(10)))
     (:expm1    , :(f + 1)                                         , :(f + 1))
-    #( :sin    , :(cos(x))                                        , :(-sin(x)))
-    #( :cos    , :(-sin(x))                                       , :(-cos(x)))
     (:tan      , :(1 + f^2)                                       , :(2 * f′ * f))
     (:sec      , :(f * tan(x))                                    , :(f * (tan(x)^2 + f^2)))
     (:csc      , :(-cot(x) * f)                                   , :(f * (cot(x)^2 + f^2)))
@@ -52,10 +50,6 @@ const DIFF_RULES = [
     (:acoth    , :(1 / (1 - x^2))                                 , :(2 * x * f′^2))
     (:deg2rad  , :(π / 180)                                       , :(0))
     (:rad2deg  , :(180 / π)                                       , :(0))
-    # ( :erf   , :(2*exp(-x^2)/sqrt(π))                           , :(-4*x*exp(-x^2)/sqrt(π)))
-    # ( :erfinv, :(1/2*sqrt(π)*exp(erfinv(x)^2))                  , :(1/2*π*erfinv(x)*exp(2*erfinv(x)^2)))
-    # ( :erfc  , :(-2*exp(-x^2)/sqrt(π))                          , :(4*x*exp(-x^2)/sqrt(π)))
-    # ( :erfi  , :(2*exp(x^2)/sqrt(π))                            , :(4*x*exp(x^2)/sqrt(π)))
 ]
 # runic: on
 
@@ -85,8 +79,6 @@ function rule_expr(f, f′, f′′)
         f = $f(x)
         f′ = $f′
         f′′ = $f′′
-        x23 = (f′′ ⊙ h.ϵ1) ⊗ h.ϵ2
-        return HyperDual(f, h.ϵ1 ⊙ f′, h.ϵ2 ⊙ f′, ntuple(i -> h.ϵ12[i] ⊙ f′ ⊕ x23[i], Val(N1)))
     end
     # Drop line number metadata so debug output is cleaner and CSE vars are shorter.
     return Base.remove_linenums!(ex)
@@ -127,6 +119,8 @@ for (f, f′, f′′) in DIFF_RULES
     @eval @inline function Base.$f(h::HyperDual{N1, N2, T}) where {N1, N2, T}
         x = h.v
         $cse_expr
+        x23 = (f′′ ⊙ h.ϵ1) ⊗ h.ϵ2
+        return HyperDual(f, h.ϵ1 ⊙ f′, h.ϵ2 ⊙ f′, ntuple(i -> h.ϵ12[i] ⊙ f′ ⊕ x23[i], Val(N1)))
     end
 end
 

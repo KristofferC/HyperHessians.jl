@@ -46,6 +46,8 @@ for (f, f′, f′′) in SPECIALFUNCTIONS_DIFF_RULES
     @eval @inline function SpecialFunctions.$f(h::HyperDual{N1, N2, T}) where {N1, N2, T}
         x = h.v
         $cse_expr
+        x23 = (f′′ ⊙ h.ϵ1) ⊗ h.ϵ2
+        return HyperDual(f, h.ϵ1 ⊙ f′, h.ϵ2 ⊙ f′, ntuple(i -> h.ϵ12[i] ⊙ f′ ⊕ x23[i], Val(N1)))
     end
 end
 

@@ -120,11 +120,11 @@ Base.float(h::HyperDual{N1, N2, T}) where {N1, N2, T} = convert(HyperDual{N1, N2
     HyperDual(r - h.v, ⊟(h.ϵ1), ⊟(h.ϵ2), ntuple(i -> ⊟(h.ϵ12[i]), Val(N1)))
 
 @inline Base.:*(h::HyperDual{N1, N2}, r::Real) where {N1, N2} =
-    HyperDual(h.v * r, ⊙(h.ϵ1, r), ⊙(h.ϵ2, r), ntuple(i -> ⊙(h.ϵ12[i], r), Val(N1)))
+    HyperDual(h.v * r, h.ϵ1 ⊙ r, h.ϵ2 ⊙ r, ntuple(i -> h.ϵ12[i] ⊙ r, Val(N1)))
 @inline Base.:/(h::HyperDual{N1, N2}, r::Real) where {N1, N2} =
-    HyperDual(h.v / r, ⊘(h.ϵ1, r), ⊘(h.ϵ2, r), ntuple(i -> ⊘(h.ϵ12[i], r), Val(N1)))
+    HyperDual(h.v / r, h.ϵ1 ⊘ r, h.ϵ2 ⊘ r, ntuple(i -> h.ϵ12[i] ⊘ r, Val(N1)))
 @inline Base.:(*)(r::Real, h::HyperDual{N1, N2}) where {N1, N2} =
-    HyperDual(r * h.v, ⊙(r, h.ϵ1), ⊙(r, h.ϵ2), ntuple(i -> ⊙(r, h.ϵ12[i]), Val(N1)))
+    HyperDual(r * h.v, r ⊙ h.ϵ1, r ⊙ h.ϵ2, ntuple(i -> r ⊙ h.ϵ12[i], Val(N1)))
 
 @inline Base.:(/)(r::Real, h::HyperDual{N1, N2}) where {N1, N2} = r * inv(h)
 @inline Base.:(/)(h1::HyperDual{N1, N2, T}, h2::HyperDual{N1, N2, T}) where {N1, N2, T} = h1 * inv(h2)
