@@ -6,6 +6,7 @@ using Test
 using SIMD
 using StaticArrays
 using LogExpFunctions
+using SpecialFunctions
 
 include("helpers.jl")
 include("rules_tests.jl")

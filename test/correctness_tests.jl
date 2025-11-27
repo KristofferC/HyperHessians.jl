@@ -41,7 +41,7 @@ end
                 if chunk <= 0
                     continue
                 end
-                @info "f=$f, n=$n, chunk=$chunk"
+                # @info "f=$f, n=$n, chunk=$chunk"
 
                 cfg = HessianConfig(x, Chunk{chunk}())
                 @test H ≈ hessian(f, x, cfg)
