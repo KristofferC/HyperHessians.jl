@@ -1,5 +1,10 @@
 # HyperHessians.jl
 
+[![CI](https://github.com/KristofferC/HyperHessians.jl/actions/workflows/CI.yml/badge.svg)](https://github.com/KristofferC/HyperHessians.jl/actions/workflows/CI.yml)
+[![codecov](https://codecov.io/gh/KristofferC/HyperHessians.jl/graph/badge.svg)](https://codecov.io/gh/KristofferC/HyperHessians.jl)
+[![code style: runic](https://img.shields.io/badge/code_style-%E1%9A%B1%E1%9A%A2%E1%9A%BE%E1%9B%81%E1%9A%B2-black)](https://github.com/fredrikekre/Runic.jl)
+
+
 HyperHessians.jl is a package to compute hessians using forward mode automatic differentiation.
 
 It works similar to `ForwardDiff.hessian` but should have better run-time and compile-time performance in all cases.
