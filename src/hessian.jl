@@ -43,15 +43,18 @@ end
 @generated construct_seeds(::Type{NTuple{N, T}}) where {N, T} =
     Expr(:tuple, [:(single_seed(NTuple{N, T}, Val{$i}())) for i in 1:N]...)
 
+@inline block_range(block::Int, chunk::Int, ax) = begin
+    start = first(ax) + (block - 1) * chunk
+    start:min(last(ax), start + chunk - 1)
+end
+
 seed_epsilon_1(d::HyperDual{N1, N2, T}, ϵ1) where {N1, N2, T} = HyperDual{N1, N2, T}(d.v, ϵ1, d.ϵ2, d.ϵ12)
 seed_epsilon_2(d::HyperDual{N1, N2, T}, ϵ2) where {N1, N2, T} = HyperDual{N1, N2, T}(d.v, d.ϵ1, ϵ2, d.ϵ12)
 
 function seed!(d::AbstractVector{<:HyperDual{N1, N2}}, x, seeds, block_i, block_j) where {N1, N2}
     d .= HyperDual{N1, N2}.(x)
-    index_i = (block_i - 1) * N1 + 1
-    index_j = (block_j - 1) * N2 + 1
-    range_i = index_i:min(length(x), (index_i + N1 - 1))
-    range_j = index_j:min(length(x), (index_j + N2 - 1))
+    range_i = block_range(block_i, N1, axes(x, 1))
+    range_j = block_range(block_j, N2, axes(x, 1))
     chunks_i = length(range_i)
     chunks_j = length(range_j)
 
@@ -64,17 +67,18 @@ end
     x isa Number || throw(error("expected a scalar to be returned from function passed to `hessian`"))
 
 function extract_hessian!(H::AbstractMatrix, v::HyperDual)
-    Base.require_one_based_indexing(H)
-    @inbounds for i in 1:size(H, 2)
-        H[:, i] .= Tuple(v.ϵ12[i])
+    @inbounds for (icol, col) in enumerate(axes(H, 2))
+        H[:, col] .= Tuple(v.ϵ12[icol])
     end
     return H
 end
 
 function symmetrize!(H::AbstractMatrix)
-    Base.require_one_based_indexing(H)
-    for i in 1:size(H, 1)
-        for j in i:size(H, 2)
+    ax1, ax2 = axes(H, 1), axes(H, 2)
+    @inbounds for i_pos in 1:length(ax1)
+        i = ax1[i_pos]
+        for j_pos in i_pos:length(ax2)
+            j = ax2[j_pos]
             H[j, i] = H[i, j]
         end
     end
@@ -82,25 +86,19 @@ function symmetrize!(H::AbstractMatrix)
 end
 
 function extract_hessian!(H::AbstractMatrix, v::HyperDual{N1, N2}, block_i::Int, block_j::Int) where {N1, N2}
-    index_i = (block_i - 1) * N1 + 1
-    index_j = (block_j - 1) * N2 + 1
-    range_i = index_i:(index_i + N1 - 1)
-    range_j = index_j:(index_j + N2 - 1)
+    range_i = block_range(block_i, N1, axes(H, 1))
+    range_j = block_range(block_j, N2, axes(H, 2))
 
     for (I, i) in enumerate(range_i)
         for (J, j) in enumerate(range_j)
-            if checkbounds(Bool, H, i, j)
-                H[i, j] = v.ϵ12[I][J]
-            end
+            H[i, j] = v.ϵ12[I][J]
         end
     end
     return H
 end
 
 function extract_gradient!(G::AbstractVector, v::HyperDual{N1, N2}, block_i::Int) where {N1, N2}
-    Base.require_one_based_indexing(G)
-    index_i = (block_i - 1) * N1 + 1
-    range_i = index_i:min(length(G), (index_i + N1 - 1))
+    range_i = block_range(block_i, N1, axes(G, 1))
     for (I, i) in enumerate(range_i)
         G[i] = v.ϵ1[I]
     end
@@ -112,7 +110,7 @@ function hessian(f, x::Real)
     dual = HyperDual(x, one_seed, one_seed)
     v = f(dual)
     check_scalar(v)
-    return @inbounds v.ϵ12[1][1]
+    return v.ϵ12[1][1]
 end
 
 hessian(f::F, x::AbstractVector) where {F} = hessian!(similar(x, axes(x, 1), axes(x, 1)), f, x, HessianConfig(x))
@@ -244,8 +242,7 @@ end
 end
 
 @inline function seed_hvp_dir!(d::AbstractVector{<:HyperDual{N1, 1}}, x, seeds, v, block_i::Int) where {N1}
-    index_i = (block_i - 1) * N1 + 1
-    range_i = index_i:min(length(x), (index_i + N1 - 1))
+    range_i = block_range(block_i, N1, axes(x, 1))
     chunks_i = length(range_i)
 
     # Seed ε₁ block rows without creating views
