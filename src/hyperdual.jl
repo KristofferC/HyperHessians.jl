@@ -79,6 +79,10 @@ function HyperDual(v::T1, ϵ1::ϵT{N1, T2}, ϵ2::ϵT{N2, T2}, ϵ12::NTuple{N1, �
     return HyperDual(T(v), to_ϵ(ϵT{N1, T}, ϵ1), to_ϵ(ϵT{N2, T}, ϵ2), convert_cross(ϵT{N2, T}, ϵ12))
 end
 
+@inline mapϵ12(f, h::HyperDual{N1, N2}) where {N1, N2} = ntuple(i -> f(h.ϵ12[i]), Val(N1))
+@inline mapϵ12(f, h1::HyperDual{N1, N2}, h2::HyperDual{N1, N2}) where {N1, N2} =
+    ntuple(i -> f(h1.ϵ12[i], h2.ϵ12[i]), Val(N1))
+
 Base.promote_rule(::Type{HyperDual{N1, N2, T1}}, ::Type{HyperDual{N1, N2, T2}}) where {N1, N2, T1, T2} =
     HyperDual{N1, N2, promote_type(T1, T2)}
 Base.promote_rule(::Type{HyperDual{N1, N2, T1}}, ::Type{T2}) where {N1, N2, T1, T2 <: Real} =
@@ -99,32 +103,31 @@ Base.zero(::HyperDual{N1, N2, T}) where {N1, N2, T} = zero(HyperDual{N1, N2, T})
 Base.float(h::HyperDual{N1, N2, T}) where {N1, N2, T} = convert(HyperDual{N1, N2, float(T)}, h)
 
 @inline Base.:(-)(h::HyperDual{N1, N2}) where {N1, N2} =
-    HyperDual(-h.v, ⊟(h.ϵ1), ⊟(h.ϵ2), ntuple(i -> ⊟(h.ϵ12[i]), Val(N1)))
+    HyperDual(-h.v, ⊟(h.ϵ1), ⊟(h.ϵ2), mapϵ12(⊟, h))
 @inline Base.:(+)(h::HyperDual) = h
 
 @inline Base.:+(h1::HyperDual{N1, N2, T}, h2::HyperDual{N1, N2, T}) where {N1, N2, T} =
-    HyperDual(h1.v + h2.v, h1.ϵ1 ⊕ h2.ϵ1, h1.ϵ2 ⊕ h2.ϵ2, ntuple(i -> h1.ϵ12[i] ⊕ h2.ϵ12[i], Val(N1)))
+    HyperDual(h1.v + h2.v, h1.ϵ1 ⊕ h2.ϵ1, h1.ϵ2 ⊕ h2.ϵ2, mapϵ12(⊕, h1, h2))
 @inline Base.:+(h1::HyperDual{N1, N2, T1}, h2::HyperDual{N1, N2, T2}) where {N1, N2, T1, T2} = +(promote(h1, h2)...)
 @inline Base.:+(h::HyperDual{N1, N2}, r::Real) where {N1, N2} =
     HyperDual(h.v + r, h.ϵ1, h.ϵ2, h.ϵ12)
+@inline Base.:+(r::Real, h::HyperDual{N1, N2}) where {N1, N2} =
+    HyperDual(r + h.v, h.ϵ1, h.ϵ2, h.ϵ12)
 
 @inline Base.:-(h1::HyperDual{N1, N2, T}, h2::HyperDual{N1, N2, T}) where {N1, N2, T} =
-    HyperDual(h1.v - h2.v, h1.ϵ1 ⊖ h2.ϵ1, h1.ϵ2 ⊖ h2.ϵ2, ntuple(i -> h1.ϵ12[i] ⊖ h2.ϵ12[i], Val(N1)))
+    HyperDual(h1.v - h2.v, h1.ϵ1 ⊖ h2.ϵ1, h1.ϵ2 ⊖ h2.ϵ2, mapϵ12(⊖, h1, h2))
 @inline Base.:-(h1::HyperDual{N1, N2, T1}, h2::HyperDual{N1, N2, T2}) where {N1, N2, T1, T2} = -(promote(h1, h2)...)
 @inline Base.:-(h::HyperDual{N1, N2}, r::Real) where {N1, N2} =
     HyperDual(h.v - r, h.ϵ1, h.ϵ2, h.ϵ12)
-
-@inline Base.:+(r::Real, h::HyperDual{N1, N2}) where {N1, N2} =
-    HyperDual(r + h.v, h.ϵ1, h.ϵ2, h.ϵ12)
 @inline Base.:-(r::Real, h::HyperDual{N1, N2}) where {N1, N2} =
-    HyperDual(r - h.v, ⊟(h.ϵ1), ⊟(h.ϵ2), ntuple(i -> ⊟(h.ϵ12[i]), Val(N1)))
+    HyperDual(r - h.v, ⊟(h.ϵ1), ⊟(h.ϵ2), mapϵ12(⊟, h))
 
 @inline Base.:*(h::HyperDual{N1, N2}, r::Real) where {N1, N2} =
-    HyperDual(h.v * r, h.ϵ1 ⊙ r, h.ϵ2 ⊙ r, ntuple(i -> h.ϵ12[i] ⊙ r, Val(N1)))
+    HyperDual(h.v * r, h.ϵ1 ⊙ r, h.ϵ2 ⊙ r, mapϵ12(ϵ -> ϵ ⊙ r, h))
 @inline Base.:/(h::HyperDual{N1, N2}, r::Real) where {N1, N2} =
-    HyperDual(h.v / r, h.ϵ1 ⊘ r, h.ϵ2 ⊘ r, ntuple(i -> h.ϵ12[i] ⊘ r, Val(N1)))
+    HyperDual(h.v / r, h.ϵ1 ⊘ r, h.ϵ2 ⊘ r, mapϵ12(ϵ -> ϵ ⊘ r, h))
 @inline Base.:(*)(r::Real, h::HyperDual{N1, N2}) where {N1, N2} =
-    HyperDual(r * h.v, r ⊙ h.ϵ1, r ⊙ h.ϵ2, ntuple(i -> r ⊙ h.ϵ12[i], Val(N1)))
+    HyperDual(r * h.v, r ⊙ h.ϵ1, r ⊙ h.ϵ2, mapϵ12(ϵ -> r ⊙ ϵ, h))
 
 @inline Base.:(/)(r::Real, h::HyperDual{N1, N2}) where {N1, N2} = r * inv(h)
 @inline Base.:(/)(h1::HyperDual{N1, N2, T}, h2::HyperDual{N1, N2, T}) where {N1, N2, T} = h1 * inv(h2)
