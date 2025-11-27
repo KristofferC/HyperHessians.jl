@@ -1,6 +1,6 @@
-struct HessianConfig{D <: AbstractVector{<:HyperDual}, S}
-    duals::D
-    seeds::S
+mutable struct HessianConfig{D <: AbstractVector{<:HyperDual}, S}
+    const duals::D
+    const seeds::S
 end
 (chunksize(cfg::HessianConfig)::Int) = length(cfg.seeds)
 
@@ -17,9 +17,9 @@ end
 
 Configuration for Hessian–vector products.
 """
-struct DirectionalHVPConfig{D <: AbstractVector{<:HyperDual}, S}
-    duals::D
-    seeds::S
+mutable struct DirectionalHVPConfig{D <: AbstractVector{<:HyperDual}, S}
+    const duals::D
+    const seeds::S
 end
 (chunksize(cfg::DirectionalHVPConfig)::Int) = length(cfg.seeds)
 
