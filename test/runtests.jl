@@ -1,9 +1,11 @@
-using HyperHessians: HyperHessians, hessian, hessian!, hessiangradvalue, hessiangradvalue!, hvp, hvp!, Chunk, HessianConfig, DirectionalHVPConfig, HyperDual
+using HyperHessians: HyperHessians, hessian, hessian!, hessiangradvalue, hessiangradvalue!, hvp, hvp!, Chunk, HessianConfig, DirectionalHVPConfig, HyperDual, ϵT
 using DiffTests
 using ForwardDiff
 using DiffResults
 using Test
-using SIMD
+if HyperHessians.USE_SIMD
+    using SIMD
+end
 using StaticArrays
 using LogExpFunctions
 using SpecialFunctions

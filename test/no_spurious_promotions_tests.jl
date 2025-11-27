@@ -1,5 +1,6 @@
 @testset "No spurious promotions primitives" begin
-    h = HyperDual(0.8f0, Vec(0.7f0, 0.7f0), Vec(0.7f0, 0.7f0))
+    seed = ϵT{2, Float32}((0.7f0, 0.7f0))
+    h = HyperDual(0.8f0, seed, seed)
     for (fsym, _, _) in HyperHessians.DIFF_RULES
         hv = fsym in (:asec, :acsc, :asecd) ? inv(h) : h
         f = @eval $fsym

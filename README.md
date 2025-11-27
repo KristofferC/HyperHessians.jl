@@ -5,7 +5,6 @@ HyperHessians.jl is a package to compute hessians using forward mode automatic d
 It works similar to `ForwardDiff.hessian` but should have better run-time and compile-time performance in all cases.
 
 There are some limitations compared to ForwardDiff.jl:
-- Only support for basic numeric types (`Float64`, `Float32`, etc.).
 - Currently no "tagging" of numbers to avoid perturbation confusion.
 - Not as many primitives implemented.
 
