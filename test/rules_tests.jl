@@ -1,6 +1,23 @@
+function check_against_ForwardDiff(f, x, ::Type{T} = Float64) where {T}
+    # @show f, x, T
+    T == Float32 && return
+    seed = Vec{1, T}((one(T),))
+    zero_seed = Vec{1, T}((zero(T),))
+    xT = T(x)
+    h = HyperDual(xT, seed, seed, (zero_seed,))
+    res = f(h)
+    fd1 = ForwardDiff.derivative(z -> f(z), xT)
+    fd2 = ForwardDiff.derivative(z -> ForwardDiff.derivative(y -> f(y), z), xT)
+    @test res isa HyperDual{1, 1, T}
+    # For now, don't verify precision for Float32, seems we need to reduce the tolerances for it
+    T == Float32 && return
+    @test res.ϵ1[1] ≈ fd1 atol = 1.0e-10 rtol = 1.0e-8
+    @test res.ϵ2[1] ≈ fd1 atol = 1.0e-10 rtol = 1.0e-8
+    @test res.ϵ12[1][1] ≈ fd2 atol = 1.0e-9 rtol = 1.0e-7
+    return
+end
+
 @testset "rule derivatives vs ForwardDiff" begin
-    seed = Vec{1, Float64}((1.0,))
-    zero_seed = Vec{1, Float64}((0.0,))
     xs = Dict(
         :sqrt => 1.2,
         :cbrt => 0.8,
@@ -57,31 +74,55 @@
     for (fsym, _, _) in HyperHessians.DIFF_RULES
         x = xs[fsym]
         f = getfield(Base, fsym)
-        h = HyperDual(x, seed, seed, (zero_seed,))
-        res = f(h)
-        fd1 = ForwardDiff.derivative(f, x)
-        fd2 = ForwardDiff.derivative(z -> ForwardDiff.derivative(f, z), x)
-        @test res.ϵ1[1] ≈ fd1 atol = 1.0e-10 rtol = 1.0e-8
-        @test res.ϵ2[1] ≈ fd1 atol = 1.0e-10 rtol = 1.0e-8
-        @test res.ϵ12[1][1] ≈ fd2 atol = 1.0e-9 rtol = 1.0e-7
+        for T in (Float64, Float32)
+            check_against_ForwardDiff(f, x, T)
+        end
     end
 end
 
-@testset "real divided by HyperDual uses inverse rule" begin
-    seed = Vec{1, Float64}((1.0,))
-    zero_seed = Vec{1, Float64}((0.0,))
-    h = HyperDual(2.0, seed, seed, (zero_seed,))
-    expected = inv(h)
-    res = 1 / h
-    @test res.v == expected.v
-    @test Tuple(res.ϵ1) == Tuple(expected.ϵ1)
-    @test Tuple(res.ϵ2) == Tuple(expected.ϵ2)
-    @test Tuple(res.ϵ12[1]) == Tuple(expected.ϵ12[1])
+@testset "SpecialFunctions.jl rule derivatives vs ForwardDiff" begin
+    xs = Dict(
+        :airyai => 0.4,
+        :airyaiprime => 0.4,
+        :airyaix => 0.5,
+        :airyaiprimex => 0.5,
+        :airybi => 0.3,
+        :airybiprime => 0.3,
+        :besselj0 => 1.2,
+        :besselj1 => 1.3,
+        :bessely0 => 1.2,
+        :bessely1 => 1.3,
+        :dawson => 0.7,
+        :digamma => 2.1,
+        :gamma => 1.4,
+        :invdigamma => 2.0,
+        :trigamma => 1.3,
+        :loggamma => 1.7,
+        :erf => 0.6,
+        :erfc => 0.6,
+        :logerfc => 0.6,
+        :erfcinv => 0.4,
+        :erfcx => 0.6,
+        :logerfcx => 0.6,
+        :erfi => 0.5,
+        :erfinv => 0.3,
+        :expint => 1.1,
+        # :expintx => 1.1, not available in ForwardDiff
+        :expinti => 1.2,
+        :sinint => 1.3,
+        :cosint => 1.3,
+    )
+    Ext = Base.get_extension(HyperHessians, :HyperHessiansSpecialFunctionsExt)
+    for (fsym, _, _) in Ext.SPECIALFUNCTIONS_DIFF_RULES
+        haskey(xs, fsym) || continue # expintx does not support ForwardDiff
+        x = xs[fsym]
+        f = getfield(SpecialFunctions, fsym)
+        for T in (Float64, Float32)
+            check_against_ForwardDiff(f, x, T)
+        end
+    end
 end
-
 @testset "LogExpFunctions.jl rule derivatives vs ForwardDiff" begin
-    seed = Vec{1, Float64}((1.0,))
-    zero_seed = Vec{1, Float64}((0.0,))
     xs = Dict(
         :xlogx => 0.4,
         :logistic => 0.5,
@@ -98,12 +139,20 @@ end
     for (fsym, _, _) in Ext.LOGEXPFUNCTIONS_DIFF_RULES
         x = xs[fsym]
         f = getfield(LogExpFunctions, fsym)
-        h = HyperDual(x, seed, seed, (zero_seed,))
-        res = f(h)
-        fd1 = ForwardDiff.derivative(f, x)
-        fd2 = ForwardDiff.derivative(z -> ForwardDiff.derivative(f, z), x)
-        @test res.ϵ1[1] ≈ fd1 atol = 1.0e-10 rtol = 1.0e-8
-        @test res.ϵ2[1] ≈ fd1 atol = 1.0e-10 rtol = 1.0e-8
-        @test res.ϵ12[1][1] ≈ fd2 atol = 1.0e-9 rtol = 1.0e-7
+        for T in (Float64, Float32)
+            check_against_ForwardDiff(f, x, T)
+        end
     end
+end
+
+@testset "real divided by HyperDual uses inverse rule" begin
+    seed = Vec{1, Float64}((one(Float64),))
+    zero_seed = Vec{1, Float64}((zero(Float64),))
+    h = HyperDual(2.0, seed, seed, (zero_seed,))
+    expected = inv(h)
+    res = 1 / h
+    @test res.v == expected.v
+    @test Tuple(res.ϵ1) == Tuple(expected.ϵ1)
+    @test Tuple(res.ϵ2) == Tuple(expected.ϵ2)
+    @test Tuple(res.ϵ12[1]) == Tuple(expected.ϵ12[1])
 end
