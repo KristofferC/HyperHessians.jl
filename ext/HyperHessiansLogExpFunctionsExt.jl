@@ -5,18 +5,20 @@ using HyperHessians: changeprecision, rule_expr, HyperDual, ⊗
 using CommonSubexpressions: cse
 using LogExpFunctions
 
+# runic: off
 const LOGEXPFUNCTIONS_DIFF_RULES = [
-    (:xlogx, :(1 + log(x)), :(1 / x))
-    (:logistic, :(v * (1 - v)), :(f′ * (1 - 2 * v)))
-    (:logit, :(inv(x * (1 - x))), :(f′ * f′ * (2 * x - 1)))
-    (:log1psq, :(2 * x / (1 + x^2)), :(-(2 * (x^2 - 1)) / (1 + x^2)^2))
-    (:log1pexp, :(logistic(x)), :(f′ * (1 - f′)))
-    (:log1mexp, :(-exp(x - v)), :(-f′ * f′ * exp(-x)))
-    (:log2mexp, :(-exp(x - v)), :(-f′ * f′ * 2 * exp(-x)))
-    (:logexpm1, :(exp(x - v)), :(-f′ * f′ * exp(-x)))
-    (:log1pmx, :(-x / (1 + x)), :(-1 / (1 + x)^2))
-    (:logmxp1, :((1 - x) / x), :(-1 / x^2))
+    (:xlogx   , :(1 + log(x))       , :(1 / x))
+    (:logistic, :(f * (1 - f))      , :(f′ * (1 - 2 * f)))
+    (:logit   , :(inv(x * (1 - x))) , :(f′ * f′ * (2 * x - 1)))
+    (:log1psq , :(2 * x / (1 + x^2)), :(-(2 * (x^2 - 1)) / (1 + x^2)^2))
+    (:log1pexp, :(logistic(x))      , :(f′ * (1 - f′)))
+    (:log1mexp, :(-exp(x - f))      , :(-f′ * f′ * exp(-x)))
+    (:log2mexp, :(-exp(x - f))      , :(-f′ * f′ * 2 * exp(-x)))
+    (:logexpm1, :(exp(x - f))       , :(-f′ * f′ * exp(-x)))
+    (:log1pmx , :(-x / (1 + x))     , :(-1 / (1 + x)^2))
+    (:logmxp1 , :((1 - x) / x)      , :(-1 / x^2))
 ]
+# runic: on
 
 for (i, rule) in enumerate(LOGEXPFUNCTIONS_DIFF_RULES)
     prec_f′ = changeprecision(rule[2])
