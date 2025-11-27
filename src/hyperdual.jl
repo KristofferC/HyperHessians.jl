@@ -34,50 +34,34 @@ This gives us the first and second derivatives via f' and f''.
 =#
 
 # Allow non-square partial lengths: ϵ₁ ∈ ℝᴺ¹, ϵ₂ ∈ ℝᴺ².
-# const USE_TUPLES = get(ENV, "HYPERHESSIANS_USE_TUPLES", "false") in ("1", "true", "yes", "on")
-const USE_TUPLES = true
-@static if USE_TUPLES
-    const ϵT{N, T} = NTuple{N, T}
-else
+if USE_SIMD
     const ϵT{N, T} = Vec{N, T}
+else
+    const ϵT{N, T} = NTuple{N, T}
 end
 
+# Tuple implementations (default)
 @inline zero_ϵ(::Type{NTuple{N, T}}) where {N, T} = ntuple(_ -> zero(T), Val(N))
-@inline zero_ϵ(::Type{Vec{N, T}}) where {N, T} = zero(Vec{N, T})
 @inline zero_ϵ(x::NTuple{N, T}) where {N, T} = zero_ϵ(NTuple{N, T})
-@inline zero_ϵ(::Vec{N, T}) where {N, T} = zero(Vec{N, T})
+@inline to_ϵ(::Type{NTuple{N, T}}, x) where {N, T} = convert(NTuple{N, T}, x)
+@inline convert_cross(::Type{NTuple{N, T}}, xs::NTuple{M, Any}) where {N, M, T} =
+    ntuple(i -> to_ϵ(NTuple{N, T}, xs[i]), Val(M))
 
-@inline to_ϵ(::Type{ϵT{N, T}}, x) where {N, T} = convert(ϵT{N, T}, x)
-
-@inline ⊕(a::Vec, b::Vec) = a + b
 @inline ⊕(a::Real, b::Real) = a + b
 @inline ⊕(a::NTuple{N, A}, b::NTuple{N, B}) where {N, A, B} = ntuple(i -> ⊕(a[i], b[i]), Val(N))
-
-@inline ⊟(a::Vec) = -a
 @inline ⊟(a::Real) = -a
 @inline ⊟(a::NTuple{N, A}) where {N, A} = ntuple(i -> ⊟(a[i]), Val(N))
-
 @inline ⊖(a, b) = ⊕(a, ⊟(b))
-
-@inline ⊙(a::Vec, r::Real) = a * r
-@inline ⊙(r::Real, a::Vec) = r * a
 @inline ⊙(a::Real, r::Real) = a * r
 @inline ⊙(a::NTuple{N, A}, r::Real) where {N, A} = ntuple(i -> ⊙(a[i], r), Val(N))
 @inline ⊙(r::Real, a::NTuple{N, A}) where {N, A} = ntuple(i -> ⊙(r, a[i]), Val(N))
-
-@inline ⊘(a::Vec, r::Real) = a / r
 @inline ⊘(a::Real, r::Real) = a / r
 @inline ⊘(a::NTuple{N, A}, r::Real) where {N, A} = ntuple(i -> ⊘(a[i], r), Val(N))
-
-@inline convert_cross(::Type{ϵT{N, T}}, xs::NTuple{M, Any}) where {N, M, T} =
-    ntuple(i -> to_ϵ(ϵT{N, T}, xs[i]), Val(M))
-
-@inline _muladd(a::Real, b::Vec{N, T}, c::Vec{N, T}) where {N, T} = muladd(a, b, c)
-@inline _muladd(a::Vec{N, T}, b::Real, c::Vec{N, T}) where {N, T} = muladd(a, b, c)
 @inline _muladd(a::Real, b::NTuple{N, A}, c::NTuple{N, C}) where {N, A, C} =
     ntuple(i -> muladd(a, b[i], c[i]), Val(N))
 @inline _muladd(a::NTuple{N, A}, b::Real, c::NTuple{N, C}) where {N, A, C} =
     ntuple(i -> muladd(a[i], b, c[i]), Val(N))
+@inline ⊗(t1::NTuple{N1, T1}, t2::NTuple{N2, T2}) where {N1, N2, T1, T2} = ntuple(i -> ⊙(t2, t1[i]), Val(N1))
 
 struct HyperDual{N1, N2, T} <: Real
     v::T
@@ -178,10 +162,6 @@ end
     )
 end
 @inline Base.muladd(x::Real, y::Real, z::HyperDual{N1, N2, T}) where {N1, N2, T} = muladd(x, y, z.v) + z - z.v
-
-unsafe_getindex(v::SIMD.Vec, i::SIMD.IntegerTypes) = SIMD.Intrinsics.extractelement(v.data, i - 1)
-@inline ⊗(v1::Vec{N1, T}, v2::Vec{N2, T}) where {N1, N2, T} = ntuple(i -> unsafe_getindex(v1, i) * v2, Val(N1))
-@inline ⊗(t1::NTuple{N1, T1}, t2::NTuple{N2, T2}) where {N1, N2, T1, T2} = ntuple(i -> ⊙(t2, t1[i]), Val(N1))
 
 @inline Base.:(*)(h1::HyperDual{N1, N2, T1}, h2::HyperDual{N1, N2, T2}) where {N1, N2, T1, T2} = *(promote(h1, h2)...)
 @inline function Base.:(*)(h1::HyperDual{N1, N2, T}, h2::HyperDual{N1, N2, T}) where {N1, N2, T}
