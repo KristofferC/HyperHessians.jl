@@ -57,14 +57,35 @@ seed_epsilon_1(d::HyperDual{N1, N2, T}, ϵ1) where {N1, N2, T} = HyperDual{N1, N
 seed_epsilon_2(d::HyperDual{N1, N2, T}, ϵ2) where {N1, N2, T} = HyperDual{N1, N2, T}(d.v, d.ϵ1, ϵ2, d.ϵ12)
 
 @inline function seed!(d::AbstractVector{<:HyperDual{N1, N2}}, x, seeds, block_i, block_j) where {N1, N2}
-    d .= HyperDual{N1, N2}.(x)
-    range_i = block_range(block_i, N1, axes(x, 1))
-    range_j = block_range(block_j, N2, axes(x, 1))
-    chunks_i = length(range_i)
-    chunks_j = length(range_j)
+    # Full vector path: single block, no need to zero then overwrite.
+    if block_i == 1 && block_j == 1 && N1 == length(x) && N2 == length(x)
+        @inbounds for idx in eachindex(x)
+            seed = seeds[idx]
+            d[idx] = HyperDual(x[idx], seed, seed)
+        end
+        return d
+    end
 
-    d[range_i] .= seed_epsilon_1.(view(d, range_i), view(seeds, 1:chunks_i))
-    d[range_j] .= seed_epsilon_2.(view(d, range_j), view(seeds, 1:chunks_j))
+    d .= HyperDual{N1, N2}.(x)
+
+    range_i = block_range(block_i, N1, axes(x, 1))
+    if block_i == block_j
+        @inbounds for k in 1:length(range_i)
+            idx = range_i[k]
+            seed = seeds[k]
+            d[idx] = HyperDual(x[idx], seed, seed)
+        end
+    else
+        @inbounds for k in 1:length(range_i)
+            idx = range_i[k]
+            d[idx] = seed_epsilon_1(d[idx], seeds[k])
+        end
+        range_j = block_range(block_j, N2, axes(x, 1))
+        @inbounds for k in 1:length(range_j)
+            idx = range_j[k]
+            d[idx] = seed_epsilon_2(d[idx], seeds[k])
+        end
+    end
     return d
 end
 
