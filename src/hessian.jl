@@ -2,7 +2,12 @@ mutable struct HessianConfig{D <: AbstractVector{<:HyperDual}, S}
     const duals::D
     const seeds::S
 end
-(chunksize(cfg::HessianConfig)::Int) = length(cfg.seeds)
+@inline _chunksize(::Type{<:NTuple{N}}) where {N} = N
+if USE_SIMD
+    @inline _chunksize(::Type{<:Vec{N}}) where {N} = N
+end
+@inline _chunksize(seeds) = something(_chunksize(eltype(seeds)), length(seeds))
+(chunksize(cfg::HessianConfig)::Int) = _chunksize(cfg.seeds)::Int
 
 function HessianConfig(x::AbstractVector{T}, chunk = Chunk(x)::Chunk) where {T}
     N = chunksize(chunk)
@@ -21,7 +26,7 @@ mutable struct DirectionalHVPConfig{D <: AbstractVector{<:HyperDual}, S}
     const duals::D
     const seeds::S
 end
-(chunksize(cfg::DirectionalHVPConfig)::Int) = length(cfg.seeds)
+(chunksize(cfg::DirectionalHVPConfig)::Int) = _chunksize(cfg.seeds)
 
 function DirectionalHVPConfig(x::AbstractVector{T}, chunk = Chunk(x)::Chunk) where {T}
     N = chunksize(chunk)
