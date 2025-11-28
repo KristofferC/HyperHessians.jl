@@ -1,11 +1,11 @@
 # From HyperDualNumbers
 # runic: off
 const DIFF_RULES = [
-    (:sqrt     , :(1 / 2 / f)                                     , :(-f′ / 2 / x))
-    (:cbrt     , :(1 / 3 / f^2)                                   , :(-2 * f′ / 3 / x))
+    (:sqrt     , :(1 / 2 / f)                                     , :(-2 * f′^3))
+    (:cbrt     , :(1 / 3 / f^2)                                   , :(-6 * f * f′^3))
     (:abs2     , :(2 * x)                                         , :(2))
     (:abs      , :(signbit(x) ? -one(x) : one(x))                 , :(0))
-    (:inv      , :(-f^2)                                          , :(2 * f^3))
+    (:inv      , :(-f^2)                                          , :(-2 * f′ * f))
     (:log      , :(inv(x))                                        , :(-f′^2))
     (:log10    , :(inv(x) / log(10))                              , :(-log(10) * f′^2))
     (:log2     , :(inv(x) / log(2))                               , :(-log(2) * f′^2))

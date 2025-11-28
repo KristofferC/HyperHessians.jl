@@ -18,7 +18,7 @@ end
 
 # runic: off
 const NANMATH_DIFF_RULES = [
-    (:sqrt  , :(1 / 2 / f)                                     , :(-f′ / 2 / x))
+    (:sqrt  , :(1 / 2 / f)                                     , :(-2 * f′^3))
     (:sin   , :(NaNMath.cos(x))                                , :(-f))
     (:cos   , :(-NaNMath.sin(x))                               , :(-f))
     (:tan   , :(1 + f^2)                                       , :(2 * f′ * f))
