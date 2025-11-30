@@ -115,7 +115,7 @@ end
 
 for (f, f′, f′′) in DIFF_RULES
     expr = rule_expr(f, f′, f′′)
-    cse_expr = cse(expr; warn = false)
+    cse_expr = cse(binarize(expr); warn = false)
     @eval @inline function Base.$f(h::HyperDual{N1, N2, T}) where {N1, N2, T}
         x = h.v
         $cse_expr
@@ -136,7 +136,7 @@ function debug_rule_cse(io::IO = stdout; warn::Bool = false)
         expr = rule_expr(f, f′, f′′)
         println(io, "\n### ", f, " ###")
         println(io, "before CSE:\n", expr)
-        println(io, "\nafter CSE:\n", cse(expr; warn))
+        println(io, "\nafter CSE:\n", cse(binarize(expr); warn))
     end
     return nothing
 end
@@ -151,7 +151,7 @@ function dump_rule_cse(dir::AbstractString = "cse_dump"; warn::Bool = false)
     mkpath(dir)
     for (f, f′, f′′) in DIFF_RULES
         expr = rule_expr(f, f′, f′′)
-        cse_expr = cse(expr; warn)
+        cse_expr = cse(binarize(expr); warn)
         before_str = sprint(show, MIME"text/plain"(), expr)
         after_str = sprint(show, MIME"text/plain"(), cse_expr)
         open(joinpath(dir, string(f) * ".jl"), "w") do io
