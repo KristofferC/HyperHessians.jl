@@ -6,9 +6,10 @@ end
 
 Chunk(x::AbstractArray) = Chunk(length(x), eltype(x))
 
-maxchunksize(::Type{Float64}) = 4
+# All 8 for now...
+maxchunksize(::Type{Float64}) = 8
 maxchunksize(::Type{Float32}) = 8
-maxchunksize(::Type{T}) where {T} = 4
+maxchunksize(::Type{T}) where {T} = 8
 
 function pickchunksize(input_length, ::Type{T}) where {T}
     max_size = maxchunksize(T)
