@@ -14,7 +14,7 @@ if VERSION >= v"1.11.0-"
 end
 
 
-using CommonSubexpressions: cse
+using CommonSubexpressions: cse, binarize
 
 include("hyperdual.jl")
 if USE_SIMD
