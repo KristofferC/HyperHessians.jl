@@ -10,7 +10,7 @@ end
 
 
 if VERSION >= v"1.11.0-"
-    eval(Meta.parse("public hessian, hessian!, hessiangradvalue, hessiangradvalue!, hvp, hvp!, HessianConfig, DirectionalHVPConfig, Chunk"))
+    eval(Meta.parse("public hessian, hessian!, hessiangradvalue, hessiangradvalue!, hvp, hvp!, HessianConfig, DirectionalHVPConfig, Chunk, pick_chunksize"))
 end
 
 
@@ -23,5 +23,6 @@ end
 include("rules.jl")
 include("chunks.jl")
 include("hessian.jl")
+include("chunk_picker.jl")
 
 end # module
