@@ -171,9 +171,9 @@ end
     r = h1.v * h2.v
     ϵ1 = _muladd(h1.v, h2.ϵ1, h1.ϵ1 ⊙ h2.v)
     ϵ2 = _muladd(h1.v, h2.ϵ2, h1.ϵ2 ⊙ h2.v)
-    ϵ12_1 = h1.ϵ1 ⊗ h2.ϵ2
-    ϵ12_2 = h2.ϵ1 ⊗ h1.ϵ2
-    ϵ12 = ntuple(i -> _muladd(h1.v, h2.ϵ12[i], _muladd(h1.ϵ12[i], h2.v, ϵ12_1[i] ⊕ ϵ12_2[i])), Val(N1))
+    # Inline outer products with FMA: h1.ϵ1[i]*h2.ϵ2 + h2.ϵ1[i]*h1.ϵ2
+    @inline g(i) = _muladd(h1.v, h2.ϵ12[i], _muladd(h1.ϵ12[i], h2.v, _muladd(h1.ϵ1[i], h2.ϵ2, h2.ϵ1[i] ⊙ h1.ϵ2)))
+    ϵ12 = ntuple(g, Val(N1))
     return HyperDual(r, ϵ1, ϵ2, ϵ12)
 end
 @inline Base.literal_pow(::typeof(^), x::HyperDual, ::Val{0}) = one(typeof(x))
