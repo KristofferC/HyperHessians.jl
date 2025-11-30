@@ -1,7 +1,7 @@
 module HyperHessiansLogExpFunctionsExt
 
 using HyperHessians
-using HyperHessians: changeprecision, rule_expr, HyperDual, ⊗, ⊙, ⊕
+using HyperHessians: changeprecision, rule_expr, chain_rule_dual, AbstractHyperDualNumber
 using CommonSubexpressions: cse
 using LogExpFunctions
 
@@ -29,11 +29,10 @@ end
 for (f, f′, f′′) in LOGEXPFUNCTIONS_DIFF_RULES
     expr = rule_expr(f, f′, f′′)
     cse_expr = cse(expr; warn = false)
-    @eval @inline function LogExpFunctions.$f(h::HyperDual{N1, N2, T}) where {N1, N2, T}
+    @eval @inline function LogExpFunctions.$f(h::AbstractHyperDualNumber{N1, N2, T}) where {N1, N2, T}
         x = h.v
         $cse_expr
-        x23 = (f′′ ⊙ h.ϵ1) ⊗ h.ϵ2
-        return HyperDual(f, h.ϵ1 ⊙ f′, h.ϵ2 ⊙ f′, ntuple(i -> h.ϵ12[i] ⊙ f′ ⊕ x23[i], Val(N1)))
+        return chain_rule_dual(h, f, f′, f′′)
     end
 end
 

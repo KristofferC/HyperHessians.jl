@@ -5,7 +5,8 @@ struct Result
     f::Function
     n::Int
     time_fd::Union{Float64, Nothing}
-    timd_fh::Float64
+    time_fh::Float64
+    time_fh_simd::Float64
 end
 
 function run_benchmark(; compare_forwarddiff::Bool = true)
@@ -13,7 +14,7 @@ function run_benchmark(; compare_forwarddiff::Bool = true)
     for f in (DiffTests.ackley, DiffTests.rosenbrock_1) # DiffTests.VECTOR_TO_NUMBER_FUNCS
         @info f
         # ForwardDiff and HyperHessians should use the same default chunk size for these sizes
-        for n in (1, 8, 128)
+        for n in (1, 2, 4, 8, 128)
             x = rand(n)
 
             time_fd = nothing
@@ -26,10 +27,15 @@ function run_benchmark(; compare_forwarddiff::Bool = true)
 
             H_fh = similar(x, length(x), length(x))
             cfg_fh = HyperHessians.HessianConfig(x)
-            time_fh = @benchmark HyperHessians.hessian!($H_fh, $f, $x, $cfg_fh)
+            time_fh_bench = @benchmark HyperHessians.hessian!($H_fh, $f, $x, $cfg_fh)
 
-            push!(results, Result(f, n, time_fd, minimum(time_fh.times)))
+            H_fh_simd = similar(x, length(x), length(x))
+            cfg_fh_simd = HyperHessians.HessianConfigSIMD(x)
+            time_fh_simd_bench = @benchmark HyperHessians.hessian!($H_fh_simd, $f, $x, $cfg_fh_simd)
 
+            push!(results, Result(f, n, time_fd, minimum(time_fh_bench.times), minimum(time_fh_simd_bench.times)))
+
+            @test H_fh ≈ H_fh_simd
             if compare_forwarddiff
                 @test H_fd ≈ H_fh
             end
@@ -58,26 +64,27 @@ function print_results(io::IO, results)
     if compare_forwarddiff
         print(
             io, """
-            | Function      | input length | Time ForwardDiff | Time HyperHessians | Speedup |
-            | ------------- | ------------ | ---------------- | ----------------- | --------|
+            | Function      | n | ForwardDiff | HyperHessians | SIMD | Speedup | SIMD Speedup |
+            | ------------- | - | ----------- | ------------- | ---- | ------- | ------------ |
             """
         )
         for r in results
-            ratio = round(r.time_fd / r.timd_fh, sigdigits = 2)
+            ratio = round(r.time_fd / r.time_fh, sigdigits = 2)
+            ratio_simd = round(r.time_fd / r.time_fh_simd, sigdigits = 2)
             println(
                 io,
-                "| `", r.f, "` | ", r.n, " | ", prettytime(r.time_fd), " | ", prettytime(r.timd_fh), " | ", ratio
+                "| `", r.f, "` | ", r.n, " | ", prettytime(r.time_fd), " | ", prettytime(r.time_fh), " | ", prettytime(r.time_fh_simd), " | ", ratio, " | ", ratio_simd
             )
         end
     else
         print(
             io, """
-            | Function      | input length | Time HyperHessians |
-            | ------------- | ------------ | ------------------ |
+            | Function      | n | HyperHessians | SIMD |
+            | ------------- | - | ------------- | ---- |
             """
         )
         for r in results
-            println(io, "| `", r.f, "` | ", r.n, " | ", prettytime(r.timd_fh))
+            println(io, "| `", r.f, "` | ", r.n, " | ", prettytime(r.time_fh), " | ", prettytime(r.time_fh_simd))
         end
     end
     return

@@ -1,62 +1,74 @@
-mutable struct HessianConfig{D <: AbstractVector{<:HyperDual}, S}
+# Config types - unified for both HyperDual and HyperDualSIMD
+mutable struct HessianConfig{D <: AbstractVector{<:AbstractHyperDualNumber}, S}
     const duals::D
     const seeds::S
 end
-@inline _chunksize(::Type{<:NTuple{N}}) where {N} = N
-if USE_SIMD
-    @inline _chunksize(::Type{<:Vec{N}}) where {N} = N
+
+mutable struct DirectionalHVPConfig{D <: AbstractVector{<:AbstractHyperDualNumber}, S}
+    const duals::D
+    const seeds::S
 end
-@inline _chunksize(seeds) = something(_chunksize(eltype(seeds)), length(seeds))
-(chunksize(cfg::HessianConfig)::Int) = _chunksize(cfg.seeds)::Int
+
+@inline _chunksize(::Type{<:NTuple{N}}) where {N} = N
+@inline _chunksize(::Type{Vec{N, T}}) where {N, T} = N
+@inline _chunksize(seeds::AbstractVector) = _chunksize(eltype(seeds))
+chunksize(cfg::HessianConfig) = _chunksize(cfg.seeds)
+chunksize(cfg::DirectionalHVPConfig) = _chunksize(cfg.seeds)
 
 function HessianConfig(x::AbstractVector{T}, chunk = Chunk(x)::Chunk) where {T}
     N = chunksize(chunk)
     N > 0 || throw(ArgumentError(lazy"chunk size must be positive, got $N"))
-    duals = similar(x, HyperDual{N, N, T}) # not Vector
+    duals = similar(x, HyperDual{N, N, T})
     seeds = collect(construct_seeds(NTuple{N, T}))
     return HessianConfig(duals, seeds)
 end
 
-"""
-    DirectionalHVPConfig(x; chunk=Chunk(x))
-
-Configuration for Hessian–vector products.
-"""
-mutable struct DirectionalHVPConfig{D <: AbstractVector{<:HyperDual}, S}
-    const duals::D
-    const seeds::S
+function HessianConfigSIMD(x::AbstractVector{T}, chunk = Chunk(x)::Chunk) where {T}
+    N = chunksize(chunk)
+    N > 0 || throw(ArgumentError(lazy"chunk size must be positive, got $N"))
+    duals = similar(x, HyperDualSIMD{N, N, T})
+    seeds = collect(construct_seeds(Vec{N, T}))
+    return HessianConfig(duals, seeds)
 end
-(chunksize(cfg::DirectionalHVPConfig)::Int) = _chunksize(cfg.seeds)
 
 function DirectionalHVPConfig(x::AbstractVector{T}, chunk = Chunk(x)::Chunk) where {T}
     N = chunksize(chunk)
     N > 0 || throw(ArgumentError(lazy"chunk size must be positive, got $N"))
-    duals = similar(x, HyperDual{N, 1, T}) # directional: one ε₂ lane
+    duals = similar(x, HyperDual{N, 1, T})
     seeds = collect(construct_seeds(NTuple{N, T}))
     return DirectionalHVPConfig(duals, seeds)
 end
 
-@generated function single_seed(::Type{NTuple{N, T}}, ::Val{i}) where {N, T, i}
-    ex = Expr(:tuple, [ifelse(i === j, :(one(T)), :(zero(T))) for j in 1:N]...)
-    if USE_SIMD
-        return :(Vec($(ex)))
-    else
-        return ex
-    end
+function DirectionalHVPConfigSIMD(x::AbstractVector{T}, chunk = Chunk(x)::Chunk) where {T}
+    N = chunksize(chunk)
+    N > 0 || throw(ArgumentError(lazy"chunk size must be positive, got $N"))
+    duals = similar(x, HyperDualSIMD{N, 1, T})
+    seeds = collect(construct_seeds(Vec{N, T}))
+    return DirectionalHVPConfig(duals, seeds)
 end
 
-@generated construct_seeds(::Type{NTuple{N, T}}) where {N, T} =
-    Expr(:tuple, [:(single_seed(NTuple{N, T}, Val{$i}())) for i in 1:N]...)
+construct_seeds(::Type{NTuple{N, T}}) where {N, T} = ntuple(i -> ntuple(j -> ifelse(i == j, one(T), zero(T)), Val(N)), Val(N))
+construct_seeds(::Type{Vec{N, T}}) where {N, T} = ntuple(i -> Vec(ntuple(j -> ifelse(i == j, one(T), zero(T)), Val(N))), Val(N))
+
+# Helpers for initializing duals - dispatch on element type
+@inline _init_dual(::Type{HyperDual{N1, N2, T}}, x, ϵ1, ϵ2) where {N1, N2, T} = HyperDual(x, ϵ1, ϵ2)
+@inline _init_dual(::Type{HyperDualSIMD{N1, N2, T}}, x, ϵ1, ϵ2) where {N1, N2, T} = HyperDualSIMD(x, ϵ1, ϵ2)
+@inline _init_dual_zero(::Type{H}, x) where {H <: AbstractHyperDualNumber} = H(x)
+
+# Helper for HVP direction seeding
+@inline _init_hvp_dual(::Type{HyperDual{N1, 1, T}}, x, ϵ1, v) where {N1, T} = HyperDual(x, ϵ1, (v,))
+@inline _init_hvp_dual(::Type{HyperDualSIMD{N1, 1, T}}, x, ϵ1, v) where {N1, T} = HyperDualSIMD(x, ϵ1, Vec((v,)))
 
 @inline block_range(block::Int, chunk::Int, ax) = begin
     start = first(ax) + (block - 1) * chunk
     start:min(last(ax), start + chunk - 1)
 end
 
-seed_epsilon_1(d::HyperDual{N1, N2, T}, ϵ1) where {N1, N2, T} = HyperDual{N1, N2, T}(d.v, ϵ1, d.ϵ2, d.ϵ12)
-seed_epsilon_2(d::HyperDual{N1, N2, T}, ϵ2) where {N1, N2, T} = HyperDual{N1, N2, T}(d.v, d.ϵ1, ϵ2, d.ϵ12)
+# Seed functions - unified via typeof
+seed_epsilon_1(d::AbstractHyperDualNumber, ϵ1) = typeof(d)(d.v, ϵ1, d.ϵ2, d.ϵ12)
+seed_epsilon_2(d::AbstractHyperDualNumber, ϵ2) = typeof(d)(d.v, d.ϵ1, ϵ2, d.ϵ12)
 
-@inline function seed_block_ϵ1!(d::AbstractVector{<:HyperDual{N1, N2}}, seeds, block_i, ax) where {N1, N2}
+@inline function seed_block_ϵ1!(d::AbstractVector{<:AbstractHyperDualNumber{N1}}, seeds, block_i, ax) where {N1}
     range_i = block_range(block_i, N1, ax)
     @inbounds for k in 1:length(range_i)
         idx = range_i[k]
@@ -65,7 +77,7 @@ seed_epsilon_2(d::HyperDual{N1, N2, T}, ϵ2) where {N1, N2, T} = HyperDual{N1, N
     return range_i
 end
 
-@inline function seed_block_ϵ2!(d::AbstractVector{<:HyperDual{N1, N2}}, seeds, range_j) where {N1, N2}
+@inline function seed_block_ϵ2!(d::AbstractVector{<:AbstractHyperDualNumber}, seeds, range_j)
     @inbounds for k in 1:length(range_j)
         idx = range_j[k]
         d[idx] = seed_epsilon_2(d[idx], seeds[k])
@@ -73,7 +85,7 @@ end
     return nothing
 end
 
-@inline function zero_block_ϵ2!(d::AbstractVector{<:HyperDual{N1, N2}}, seeds, range_j) where {N1, N2}
+@inline function zero_block_ϵ2!(d::AbstractVector{<:AbstractHyperDualNumber}, seeds, range_j)
     zeroϵ2 = zero_ϵ(seeds[1])
     @inbounds for k in 1:length(range_j)
         idx = range_j[k]
@@ -82,7 +94,7 @@ end
     return nothing
 end
 
-@inline function zero_block_ϵ1!(d::AbstractVector{<:HyperDual{N1, N2}}, seeds, range_i) where {N1, N2}
+@inline function zero_block_ϵ1!(d::AbstractVector{<:AbstractHyperDualNumber}, seeds, range_i)
     zeroϵ1 = zero_ϵ(seeds[1])
     @inbounds for k in 1:length(range_i)
         idx = range_i[k]
@@ -94,7 +106,7 @@ end
 @noinline check_scalar(x) =
     x isa Number || throw(error("expected a scalar to be returned from function passed to `hessian`"))
 
-function extract_hessian!(H::AbstractMatrix, v::HyperDual)
+function extract_hessian!(H::AbstractMatrix, v::AbstractHyperDualNumber)
     @inbounds for (icol, col) in enumerate(axes(H, 2))
         H[:, col] .= Tuple(v.ϵ12[icol])
     end
@@ -113,7 +125,7 @@ function symmetrize!(H::AbstractMatrix)
     return H
 end
 
-function extract_hessian!(H::AbstractMatrix, v::HyperDual{N1, N2}, block_i::Int, block_j::Int) where {N1, N2}
+function extract_hessian!(H::AbstractMatrix, v::AbstractHyperDualNumber{N1, N2, T}, block_i::Int, block_j::Int) where {N1, N2, T}
     range_i = block_range(block_i, N1, axes(H, 1))
     range_j = block_range(block_j, N2, axes(H, 2))
 
@@ -125,7 +137,7 @@ function extract_hessian!(H::AbstractMatrix, v::HyperDual{N1, N2}, block_i::Int,
     return H
 end
 
-function extract_gradient!(G::AbstractVector, v::HyperDual{N1, N2}, block_i::Int) where {N1, N2}
+function extract_gradient!(G::AbstractVector, v::AbstractHyperDualNumber{N1, N2, T}, block_i::Int) where {N1, N2, T}
     range_i = block_range(block_i, N1, axes(G, 1))
     for (I, i) in enumerate(range_i)
         G[i] = v.ϵ1[I]
@@ -133,18 +145,29 @@ function extract_gradient!(G::AbstractVector, v::HyperDual{N1, N2}, block_i::Int
     return G
 end
 
+# Scalar hessian
 function hessian(f, x::Real)
-    one_seed = single_seed(NTuple{1, typeof(x)}, Val(1))
+    one_seed = ntuple(i -> ifelse(i == 1, one(typeof(x)), zero(typeof(x))), Val(1))
     dual = HyperDual(x, one_seed, one_seed)
     v = f(dual)
     check_scalar(v)
     return v.ϵ12[1][1]
 end
 
+function hessian_simd(f, x::Real)
+    one_seed = Vec((one(typeof(x)),))
+    dual = HyperDualSIMD(x, one_seed, one_seed)
+    v = f(dual)
+    check_scalar(v)
+    return v.ϵ12[1][1]
+end
+
+# Vector hessian
 hessian(f::F, x::AbstractVector) where {F} = hessian!(similar(x, axes(x, 1), axes(x, 1)), f, x, HessianConfig(x))
+hessian_simd(f::F, x::AbstractVector) where {F} = hessian!(similar(x, axes(x, 1), axes(x, 1)), f, x, HessianConfigSIMD(x))
 hessian(f::F, x::AbstractVector, cfg::HessianConfig) where {F} = hessian!(similar(x, axes(x, 1), axes(x, 1)), f, x, cfg)
 
-function hessian!(H::AbstractMatrix, f::F, x::AbstractVector{T}, cfg::HessianConfig) where {F, T}
+function hessian!(H::AbstractMatrix, f::F, x::AbstractVector, cfg::HessianConfig) where {F}
     if chunksize(cfg) == length(x)
         return hessian_vector!(H, f, x, cfg)
     else
@@ -152,25 +175,30 @@ function hessian!(H::AbstractMatrix, f::F, x::AbstractVector{T}, cfg::HessianCon
     end
 end
 
+hessian_simd!(H::AbstractMatrix, f::F, x::AbstractVector) where {F} = hessian!(H, f, x, HessianConfigSIMD(x))
+
 function hessian_vector!(H::AbstractMatrix, f, x::AbstractVector, cfg::HessianConfig)
     size(H, 1) == size(H, 2) == length(x) || throw(DimensionMismatch(lazy"H must be square with size matching length(x)=$(length(x)), got size(H)=$(size(H))"))
-    cfg.duals .= HyperDual.(x, cfg.seeds, cfg.seeds)
+    D = eltype(cfg.duals)
+    cfg.duals .= _init_dual.(D, x, cfg.seeds, cfg.seeds)
     v = f(cfg.duals)
     check_scalar(v)
     return extract_hessian!(H, v)
 end
 
-function hessian_chunk!(H::AbstractMatrix, f, x::AbstractVector{T}, cfg::HessianConfig) where {T}
+function hessian_chunk!(H::AbstractMatrix, f, x::AbstractVector, cfg::HessianConfig)
     size(H, 1) == size(H, 2) == length(x) || throw(DimensionMismatch(lazy"H must be square with size matching length(x)=$(length(x)), got size(H)=$(size(H))"))
     ax = axes(x, 1)
-    n_chunks = ceil(Int, length(x) / chunksize(cfg))
-    cfg.duals .= HyperDual{chunksize(cfg), chunksize(cfg)}.(x)
+    N = chunksize(cfg)
+    n_chunks = ceil(Int, length(x) / N)
+    D = eltype(cfg.duals)
+    cfg.duals .= _init_dual_zero.(D, x)
     prev_range = 0:-1  # empty range sentinel
     for i in 1:n_chunks
         zero_block_ϵ1!(cfg.duals, cfg.seeds, prev_range)
         range_i = seed_block_ϵ1!(cfg.duals, cfg.seeds, i, ax)
         for j in i:n_chunks
-            range_j = j == i ? range_i : block_range(j, chunksize(cfg), ax)
+            range_j = j == i ? range_i : block_range(j, N, ax)
             seed_block_ϵ2!(cfg.duals, cfg.seeds, range_j)
             v = f(cfg.duals)
             check_scalar(v)
@@ -183,7 +211,8 @@ function hessian_chunk!(H::AbstractMatrix, f, x::AbstractVector{T}, cfg::Hessian
     return H
 end
 
-function hessiangradvalue!(H::AbstractMatrix, G::AbstractVector, f::F, x::AbstractVector{T}, cfg::HessianConfig) where {F, T}
+# hessiangradvalue functions
+function hessiangradvalue!(H::AbstractMatrix, G::AbstractVector, f::F, x::AbstractVector, cfg::HessianConfig) where {F}
     size(H, 1) == size(H, 2) == length(x) || throw(DimensionMismatch(lazy"H must be square with size matching length(x)=$(length(x)), got size(H)=$(size(H))"))
     length(G) == length(x) || throw(DimensionMismatch(lazy"G must have length $(length(x)), got $(length(G))"))
     if chunksize(cfg) == length(x)
@@ -195,6 +224,11 @@ end
 
 function hessiangradvalue!(H::AbstractMatrix, G::AbstractVector, f::F, x::AbstractVector) where {F}
     cfg = HessianConfig(x)
+    return hessiangradvalue!(H, G, f, x, cfg)
+end
+
+function hessiangradvalue_simd!(H::AbstractMatrix, G::AbstractVector, f::F, x::AbstractVector) where {F}
+    cfg = HessianConfigSIMD(x)
     return hessiangradvalue!(H, G, f, x, cfg)
 end
 
@@ -210,9 +244,15 @@ function hessiangradvalue(f::F, x::AbstractVector) where {F}
     return hessiangradvalue(f, x, cfg)
 end
 
+function hessiangradvalue_simd(f::F, x::AbstractVector) where {F}
+    cfg = HessianConfigSIMD(x)
+    return hessiangradvalue(f, x, cfg)
+end
+
 function hessiangradvalue_vector!(H::AbstractMatrix, G::AbstractVector, f, x::AbstractVector, cfg::HessianConfig)
     size(H, 1) == size(H, 2) == length(x) || throw(DimensionMismatch(lazy"H must be square with size matching length(x)=$(length(x)), got size(H)=$(size(H))"))
-    cfg.duals .= HyperDual.(x, cfg.seeds, cfg.seeds)
+    D = eltype(cfg.duals)
+    cfg.duals .= _init_dual.(D, x, cfg.seeds, cfg.seeds)
     v = f(cfg.duals)
     check_scalar(v)
     G .= Tuple(v.ϵ1)
@@ -224,15 +264,17 @@ function hessiangradvalue_chunk!(H::AbstractMatrix, G::AbstractVector, f, x::Abs
     size(H, 1) == size(H, 2) == length(x) || throw(DimensionMismatch(lazy"H must be square with size matching length(x)=$(length(x)), got size(H)=$(size(H))"))
     length(G) == length(x) || throw(DimensionMismatch(lazy"G must have length $(length(x)), got $(length(G))"))
     ax = axes(x, 1)
-    n_chunks = ceil(Int, length(x) / chunksize(cfg))
-    cfg.duals .= HyperDual{chunksize(cfg), chunksize(cfg)}.(x)
+    N = chunksize(cfg)
+    n_chunks = ceil(Int, length(x) / N)
+    D = eltype(cfg.duals)
+    cfg.duals .= _init_dual_zero.(D, x)
     prev_range = 0:-1  # empty range sentinel
     value = zero(T)
     for i in 1:n_chunks
         zero_block_ϵ1!(cfg.duals, cfg.seeds, prev_range)
         range_i = seed_block_ϵ1!(cfg.duals, cfg.seeds, i, ax)
         for j in i:n_chunks
-            range_j = j == i ? range_i : block_range(j, chunksize(cfg), ax)
+            range_j = j == i ? range_i : block_range(j, N, ax)
             seed_block_ϵ2!(cfg.duals, cfg.seeds, range_j)
             v = f(cfg.duals)
             check_scalar(v)
@@ -249,6 +291,7 @@ function hessiangradvalue_chunk!(H::AbstractMatrix, G::AbstractVector, f, x::Abs
     return value
 end
 
+# HVP functions
 """
     hvp(f, x, v[, cfg])
 
@@ -256,9 +299,11 @@ Compute the Hessian–vector product `H(x) * v`. Uses the directional path by de
 pass a `DirectionalHVPConfig` explicitly to control chunking.
 """
 hvp(f::F, x::AbstractVector, v::AbstractVector) where {F} = hvp(f, x, v, DirectionalHVPConfig(x))
+hvp_simd(f::F, x::AbstractVector, v::AbstractVector) where {F} = hvp(f, x, v, DirectionalHVPConfigSIMD(x))
 hvp(f::F, x::AbstractVector, v::AbstractVector, cfg::DirectionalHVPConfig) where {F} = hvp!(similar(x, eltype(x)), f, x, v, cfg)
 
 hvp!(hv::AbstractVector, f::F, x::AbstractVector, v::AbstractVector) where {F} = hvp!(hv, f, x, v, DirectionalHVPConfig(x))
+hvp_simd!(hv::AbstractVector, f::F, x::AbstractVector, v::AbstractVector) where {F} = hvp!(hv, f, x, v, DirectionalHVPConfigSIMD(x))
 hvp!(hv::AbstractVector, f::F, x::AbstractVector, v::AbstractVector, cfg::DirectionalHVPConfig) where {F} = hvp_dir!(hv, f, x, v, cfg)
 
 @inline function hvp_dir!(hv::AbstractVector{T}, f::F, x::AbstractVector{T}, v::AbstractVector{T}, cfg::DirectionalHVPConfig) where {T, F}
@@ -272,10 +317,9 @@ hvp!(hv::AbstractVector, f::F, x::AbstractVector, v::AbstractVector, cfg::Direct
 end
 
 @inline function hvp_vector_dir!(hv::AbstractVector{T}, f, x::AbstractVector{T}, v::AbstractVector{T}, cfg::DirectionalHVPConfig) where {T}
-    # Seed ε₁ with identity directions and ε₂ with the directional vector v;
-    # the mixed term ε₁ᵀ A ε₂ yields (H * v)[i] in ϵ₁₂[i][1].
+    D = eltype(cfg.duals)
     @inbounds for i in eachindex(x)
-        cfg.duals[i] = HyperDual(x[i], cfg.seeds[i], (@static USE_SIMD ? Vec((v[i],)) : (v[i],)))
+        cfg.duals[i] = _init_hvp_dual(D, x[i], cfg.seeds[i], v[i])
     end
     out = f(cfg.duals)
     check_scalar(out)
@@ -285,10 +329,8 @@ end
     return hv
 end
 
-@inline function seed_hvp_dir!(d::AbstractVector{<:HyperDual{N1, 1}}, seeds, block_i::Int, ax) where {N1}
+@inline function seed_hvp_dir!(d::AbstractVector{<:AbstractHyperDualNumber{N1}}, seeds, block_i::Int, ax) where {N1}
     range_i = block_range(block_i, N1, ax)
-
-    # Seed ε₁ block rows without creating views
     @inbounds for (offset, idx) in enumerate(range_i)
         d[idx] = seed_epsilon_1(d[idx], seeds[offset])
     end
@@ -301,10 +343,10 @@ function hvp_chunk_dir!(hv::AbstractVector{T}, f, x::AbstractVector{T}, v::Abstr
     n_chunks = ceil(Int, length(x) / N)
     ax = axes(x, 1)
     zeroϵ1 = zero_ϵ(cfg.seeds[1])
+    D = eltype(cfg.duals)
 
-    # Initialize ε₂ once and keep ε₁ zeroed globally.
     @inbounds for j in eachindex(x)
-        cfg.duals[j] = HyperDual(x[j], zeroϵ1, (@static USE_SIMD ? Vec((v[j],)) : (v[j],)))
+        cfg.duals[j] = _init_hvp_dual(D, x[j], zeroϵ1, v[j])
     end
 
     for i in 1:n_chunks

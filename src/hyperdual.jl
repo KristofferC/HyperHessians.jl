@@ -34,10 +34,22 @@ This gives us the first and second derivatives via f' and f''.
 =#
 
 # Allow non-square partial lengths: ϵ₁ ∈ ℝᴺ¹, ϵ₂ ∈ ℝᴺ².
-if USE_SIMD
-    const ϵT{N, T} = Vec{N, T}
-else
-    const ϵT{N, T} = NTuple{N, T}
+abstract type AbstractHyperDualNumber{N1, N2, T} <: Real end
+
+# Tuple-based HyperDual (default)
+struct HyperDual{N1, N2, T} <: AbstractHyperDualNumber{N1, N2, T}
+    v::T
+    ϵ1::NTuple{N1, T}
+    ϵ2::NTuple{N2, T}
+    ϵ12::NTuple{N1, NTuple{N2, T}}
+end
+
+# SIMD-based HyperDual
+struct HyperDualSIMD{N1, N2, T} <: AbstractHyperDualNumber{N1, N2, T}
+    v::T
+    ϵ1::Vec{N1, T}
+    ϵ2::Vec{N2, T}
+    ϵ12::NTuple{N1, Vec{N2, T}}
 end
 
 # Tuple implementations (default)
@@ -47,6 +59,7 @@ end
 @inline convert_cross(::Type{NTuple{N, T}}, xs::NTuple{M, Any}) where {N, M, T} =
     ntuple(i -> to_ϵ(NTuple{N, T}, xs[i]), Val(M))
 
+# Tuple operators
 @inline ⊕(a::Real, b::Real) = a + b
 @inline ⊕(a::NTuple{N, A}, b::NTuple{N, B}) where {N, A, B} = ntuple(i -> ⊕(a[i], b[i]), Val(N))
 @inline ⊟(a::Real) = -a
@@ -63,120 +76,153 @@ end
     ntuple(i -> muladd(a[i], b, c[i]), Val(N))
 @inline ⊗(t1::NTuple{N1, T1}, t2::NTuple{N2, T2}) where {N1, N2, T1, T2} = ntuple(i -> ⊙(t2, t1[i]), Val(N1))
 
-struct HyperDual{N1, N2, T} <: Real
-    v::T
-    ϵ1::ϵT{N1, T}
-    ϵ2::ϵT{N2, T}
-    ϵ12::NTuple{N1, ϵT{N2, T}}
+# Helper constructors for creating partial types
+struct ϵT{N, T} end
+(::Type{ϵT{N, T}})(x::NTuple{N}) where {N, T} = NTuple{N, T}(x)
+(::Type{ϵT{N, T}})(x::Vec{N}) where {N, T} = Vec(NTuple{N, T}(Tuple(x)))
+
+struct ϵT_SIMD{N, T} end
+(::Type{ϵT_SIMD{N, T}})(x::NTuple{N}) where {N, T} = Vec(NTuple{N, T}(x))
+(::Type{ϵT_SIMD{N, T}})(x::Vec{N}) where {N, T} = Vec(NTuple{N, T}(Tuple(x)))
+
+# HyperDual constructors (tuple-based)
+function HyperDual(v::T1, ϵ1::NTuple{N1, T2}, ϵ2::NTuple{N2, T2}) where {N1, N2, T1, T2}
+    T = promote_type(T1, T2)
+    return HyperDual{N1, N2, T}(T(v), to_ϵ(NTuple{N1, T}, ϵ1), to_ϵ(NTuple{N2, T}, ϵ2), ntuple(_ -> zero_ϵ(NTuple{N2, T}), Val(N1)))
 end
-HyperDual(v::T, ϵ1::ϵT{N1, T}, ϵ2::ϵT{N2, T}) where {N1, N2, T} =
-    HyperDual(v, ϵ1, ϵ2, ntuple(_ -> zero_ϵ(ϵT{N2, T}), Val(N1)))
-HyperDual{N1, N2}(v::T) where {N1, N2, T} = HyperDual(v, zero_ϵ(ϵT{N1, T}), zero_ϵ(ϵT{N2, T}))
+HyperDual{N1, N2}(v::T) where {N1, N2, T} = HyperDual{N1, N2, T}(T(v), zero_ϵ(NTuple{N1, T}), zero_ϵ(NTuple{N2, T}), ntuple(_ -> zero_ϵ(NTuple{N2, T}), Val(N1)))
 HyperDual{N1, N2, T}(v) where {N1, N2, T} = HyperDual{N1, N2}(T(v))
 
-function HyperDual(v::T1, ϵ1::ϵT{N1, T2}, ϵ2::ϵT{N2, T2}, ϵ12::NTuple{N1, ϵT{N2, T2}}) where {N1, N2, T1, T2}
+function HyperDual(v::T1, ϵ1::NTuple{N1, T2}, ϵ2::NTuple{N2, T2}, ϵ12::NTuple{N1, NTuple{N2, T2}}) where {N1, N2, T1, T2}
     T = promote_type(T1, T2)
-    return HyperDual(T(v), to_ϵ(ϵT{N1, T}, ϵ1), to_ϵ(ϵT{N2, T}, ϵ2), convert_cross(ϵT{N2, T}, ϵ12))
+    return HyperDual{N1, N2, T}(T(v), to_ϵ(NTuple{N1, T}, ϵ1), to_ϵ(NTuple{N2, T}, ϵ2), convert_cross(NTuple{N2, T}, ϵ12))
 end
 
-@inline mapϵ12(f, h::HyperDual{N1, N2}) where {N1, N2} = ntuple(i -> f(h.ϵ12[i]), Val(N1))
-@inline mapϵ12(f, h1::HyperDual{N1, N2}, h2::HyperDual{N1, N2}) where {N1, N2} =
+# HyperDualSIMD constructors
+function HyperDualSIMD(v::T1, ϵ1::Vec{N1, T2}, ϵ2::Vec{N2, T2}) where {N1, N2, T1, T2}
+    T = promote_type(T1, T2)
+    return HyperDualSIMD{N1, N2, T}(T(v), to_ϵ(Vec{N1, T}, ϵ1), to_ϵ(Vec{N2, T}, ϵ2), ntuple(_ -> zero_ϵ(Vec{N2, T}), Val(N1)))
+end
+HyperDualSIMD{N1, N2}(v::T) where {N1, N2, T} = HyperDualSIMD{N1, N2, T}(T(v), zero_ϵ(Vec{N1, T}), zero_ϵ(Vec{N2, T}), ntuple(_ -> zero_ϵ(Vec{N2, T}), Val(N1)))
+HyperDualSIMD{N1, N2, T}(v) where {N1, N2, T} = HyperDualSIMD{N1, N2}(T(v))
+
+function HyperDualSIMD(v::T1, ϵ1::Vec{N1, T2}, ϵ2::Vec{N2, T2}, ϵ12::NTuple{N1, Vec{N2, T2}}) where {N1, N2, T1, T2}
+    T = promote_type(T1, T2)
+    return HyperDualSIMD{N1, N2, T}(T(v), to_ϵ(Vec{N1, T}, ϵ1), to_ϵ(Vec{N2, T}, ϵ2), convert_cross(Vec{N2, T}, ϵ12))
+end
+
+# Common methods via abstract type
+@inline mapϵ12(f, h::AbstractHyperDualNumber{N1, N2, T}) where {N1, N2, T} = ntuple(i -> f(h.ϵ12[i]), Val(N1))
+@inline mapϵ12(f, h1::H, h2::H) where {N1, N2, T, H <: AbstractHyperDualNumber{N1, N2, T}} =
     ntuple(i -> f(h1.ϵ12[i], h2.ϵ12[i]), Val(N1))
 
+# HyperDual promote/convert
 Base.promote_rule(::Type{HyperDual{N1, N2, T1}}, ::Type{HyperDual{N1, N2, T2}}) where {N1, N2, T1, T2} =
     HyperDual{N1, N2, promote_type(T1, T2)}
 Base.promote_rule(::Type{HyperDual{N1, N2, T1}}, ::Type{T2}) where {N1, N2, T1, T2 <: Real} =
     HyperDual{N1, N2, promote_type(T1, T2)}
 Base.convert(::Type{HyperDual{N1, N2, T1}}, h::HyperDual{N1, N2, T2}) where {N1, N2, T1, T2} =
-    HyperDual{N1, N2, T1}(T1(h.v), to_ϵ(ϵT{N1, T1}, h.ϵ1), to_ϵ(ϵT{N2, T1}, h.ϵ2), convert_cross(ϵT{N2, T1}, h.ϵ12))
+    HyperDual{N1, N2, T1}(T1(h.v), to_ϵ(NTuple{N1, T1}, h.ϵ1), to_ϵ(NTuple{N2, T1}, h.ϵ2), convert_cross(NTuple{N2, T1}, h.ϵ12))
 Base.convert(::Type{HyperDual{N1, N2, T}}, x::Real) where {N1, N2, T} = HyperDual{N1, N2, T}(T(x))
+
+# HyperDualSIMD promote/convert
+Base.promote_rule(::Type{HyperDualSIMD{N1, N2, T1}}, ::Type{HyperDualSIMD{N1, N2, T2}}) where {N1, N2, T1, T2} =
+    HyperDualSIMD{N1, N2, promote_type(T1, T2)}
+Base.promote_rule(::Type{HyperDualSIMD{N1, N2, T1}}, ::Type{T2}) where {N1, N2, T1, T2 <: Real} =
+    HyperDualSIMD{N1, N2, promote_type(T1, T2)}
+Base.convert(::Type{HyperDualSIMD{N1, N2, T1}}, h::HyperDualSIMD{N1, N2, T2}) where {N1, N2, T1, T2} =
+    HyperDualSIMD{N1, N2, T1}(T1(h.v), to_ϵ(Vec{N1, T1}, h.ϵ1), to_ϵ(Vec{N2, T1}, h.ϵ2), convert_cross(Vec{N2, T1}, h.ϵ12))
+Base.convert(::Type{HyperDualSIMD{N1, N2, T}}, x::Real) where {N1, N2, T} = HyperDualSIMD{N1, N2, T}(T(x))
 
 function Base.show(io::IO, h::HyperDual)
     print(io, h.v, " + ", Tuple(h.ϵ1), "ϵ1", " + ", Tuple(h.ϵ2), "ϵ2", " + ", map(Tuple, h.ϵ12), "ϵ12")
     return
 end
 
-Base.one(::Type{HyperDual{N1, N2, T}}) where {N1, N2, T} = HyperDual{N1, N2}(one(T))
-Base.zero(::Type{HyperDual{N1, N2, T}}) where {N1, N2, T} = HyperDual{N1, N2}(zero(T))
+# HyperDual one/zero/float
+Base.one(::Type{HyperDual{N1, N2, T}}) where {N1, N2, T} = HyperDual{N1, N2, T}(one(T))
+Base.zero(::Type{HyperDual{N1, N2, T}}) where {N1, N2, T} = HyperDual{N1, N2, T}(zero(T))
 Base.one(::HyperDual{N1, N2, T}) where {N1, N2, T} = one(HyperDual{N1, N2, T})
 Base.zero(::HyperDual{N1, N2, T}) where {N1, N2, T} = zero(HyperDual{N1, N2, T})
 Base.float(h::HyperDual{N1, N2, T}) where {N1, N2, T} = convert(HyperDual{N1, N2, float(T)}, h)
 
-@inline Base.:(-)(h::HyperDual{N1, N2}) where {N1, N2} =
-    HyperDual(-h.v, ⊟(h.ϵ1), ⊟(h.ϵ2), mapϵ12(⊟, h))
-@inline Base.:(+)(h::HyperDual) = h
+# HyperDualSIMD one/zero/float
+Base.one(::Type{HyperDualSIMD{N1, N2, T}}) where {N1, N2, T} = HyperDualSIMD{N1, N2, T}(one(T))
+Base.zero(::Type{HyperDualSIMD{N1, N2, T}}) where {N1, N2, T} = HyperDualSIMD{N1, N2, T}(zero(T))
+Base.one(::HyperDualSIMD{N1, N2, T}) where {N1, N2, T} = one(HyperDualSIMD{N1, N2, T})
+Base.zero(::HyperDualSIMD{N1, N2, T}) where {N1, N2, T} = zero(HyperDualSIMD{N1, N2, T})
+Base.float(h::HyperDualSIMD{N1, N2, T}) where {N1, N2, T} = convert(HyperDualSIMD{N1, N2, float(T)}, h)
 
-@inline Base.:+(h1::HyperDual{N1, N2, T}, h2::HyperDual{N1, N2, T}) where {N1, N2, T} =
-    HyperDual(h1.v + h2.v, h1.ϵ1 ⊕ h2.ϵ1, h1.ϵ2 ⊕ h2.ϵ2, mapϵ12(⊕, h1, h2))
-@inline Base.:+(h1::HyperDual{N1, N2, T1}, h2::HyperDual{N1, N2, T2}) where {N1, N2, T1, T2} = +(promote(h1, h2)...)
-@inline Base.:+(h::HyperDual{N1, N2}, r::Real) where {N1, N2} =
-    HyperDual(h.v + r, h.ϵ1, h.ϵ2, h.ϵ12)
-@inline Base.:+(r::Real, h::HyperDual{N1, N2}) where {N1, N2} =
-    HyperDual(r + h.v, h.ϵ1, h.ϵ2, h.ϵ12)
+# Unified arithmetic for AbstractHyperDualNumber
+@inline Base.:(-)(h::AbstractHyperDualNumber) = typeof(h)(-h.v, ⊟(h.ϵ1), ⊟(h.ϵ2), mapϵ12(⊟, h))
+@inline Base.:(+)(h::AbstractHyperDualNumber) = h
 
-@inline Base.:-(h1::HyperDual{N1, N2, T}, h2::HyperDual{N1, N2, T}) where {N1, N2, T} =
-    HyperDual(h1.v - h2.v, h1.ϵ1 ⊖ h2.ϵ1, h1.ϵ2 ⊖ h2.ϵ2, mapϵ12(⊖, h1, h2))
-@inline Base.:-(h1::HyperDual{N1, N2, T1}, h2::HyperDual{N1, N2, T2}) where {N1, N2, T1, T2} = -(promote(h1, h2)...)
-@inline Base.:-(h::HyperDual{N1, N2}, r::Real) where {N1, N2} =
-    HyperDual(h.v - r, h.ϵ1, h.ϵ2, h.ϵ12)
-@inline Base.:-(r::Real, h::HyperDual{N1, N2}) where {N1, N2} =
-    HyperDual(r - h.v, ⊟(h.ϵ1), ⊟(h.ϵ2), mapϵ12(⊟, h))
+@inline Base.:+(h1::H, h2::H) where {H <: AbstractHyperDualNumber} =
+    H(h1.v + h2.v, h1.ϵ1 ⊕ h2.ϵ1, h1.ϵ2 ⊕ h2.ϵ2, mapϵ12(⊕, h1, h2))
+@inline Base.:+(h1::H1, h2::H2) where {H1 <: AbstractHyperDualNumber, H2 <: AbstractHyperDualNumber} = +(promote(h1, h2)...)
+@inline Base.:+(h::AbstractHyperDualNumber, r::Real) = typeof(h)(h.v + r, h.ϵ1, h.ϵ2, h.ϵ12)
+@inline Base.:+(r::Real, h::AbstractHyperDualNumber) = typeof(h)(r + h.v, h.ϵ1, h.ϵ2, h.ϵ12)
 
-@inline Base.:*(h::HyperDual{N1, N2}, r::Real) where {N1, N2} =
-    HyperDual(h.v * r, h.ϵ1 ⊙ r, h.ϵ2 ⊙ r, mapϵ12(ϵ -> ϵ ⊙ r, h))
-@inline Base.:/(h::HyperDual{N1, N2}, r::Real) where {N1, N2} =
-    HyperDual(h.v / r, h.ϵ1 ⊘ r, h.ϵ2 ⊘ r, mapϵ12(ϵ -> ϵ ⊘ r, h))
-@inline Base.:(*)(r::Real, h::HyperDual{N1, N2}) where {N1, N2} =
-    HyperDual(r * h.v, r ⊙ h.ϵ1, r ⊙ h.ϵ2, mapϵ12(ϵ -> r ⊙ ϵ, h))
+@inline Base.:-(h1::H, h2::H) where {H <: AbstractHyperDualNumber} =
+    H(h1.v - h2.v, h1.ϵ1 ⊖ h2.ϵ1, h1.ϵ2 ⊖ h2.ϵ2, mapϵ12(⊖, h1, h2))
+@inline Base.:-(h1::H1, h2::H2) where {H1 <: AbstractHyperDualNumber, H2 <: AbstractHyperDualNumber} = -(promote(h1, h2)...)
+@inline Base.:-(h::AbstractHyperDualNumber, r::Real) = typeof(h)(h.v - r, h.ϵ1, h.ϵ2, h.ϵ12)
+@inline Base.:-(r::Real, h::AbstractHyperDualNumber) = typeof(h)(r - h.v, ⊟(h.ϵ1), ⊟(h.ϵ2), mapϵ12(⊟, h))
 
-@inline Base.:(/)(r::Real, h::HyperDual{N1, N2}) where {N1, N2} = r * inv(h)
-@inline Base.:(/)(h1::HyperDual{N1, N2, T}, h2::HyperDual{N1, N2, T}) where {N1, N2, T} = h1 * inv(h2)
+@inline Base.:*(h::AbstractHyperDualNumber, r::Real) = typeof(h)(h.v * r, h.ϵ1 ⊙ r, h.ϵ2 ⊙ r, mapϵ12(ϵ -> ϵ ⊙ r, h))
+@inline Base.:/(h::AbstractHyperDualNumber, r::Real) = typeof(h)(h.v / r, h.ϵ1 ⊘ r, h.ϵ2 ⊘ r, mapϵ12(ϵ -> ϵ ⊘ r, h))
+@inline Base.:*(r::Real, h::AbstractHyperDualNumber) = typeof(h)(r * h.v, r ⊙ h.ϵ1, r ⊙ h.ϵ2, mapϵ12(ϵ -> r ⊙ ϵ, h))
 
-@inline function Base.muladd(x::HyperDual{N1, N2, T}, y::Real, z::HyperDual{N1, N2, T}) where {N1, N2, T}
-    return HyperDual(
+@inline Base.:(/)(r::Real, h::AbstractHyperDualNumber) = r * inv(h)
+@inline Base.:(/)(h1::H, h2::H) where {H <: AbstractHyperDualNumber} = h1 * inv(h2)
+
+@inline function Base.muladd(x::H, y::Real, z::H) where {N1, H <: AbstractHyperDualNumber{N1}}
+    return H(
         muladd(x.v, y, z.v),
         _muladd(y, x.ϵ1, z.ϵ1),
         _muladd(y, x.ϵ2, z.ϵ2),
         ntuple(i -> _muladd(y, x.ϵ12[i], z.ϵ12[i]), Val(N1))
     )
 end
-@inline function Base.muladd(x::Real, y::HyperDual{N1, N2, T}, z::HyperDual{N1, N2, T}) where {N1, N2, T}
-    return HyperDual(
+@inline function Base.muladd(x::Real, y::H, z::H) where {N1, H <: AbstractHyperDualNumber{N1}}
+    return H(
         muladd(x, y.v, z.v),
         _muladd(x, y.ϵ1, z.ϵ1),
         _muladd(x, y.ϵ2, z.ϵ2),
         ntuple(i -> _muladd(x, y.ϵ12[i], z.ϵ12[i]), Val(N1)),
     )
 end
-@inline function Base.muladd(x::HyperDual{N1, N2, T}, y::Real, z::Real) where {N1, N2, T}
-    return HyperDual(
+@inline function Base.muladd(x::H, y::Real, z::Real) where {N1, H <: AbstractHyperDualNumber{N1}}
+    return H(
         muladd(x.v, y, z),
         x.ϵ1 ⊙ y,
         x.ϵ2 ⊙ y,
         ntuple(i -> x.ϵ12[i] ⊙ y, Val(N1)),
     )
 end
-@inline function Base.muladd(x::Real, y::HyperDual{N1, N2, T}, z::Real) where {N1, N2, T}
-    return HyperDual(
+@inline function Base.muladd(x::Real, y::H, z::Real) where {N1, H <: AbstractHyperDualNumber{N1}}
+    return H(
         muladd(x, y.v, z),
         y.ϵ1 ⊙ x,
         y.ϵ2 ⊙ x,
         ntuple(i -> y.ϵ12[i] ⊙ x, Val(N1)),
     )
 end
-@inline Base.muladd(x::Real, y::Real, z::HyperDual{N1, N2, T}) where {N1, N2, T} = muladd(x, y, z.v) + z - z.v
+@inline Base.muladd(x::Real, y::Real, z::AbstractHyperDualNumber) = muladd(x, y, z.v) + z - z.v
 
-@inline Base.:(*)(h1::HyperDual{N1, N2, T1}, h2::HyperDual{N1, N2, T2}) where {N1, N2, T1, T2} = *(promote(h1, h2)...)
-@inline function Base.:(*)(h1::HyperDual{N1, N2, T}, h2::HyperDual{N1, N2, T}) where {N1, N2, T}
+@inline Base.:(*)(h1::H1, h2::H2) where {H1 <: AbstractHyperDualNumber, H2 <: AbstractHyperDualNumber} = *(promote(h1, h2)...)
+@inline function Base.:(*)(h1::H, h2::H) where {N1, H <: AbstractHyperDualNumber{N1}}
     r = h1.v * h2.v
     ϵ1 = _muladd(h1.v, h2.ϵ1, h1.ϵ1 ⊙ h2.v)
     ϵ2 = _muladd(h1.v, h2.ϵ2, h1.ϵ2 ⊙ h2.v)
-    ϵ12_1 = h1.ϵ1 ⊗ h2.ϵ2
-    ϵ12_2 = h2.ϵ1 ⊗ h1.ϵ2
-    ϵ12 = ntuple(i -> _muladd(h1.v, h2.ϵ12[i], _muladd(h1.ϵ12[i], h2.v, ϵ12_1[i] ⊕ ϵ12_2[i])), Val(N1))
-    return HyperDual(r, ϵ1, ϵ2, ϵ12)
+    # Inline outer products with FMA: h1.ϵ1[i]*h2.ϵ2 + h2.ϵ1[i]*h1.ϵ2
+    @inline g(i) = _muladd(h1.v, h2.ϵ12[i], _muladd(h1.ϵ12[i], h2.v, _muladd(h1.ϵ1[i], h2.ϵ2, h2.ϵ1[i] ⊙ h1.ϵ2)))
+    ϵ12 = ntuple(g, Val(N1))
+    return H(r, ϵ1, ϵ2, ϵ12)
 end
-@inline Base.literal_pow(::typeof(^), x::HyperDual, ::Val{0}) = one(typeof(x))
-@inline Base.literal_pow(::typeof(^), x::HyperDual, ::Val{1}) = x
-@inline Base.literal_pow(::typeof(^), x::HyperDual, ::Val{2}) = x * x
-@inline Base.literal_pow(::typeof(^), x::HyperDual, ::Val{3}) = x * x * x
+
+# Common literal_pow for both types
+@inline Base.literal_pow(::typeof(^), x::AbstractHyperDualNumber, ::Val{0}) = one(typeof(x))
+@inline Base.literal_pow(::typeof(^), x::AbstractHyperDualNumber, ::Val{1}) = x
+@inline Base.literal_pow(::typeof(^), x::AbstractHyperDualNumber, ::Val{2}) = x * x
+@inline Base.literal_pow(::typeof(^), x::AbstractHyperDualNumber, ::Val{3}) = x * x * x

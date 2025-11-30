@@ -26,6 +26,11 @@ There are some limitations compared to ForwardDiff.jl:
 | `HessianConfig(x, chunk)` | Config for caching and chunk size control |
 | `DirectionalHVPConfig(x, chunk)` | Config for Hessian–vector products |
 | `Chunk{N}()` | Specify chunk size `N` |
+| `hessian_simd(f, x)` | SIMD-accelerated Hessian computation |
+| `hessiangradvalue_simd(f, x)` | SIMD-accelerated Hessian, gradient, and value |
+| `hvp_simd(f, x, v)` | SIMD-accelerated Hessian–vector product |
+| `HessianConfigSIMD(x, chunk)` | SIMD config for in-place operations |
+| `DirectionalHVPConfigSIMD(x, chunk)` | SIMD config for HVP operations |
 
 
 ## Usage
@@ -169,6 +174,33 @@ julia> HyperHessians.hessian(f, x) * v
 ```
 
 You can supply a `DirectionalHVPConfig` to reuse storage and tune chunk size, e.g. `cfg = HyperHessians.DirectionalHVPConfig(x, HyperHessians.Chunk{8}()); hvp(f, x, v, cfg)`. For non-allocating use, call `hvp!(hv, f, x, v[, cfg])` with a preallocated `hv` and a reused config.
+
+### SIMD Variants
+
+HyperHessians provides SIMD-accelerated variants of the main functions that use explicit SIMD vectorization via `SIMD.jl`. These store partial derivatives in `SIMD.Vec` types instead of tuples, which can improve performance on some workloads (but not always so you have to explicitly benchmark this).
+
+| Standard Function | SIMD Variant |
+| ----------------- | ------------ |
+| `hessian(f, x)` | `hessian_simd(f, x)` |
+| `hessian!(H, f, x, cfg)` | `hessian!(H, f, x, cfg)` with `HessianConfigSIMD` |
+| `hessiangradvalue(f, x)` | `hessiangradvalue_simd(f, x)` |
+| `hvp(f, x, v)` | `hvp_simd(f, x, v)` |
+
+```julia
+julia> x = rand(8);
+
+julia> HyperHessians.hessian_simd(x -> sum(sin.(x)), x)
+8×8 Matrix{Float64}:
+ ...
+
+julia> cfg = HyperHessians.HessianConfigSIMD(x, HyperHessians.Chunk{8}());
+
+julia> H = similar(x, 8, 8);
+
+julia> HyperHessians.hessian!(H, f, x, cfg)  # uses SIMD internally
+```
+
+The SIMD variants have the same semantics as the standard functions. Whether they provide a speedup depends on the specific function being differentiated and the hardware.
 
 ### StaticArrays support
 

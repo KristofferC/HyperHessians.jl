@@ -1,7 +1,7 @@
 module HyperHessiansNaNMathExt
 
 using HyperHessians
-using HyperHessians: changeprecision, HyperDual, ⊗, ⊙, ⊕
+using HyperHessians: changeprecision, chain_rule_dual, AbstractHyperDualNumber
 using CommonSubexpressions: cse
 using NaNMath
 using SpecialFunctions: digamma, trigamma
@@ -43,11 +43,10 @@ end
 for (f, f′, f′′) in NANMATH_DIFF_RULES
     expr = nanmath_rule_expr(f, f′, f′′)
     cse_expr = cse(expr; warn = false)
-    @eval @inline function NaNMath.$f(h::HyperDual{N1, N2, T}) where {N1, N2, T}
+    @eval @inline function NaNMath.$f(h::AbstractHyperDualNumber{N1, N2, T}) where {N1, N2, T}
         x = h.v
         $cse_expr
-        x23 = (f′′ ⊙ h.ϵ1) ⊗ h.ϵ2
-        return HyperDual(f, h.ϵ1 ⊙ f′, h.ϵ2 ⊙ f′, ntuple(i -> h.ϵ12[i] ⊙ f′ ⊕ x23[i], Val(N1)))
+        return chain_rule_dual(h, f, f′, f′′)
     end
 end
 

@@ -2,7 +2,8 @@
 
 @inline zero_ϵ(::Type{Vec{N, T}}) where {N, T} = zero(Vec{N, T})
 @inline zero_ϵ(::Vec{N, T}) where {N, T} = zero(Vec{N, T})
-@inline to_ϵ(::Type{Vec{N, T}}, x) where {N, T} = convert(Vec{N, T}, x)
+@inline to_ϵ(::Type{Vec{N, T}}, x::Vec{N}) where {N, T} = Vec(ntuple(i -> T(x[i]), Val(N)))
+@inline to_ϵ(::Type{Vec{N, T}}, x::NTuple{N}) where {N, T} = Vec(ntuple(i -> T(x[i]), Val(N)))
 @inline convert_cross(::Type{Vec{N, T}}, xs::NTuple{M, Any}) where {N, M, T} =
     ntuple(i -> to_ϵ(Vec{N, T}, xs[i]), Val(M))
 

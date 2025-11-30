@@ -2,23 +2,25 @@ module RulesTests
 
 using Test
 using HyperHessians
-using HyperHessians: HyperDual, ϵT
+using HyperHessians: HyperDual, HyperDualSIMD, ϵT, ϵT_SIMD
+using SIMD: Vec
 using ForwardDiff
 using SpecialFunctions
 using LogExpFunctions
 using NaNMath
 
-function check_against_ForwardDiff(f, x, ::Type{T} = Float64) where {T}
+function check_against_ForwardDiff(f, x, ::Type{T} = Float64; partial::Type{P} = NTuple) where {T, P}
     # @show f, x, T
-    T == Float32 && return
-    seed = ϵT{1, T}((one(T),))
-    zero_seed = ϵT{1, T}((zero(T),))
+    seed = HyperHessians.to_ϵ(P{1, T}, (one(T),))
+    zero_seed = HyperHessians.to_ϵ(P{1, T}, (zero(T),))
     xT = T(x)
-    h = HyperDual(xT, seed, seed, (zero_seed,))
+    DualType = P === NTuple ? HyperDual : HyperDualSIMD
+    ExpectedType = P === NTuple ? HyperDual{1, 1, T} : HyperDualSIMD{1, 1, T}
+    h = DualType(xT, seed, seed, (zero_seed,))
     res = f(h)
     fd1 = ForwardDiff.derivative(z -> f(z), xT)
     fd2 = ForwardDiff.derivative(z -> ForwardDiff.derivative(y -> f(y), z), xT)
-    @test res isa HyperDual{1, 1, T}
+    @test res isa ExpectedType
     # For now, don't verify precision for Float32, seems we need to reduce the tolerances for it
     T == Float32 && return
     @test res.ϵ1[1] ≈ fd1 atol = 1.0e-10 rtol = 1.0e-8
@@ -85,15 +87,15 @@ end
     for (fsym, _, _) in HyperHessians.DIFF_RULES
         x = xs[fsym]
         f = getfield(Base, fsym)
-        for T in (Float64, Float32)
-            check_against_ForwardDiff(f, x, T)
+        for P in (NTuple, Vec), T in (Float64, Float32)
+            check_against_ForwardDiff(f, x, T; partial = P)
         end
     end
     # Manually defined rules (not in DIFF_RULES)
     for (fsym, x) in [(:sin, 0.3), (:cos, 0.3), (:sinpi, 0.2), (:cospi, 0.2)]
         f = getfield(Base, fsym)
-        for T in (Float64, Float32)
-            check_against_ForwardDiff(f, x, T)
+        for P in (NTuple, Vec), T in (Float64, Float32)
+            check_against_ForwardDiff(f, x, T; partial = P)
         end
     end
     # Test sinc at x=0 (special case)
@@ -139,8 +141,8 @@ end
         haskey(xs, fsym) || continue # expintx does not support ForwardDiff
         x = xs[fsym]
         f = getfield(SpecialFunctions, fsym)
-        for T in (Float64, Float32)
-            check_against_ForwardDiff(f, x, T)
+        for P in (NTuple, Vec), T in (Float64, Float32)
+            check_against_ForwardDiff(f, x, T; partial = P)
         end
     end
 end
@@ -161,8 +163,8 @@ end
     for (fsym, _, _) in Ext.LOGEXPFUNCTIONS_DIFF_RULES
         x = xs[fsym]
         f = getfield(LogExpFunctions, fsym)
-        for T in (Float64, Float32)
-            check_against_ForwardDiff(f, x, T)
+        for P in (NTuple, Vec), T in (Float64, Float32)
+            check_against_ForwardDiff(f, x, T; partial = P)
         end
     end
 end
@@ -187,22 +189,26 @@ end
     for (fsym, _, _) in Ext.NANMATH_DIFF_RULES
         x = xs[fsym]
         f = getfield(NaNMath, fsym)
-        for T in (Float64, Float32)
-            check_against_ForwardDiff(f, x, T)
+        for P in (NTuple, Vec), T in (Float64, Float32)
+            check_against_ForwardDiff(f, x, T; partial = P)
         end
     end
 end
 
 @testset "real divided by HyperDual uses inverse rule" begin
-    seed = ϵT{1, Float64}((1.0,))
-    zero_seed = ϵT{1, Float64}((0.0,))
-    h = HyperDual(2.0, seed, seed, (zero_seed,))
-    expected = inv(h)
-    res = 1 / h
-    @test res.v == expected.v
-    @test Tuple(res.ϵ1) == Tuple(expected.ϵ1)
-    @test Tuple(res.ϵ2) == Tuple(expected.ϵ2)
-    @test Tuple(res.ϵ12[1]) == Tuple(expected.ϵ12[1])
+    for (seed, zero_seed, dual_type, DualType) in (
+            (ϵT{1, Float64}((1.0,)), ϵT{1, Float64}((0.0,)), HyperDual{1, 1, Float64}, HyperDual),
+            (ϵT_SIMD{1, Float64}((1.0,)), ϵT_SIMD{1, Float64}((0.0,)), HyperDualSIMD{1, 1, Float64}, HyperDualSIMD),
+        )
+        h = DualType(2.0, seed, seed, (zero_seed,))
+        expected = inv(h)
+        res = 1 / h
+        @test res isa dual_type
+        @test res.v == expected.v
+        @test Tuple(res.ϵ1) == Tuple(expected.ϵ1)
+        @test Tuple(res.ϵ2) == Tuple(expected.ϵ2)
+        @test Tuple(res.ϵ12[1]) == Tuple(expected.ϵ12[1])
+    end
 end
 
 end # module

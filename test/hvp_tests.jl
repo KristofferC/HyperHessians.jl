@@ -1,24 +1,30 @@
 module HVPTests
 
 using Test
-using HyperHessians: hvp, hvp!, DirectionalHVPConfig, Chunk
+using HyperHessians: hvp, hvp!, hvp_simd, hvp_simd!, DirectionalHVPConfig, DirectionalHVPConfigSIMD, Chunk
 using DiffTests
 using ForwardDiff
+
+const HVPCONFIGS = (DirectionalHVPConfig, DirectionalHVPConfigSIMD)
 
 include(joinpath(@__DIR__, "helpers.jl"))
 using .Helpers: ackley_stable
 
 @testset "DirectionalHVPConfig errors" begin
     x = [1.0, 2.0, 3.0]
-    @test_throws ArgumentError DirectionalHVPConfig(x, Chunk{0}())
+    for cfg_ctor in HVPCONFIGS
+        @test_throws ArgumentError cfg_ctor(x, Chunk{0}())
+    end
 end
 
 @testset "hvp! DimensionMismatch" begin
     f(x) = sum(abs2, x)
     x = [1.0, 2.0, 3.0]
-    cfg = DirectionalHVPConfig(x)
-    @test_throws DimensionMismatch hvp!(zeros(3), f, x, zeros(2), cfg)
-    @test_throws DimensionMismatch hvp!(zeros(2), f, x, zeros(3), cfg)
+    cfgs = (DirectionalHVPConfig(x), DirectionalHVPConfigSIMD(x))
+    for cfg in cfgs
+        @test_throws DimensionMismatch hvp!(zeros(3), f, x, zeros(2), cfg)
+        @test_throws DimensionMismatch hvp!(zeros(2), f, x, zeros(3), cfg)
+    end
 end
 
 @testset "Hessian-vector products" begin
@@ -33,8 +39,10 @@ end
             H = ForwardDiff.hessian(f, x)
 
             for chunk in (1, max(1, n ÷ 2), n)
-                cfg = DirectionalHVPConfig(x, Chunk{chunk}())
-                @test hvp(f, x, v, cfg) ≈ H * v
+                for cfg_ctor in HVPCONFIGS
+                    cfg = cfg_ctor(x, Chunk{chunk}())
+                    @test hvp(f, x, v, cfg) ≈ H * v
+                end
             end
         end
     end
@@ -47,13 +55,18 @@ end
     H = ForwardDiff.hessian(f, x)
     hvp!(hv, f, x, v)
     @test hv ≈ H * v
+    hvp_simd!(hv, f, x, v)
+    @test hv ≈ H * v
 
     # Test Float32
     x32 = rand(Float32, 6)
     v32 = rand(Float32, 6)
     hv32 = hvp(ackley_stable, x32, v32)
+    hv32_simd = hvp_simd(ackley_stable, x32, v32)
     @test hv32 isa Vector{Float32}
+    @test hv32_simd isa Vector{Float32}
     @test hv32 ≈ ForwardDiff.hessian(ackley_stable, x32) * v32
+    @test hv32_simd ≈ ForwardDiff.hessian(ackley_stable, x32) * v32
 end
 
 @testset "hvp! zero allocations" begin
@@ -63,15 +76,17 @@ end
     v = rand(n)
     hv = zeros(n)
 
-    # Full chunk (vector path)
-    cfg_full = DirectionalHVPConfig(x, Chunk{n}())
-    hvp!(hv, f, x, v, cfg_full)
-    @test @allocated(hvp!(hv, f, x, v, cfg_full)) == 0
+    for cfg_ctor in HVPCONFIGS
+        # Full chunk (vector path)
+        cfg_full = cfg_ctor(x, Chunk{n}())
+        hvp!(hv, f, x, v, cfg_full)
+        @test @allocated(hvp!(hv, f, x, v, cfg_full)) == 0
 
-    # Chunked path
-    cfg_chunk = DirectionalHVPConfig(x, Chunk{4}())
-    hvp!(hv, f, x, v, cfg_chunk)
-    @test @allocated(hvp!(hv, f, x, v, cfg_chunk)) == 0
+        # Chunked path
+        cfg_chunk = cfg_ctor(x, Chunk{4}())
+        hvp!(hv, f, x, v, cfg_chunk)
+        @test @allocated(hvp!(hv, f, x, v, cfg_chunk)) == 0
+    end
 end
 
 end # module

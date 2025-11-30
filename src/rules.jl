@@ -85,42 +85,44 @@ function rule_expr(f, f′, f′′)
     return Base.remove_linenums!(ex)
 end
 
-@inline function Base.sin(h::HyperDual{N1, N2}) where {N1, N2}
+"""
+    chain_rule_dual(h::AbstractHyperDualNumber, f, f′, f′′)
+
+Apply chain rule to AbstractHyperDualNumber `h` given primal `f`, first derivative `f′`, and second derivative `f′′`.
+Returns a new AbstractHyperDualNumber with properly propagated derivatives.
+"""
+@inline function chain_rule_dual(h::AbstractHyperDualNumber{N1, N2}, f, f′, f′′) where {N1, N2}
+    x23 = (f′′ ⊙ h.ϵ1) ⊗ h.ϵ2
+    return typeof(h)(f, h.ϵ1 ⊙ f′, h.ϵ2 ⊙ f′, ntuple(i -> _muladd(f′, h.ϵ12[i], x23[i]), Val(N1)))
+end
+
+@inline function Base.sin(h::AbstractHyperDualNumber{N1, N2}) where {N1, N2}
     s, c = sincos(h.v)
-    f′, f′′ = c, -s
-    x23 = (f′′ ⊙ h.ϵ1) ⊗ h.ϵ2
-    return HyperDual(s, h.ϵ1 ⊙ f′, h.ϵ2 ⊙ f′, ntuple(i -> h.ϵ12[i] ⊙ f′ ⊕ x23[i], Val(N1)))
+    return chain_rule_dual(h, s, c, -s)
 end
 
-@inline function Base.cos(h::HyperDual{N1, N2}) where {N1, N2}
+@inline function Base.cos(h::AbstractHyperDualNumber{N1}) where {N1}
     s, c = sincos(h.v)
-    f′, f′′ = -s, -c
-    x23 = (f′′ ⊙ h.ϵ1) ⊗ h.ϵ2
-    return HyperDual(c, h.ϵ1 ⊙ f′, h.ϵ2 ⊙ f′, ntuple(i -> h.ϵ12[i] ⊙ f′ ⊕ x23[i], Val(N1)))
+    return chain_rule_dual(h, c, -s, -c)
 end
 
-@inline function Base.sinpi(h::HyperDual{N1, N2}) where {N1, N2}
+@inline function Base.sinpi(h::AbstractHyperDualNumber{N1}) where {N1}
     s, c = sincospi(h.v)
-    f′, f′′ = π * c, -π^2 * s
-    x23 = (f′′ ⊙ h.ϵ1) ⊗ h.ϵ2
-    return HyperDual(s, h.ϵ1 ⊙ f′, h.ϵ2 ⊙ f′, ntuple(i -> h.ϵ12[i] ⊙ f′ ⊕ x23[i], Val(N1)))
+    return chain_rule_dual(h, s, π * c, -π^2 * s)
 end
 
-@inline function Base.cospi(h::HyperDual{N1, N2}) where {N1, N2}
+@inline function Base.cospi(h::AbstractHyperDualNumber{N1}) where {N1}
     s, c = sincospi(h.v)
-    f′, f′′ = -π * s, -π^2 * c
-    x23 = (f′′ ⊙ h.ϵ1) ⊗ h.ϵ2
-    return HyperDual(c, h.ϵ1 ⊙ f′, h.ϵ2 ⊙ f′, ntuple(i -> h.ϵ12[i] ⊙ f′ ⊕ x23[i], Val(N1)))
+    return chain_rule_dual(h, c, -π * s, -π^2 * c)
 end
 
 for (f, f′, f′′) in DIFF_RULES
     expr = rule_expr(f, f′, f′′)
     cse_expr = cse(binarize(expr); warn = false)
-    @eval @inline function Base.$f(h::HyperDual{N1, N2, T}) where {N1, N2, T}
+    @eval @inline function Base.$f(h::AbstractHyperDualNumber{N1, N2, T}) where {N1, N2, T}
         x = h.v
         $cse_expr
-        x23 = (f′′ ⊙ h.ϵ1) ⊗ h.ϵ2
-        return HyperDual(f, h.ϵ1 ⊙ f′, h.ϵ2 ⊙ f′, ntuple(i -> h.ϵ12[i] ⊙ f′ ⊕ x23[i], Val(N1)))
+        return chain_rule_dual(h, f, f′, f′′)
     end
 end
 
