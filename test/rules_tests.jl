@@ -254,4 +254,19 @@ end
     @test Tuple(res.ϵ12[1]) == Tuple(expected.ϵ12[1])
 end
 
+@testset "integer power" begin
+    seed = ϵT{1, Float64}((1.0,))
+    zero_seed = ϵT{1, Float64}((0.0,))
+    h = HyperDual(2.0, seed, seed, (zero_seed,))
+    @test (h^2).v == 4.0
+    @test (h^3).v == 8.0
+    @test (h^20).v == 2.0^20
+    @test (h^(-1)).v == 0.5
+    # Negative base with integer power
+    h_neg = HyperDual(-2.0, seed, seed, (zero_seed,))
+    @test (h_neg^2).v == 4.0
+    @test (h_neg^3).v == -8.0
+    @test (h_neg^20).v == (-2.0)^20
+end
+
 end # module

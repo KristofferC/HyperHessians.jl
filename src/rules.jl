@@ -255,15 +255,24 @@ for (f, fₓ, fᵧ, fₓₓ, fₓᵧ, fᵧᵧ) in BINARY_DIFF_RULES
     end
     @eval @inline function Base.$f(hx::HyperDual{N1, N2, T}, y_raw::Real) where {N1, N2, T}
         x = hx.v
-        y = T(y_raw)
+        y = y_raw
         $cse_expr
         return chain_rule_dual(hx, f, fₓ, fₓₓ)
     end
     @eval @inline function Base.$f(x_raw::Real, hy::HyperDual{N1, N2, T}) where {N1, N2, T}
-        x = T(x_raw)
+        x = x_raw
         y = hy.v
         $cse_expr
         return chain_rule_dual(hy, f, fᵧ, fᵧᵧ)
+    end
+    # Resolve ambiguity with Base.^(::Number, ::Integer)
+    if f == :^
+        @eval @inline function Base.$f(hx::HyperDual{N1, N2, T}, n::Integer) where {N1, N2, T}
+            x = hx.v
+            y = n
+            $cse_expr
+            return chain_rule_dual(hx, f, fₓ, fₓₓ)
+        end
     end
 end
 
