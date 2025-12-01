@@ -1,7 +1,7 @@
 module HyperHessiansNaNMathExt
 
 using HyperHessians
-using HyperHessians: changeprecision, chain_rule_dual, HyperDual
+using HyperHessians: changeprecision, chain_rule_dual, rule_cse, HyperDual
 using CommonSubexpressions: cse, binarize
 using NaNMath
 using SpecialFunctions: digamma, trigamma
@@ -76,7 +76,7 @@ end
 
 for (f, f′, f′′) in NANMATH_DIFF_RULES
     expr = nanmath_rule_expr(f, f′, f′′)
-    cse_expr = cse(binarize(expr); warn = false)
+    cse_expr = rule_cse(expr; warn = false)
     @eval @inline function NaNMath.$f(h::HyperDual{N1, N2, T}) where {N1, N2, T}
         x = h.v
         $cse_expr
@@ -86,7 +86,7 @@ end
 
 for (f, fₓ, fᵧ, fₓₓ, fₓᵧ, fᵧᵧ) in NANMATH_BINARY_DIFF_RULES
     expr = nanmath_binary_rule_expr(f, fₓ, fᵧ, fₓₓ, fₓᵧ, fᵧᵧ)
-    cse_expr = cse(binarize(expr); warn = false)
+    cse_expr = rule_cse(expr; warn = false)
     @eval @inline function NaNMath.$f(hx::HyperDual{N1, N2, T}, hy::HyperDual{N1, N2, T}) where {N1, N2, T}
         x = hx.v
         y = hy.v

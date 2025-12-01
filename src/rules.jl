@@ -149,6 +149,30 @@ function binary_rule_expr(f, fₓ, fᵧ, fₓₓ, fₓᵧ, fᵧᵧ)
     return Base.remove_linenums!(ex)
 end
 
+function rule_cse(expr; warn::Bool = false)
+    # In these rule expressions the first statement is always `f = f(x, ...)`.
+    # Running CSE over that assignment causes every expression containing `f`
+    # (like `f^3` in the `hypot` rule) to be treated as non-hoistable.
+    # Here we only run CSE on the "tail" of the expression after that first assignment
+    # to avoid that issue.
+    expr = binarize(expr)
+    if !(expr isa Expr && expr.head === :block)
+        return cse(expr; warn)
+    end
+    stmts = expr.args
+    isempty(stmts) && return cse(expr; warn)
+    first_stmt = stmts[1]
+    if !(Meta.isexpr(first_stmt, :(=)) && first_stmt.args[1] == :f)
+        return cse(expr; warn)
+    end
+    if length(stmts) == 1
+        return expr
+    end
+    tail = Expr(:block, stmts[2:end]...)
+    tail_cse = cse(tail; warn)
+    return Expr(:block, first_stmt, tail_cse.args...)
+end
+
 """
     chain_rule_dual(h::HyperDual, f, f′, f′′)
 
@@ -209,7 +233,7 @@ end
 
 for (f, f′, f′′) in DIFF_RULES
     expr = rule_expr(f, f′, f′′)
-    cse_expr = cse(binarize(expr); warn = false)
+    cse_expr = rule_cse(expr; warn = false)
     @eval @inline function Base.$f(h::HyperDual{N1, N2, T}) where {N1, N2, T}
         x = h.v
         $cse_expr
@@ -219,7 +243,7 @@ end
 
 for (f, fₓ, fᵧ, fₓₓ, fₓᵧ, fᵧᵧ) in BINARY_DIFF_RULES
     expr = binary_rule_expr(f, fₓ, fᵧ, fₓₓ, fₓᵧ, fᵧᵧ)
-    cse_expr = cse(binarize(expr); warn = false)
+    cse_expr = rule_cse(expr; warn = false)
     @eval @inline function Base.$f(hx::HyperDual{N1, N2, T}, hy::HyperDual{N1, N2, T}) where {N1, N2, T}
         x = hx.v
         y = hy.v
@@ -243,34 +267,61 @@ for (f, fₓ, fᵧ, fₓₓ, fₓᵧ, fᵧᵧ) in BINARY_DIFF_RULES
     end
 end
 
-"""
-    debug_rule_cse(io=stdout; warn=false)
 
-Print the rule template before and after common subexpression elimination for
-each entry in `DIFF_RULES`. Useful when manually inspecting how the CSE pass
-is transforming the generated code.
 """
-function debug_rule_cse(io::IO = stdout; warn::Bool = false)
-    for (f, f′, f′′) in DIFF_RULES
-        expr = rule_expr(f, f′, f′′)
-        println(io, "\n### ", f, " ###")
-        println(io, "before CSE:\n", expr)
-        println(io, "\nafter CSE:\n", cse(binarize(expr); warn))
+    normalize_cse_vars(expr)
+
+Replace gensym-generated variable names (like `var"##718"`) with deterministic
+names (`cse1`, `cse2`, ...) for reproducible output across Julia sessions.
+"""
+function normalize_cse_vars(expr)
+    gensym_to_normalized = Dict{Symbol, Symbol}()
+    counter = Ref(0)
+
+    function is_gensym_var(s::Symbol)
+        str = string(s)
+        return startswith(str, "##") || startswith(str, "var\"##")
     end
-    return nothing
+
+    function get_normalized(s::Symbol)
+        if haskey(gensym_to_normalized, s)
+            return gensym_to_normalized[s]
+        else
+            counter[] += 1
+            normalized = Symbol("cse", counter[])
+            gensym_to_normalized[s] = normalized
+            return normalized
+        end
+    end
+
+    function normalize(x)
+        return x
+    end
+
+    function normalize(s::Symbol)
+        return is_gensym_var(s) ? get_normalized(s) : s
+    end
+
+    function normalize(ex::Expr)
+        return Expr(ex.head, map(normalize, ex.args)...)
+    end
+
+    return normalize(expr)
 end
 
 """
     dump_rule_cse(dir="cse_dump"; warn=false)
 
 Write one file per rule with the before/after CSE expressions for offline
-inspection. Each file is named `<function>.jl` inside `dir`.
+inspection. Each file is named `<function>.jl` inside `dir`. Handles both
+unary (`DIFF_RULES`) and binary (`BINARY_DIFF_RULES`) rules.
 """
 function dump_rule_cse(dir::AbstractString = "cse_dump"; warn::Bool = false)
     mkpath(dir)
+
     for (f, f′, f′′) in DIFF_RULES
         expr = rule_expr(f, f′, f′′)
-        cse_expr = cse(binarize(expr); warn)
+        cse_expr = normalize_cse_vars(rule_cse(expr; warn))
         before_str = sprint(show, MIME"text/plain"(), expr)
         after_str = sprint(show, MIME"text/plain"(), cse_expr)
         open(joinpath(dir, string(f) * ".jl"), "w") do io
@@ -280,5 +331,19 @@ function dump_rule_cse(dir::AbstractString = "cse_dump"; warn::Bool = false)
             println(io, after_str)
         end
     end
+
+    for (f, fₓ, fᵧ, fₓₓ, fₓᵧ, fᵧᵧ) in BINARY_DIFF_RULES
+        expr = binary_rule_expr(f, fₓ, fᵧ, fₓₓ, fₓᵧ, fᵧᵧ)
+        cse_expr = normalize_cse_vars(rule_cse(expr; warn))
+        before_str = sprint(show, MIME"text/plain"(), expr)
+        after_str = sprint(show, MIME"text/plain"(), cse_expr)
+        open(joinpath(dir, string(f) * "_binary.jl"), "w") do io
+            println(io, "# before CSE")
+            println(io, before_str)
+            println(io, "\n# after CSE")
+            println(io, after_str)
+        end
+    end
+
     return dir
 end
