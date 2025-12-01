@@ -149,6 +149,30 @@ function binary_rule_expr(f, fₓ, fᵧ, fₓₓ, fₓᵧ, fᵧᵧ)
     return Base.remove_linenums!(ex)
 end
 
+function rule_cse(expr; warn::Bool = false)
+    # In these rule expressions the first statement is always `f = f(x, ...)`.
+    # Running CSE over that assignment causes every expression containing `f`
+    # (like `f^3` in the `hypot` rule) to be treated as non-hoistable.
+    # Here we only run CSE on the "tail" of the expression after that first assignment
+    # to avoid that issue.
+    expr = binarize(expr)
+    if !(expr isa Expr && expr.head === :block)
+        return cse(expr; warn)
+    end
+    stmts = expr.args
+    isempty(stmts) && return cse(expr; warn)
+    first_stmt = stmts[1]
+    if !(Meta.isexpr(first_stmt, :(=)) && first_stmt.args[1] == :f)
+        return cse(expr; warn)
+    end
+    if length(stmts) == 1
+        return expr
+    end
+    tail = Expr(:block, stmts[2:end]...)
+    tail_cse = cse(tail; warn)
+    return Expr(:block, first_stmt, tail_cse.args...)
+end
+
 """
     chain_rule_dual(h::HyperDual, f, f′, f′′)
 
@@ -209,7 +233,7 @@ end
 
 for (f, f′, f′′) in DIFF_RULES
     expr = rule_expr(f, f′, f′′)
-    cse_expr = cse(binarize(expr); warn = false)
+    cse_expr = rule_cse(expr; warn = false)
     @eval @inline function Base.$f(h::HyperDual{N1, N2, T}) where {N1, N2, T}
         x = h.v
         $cse_expr
@@ -219,7 +243,7 @@ end
 
 for (f, fₓ, fᵧ, fₓₓ, fₓᵧ, fᵧᵧ) in BINARY_DIFF_RULES
     expr = binary_rule_expr(f, fₓ, fᵧ, fₓₓ, fₓᵧ, fᵧᵧ)
-    cse_expr = cse(binarize(expr); warn = false)
+    cse_expr = rule_cse(expr; warn = false)
     @eval @inline function Base.$f(hx::HyperDual{N1, N2, T}, hy::HyperDual{N1, N2, T}) where {N1, N2, T}
         x = hx.v
         y = hy.v
@@ -297,7 +321,7 @@ function dump_rule_cse(dir::AbstractString = "cse_dump"; warn::Bool = false)
 
     for (f, f′, f′′) in DIFF_RULES
         expr = rule_expr(f, f′, f′′)
-        cse_expr = normalize_cse_vars(cse(binarize(expr); warn))
+        cse_expr = normalize_cse_vars(rule_cse(expr; warn))
         before_str = sprint(show, MIME"text/plain"(), expr)
         after_str = sprint(show, MIME"text/plain"(), cse_expr)
         open(joinpath(dir, string(f) * ".jl"), "w") do io
@@ -310,7 +334,7 @@ function dump_rule_cse(dir::AbstractString = "cse_dump"; warn::Bool = false)
 
     for (f, fₓ, fᵧ, fₓₓ, fₓᵧ, fᵧᵧ) in BINARY_DIFF_RULES
         expr = binary_rule_expr(f, fₓ, fᵧ, fₓₓ, fₓᵧ, fᵧᵧ)
-        cse_expr = normalize_cse_vars(cse(binarize(expr); warn))
+        cse_expr = normalize_cse_vars(rule_cse(expr; warn))
         before_str = sprint(show, MIME"text/plain"(), expr)
         after_str = sprint(show, MIME"text/plain"(), cse_expr)
         open(joinpath(dir, string(f) * "_binary.jl"), "w") do io
