@@ -2,7 +2,7 @@ module HyperHessiansSpecialFunctionsExt
 
 using HyperHessians
 using HyperHessians: rule_expr, chain_rule_dual, HyperDual
-using CommonSubexpressions: cse
+using CommonSubexpressions: cse, binarize
 using SpecialFunctions
 using SpecialFunctions: sqrtπ
 
@@ -42,7 +42,7 @@ const SPECIALFUNCTIONS_DIFF_RULES = [
 
 for (f, f′, f′′) in SPECIALFUNCTIONS_DIFF_RULES
     expr = rule_expr(f, f′, f′′)
-    cse_expr = cse(expr; warn = false)
+    cse_expr = cse(binarize(expr); warn = false)
     @eval @inline function SpecialFunctions.$f(h::HyperDual{N1, N2, T}) where {N1, N2, T}
         x = h.v
         $cse_expr
