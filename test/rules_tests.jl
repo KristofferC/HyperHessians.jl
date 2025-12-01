@@ -27,6 +27,31 @@ function check_against_ForwardDiff(f, x, ::Type{T} = Float64) where {T}
     return
 end
 
+function check_binary_against_ForwardDiff(f, x, y, ::Type{T} = Float64) where {T}
+    T == Float32 && return
+    seed = ϵT{1, T}((one(T),))
+    zero_seed = ϵT{1, T}((zero(T),))
+    hx = HyperDual(T(x), seed, zero_seed, (zero_seed,))
+    hy = HyperDual(T(y), zero_seed, seed, (zero_seed,))
+    res = f(hx, hy)
+    g(z) = f(z[1], z[2])
+    grad = ForwardDiff.gradient(g, T[x, y])
+    hess = ForwardDiff.hessian(g, T[x, y])
+    @test res isa HyperDual{1, 1, T}
+    T == Float32 && return
+    @test res.ϵ1[1] ≈ grad[1] atol = 1.0e-10 rtol = 1.0e-8
+    @test res.ϵ2[1] ≈ grad[2] atol = 1.0e-10 rtol = 1.0e-8
+    @test res.ϵ12[1][1] ≈ hess[1, 2] atol = 1.0e-9 rtol = 1.0e-7
+    return
+end
+
+function check_binary_all_orders(f, x, y, ::Type{T} = Float64) where {T}
+    check_binary_against_ForwardDiff(f, x, y, T)
+    check_against_ForwardDiff(z -> f(z, T(y)), x, T)
+    check_against_ForwardDiff(z -> f(T(x), z), y, T)
+    return
+end
+
 @testset "rule derivatives vs ForwardDiff" begin
     xs = Dict(
         :sqrt => 1.2,
@@ -99,6 +124,21 @@ end
     # Test sinc at x=0 (special case)
     for T in (Float64,)
         check_against_ForwardDiff(sinc, zero(T), T)
+    end
+end
+
+@testset "binary rule derivatives vs ForwardDiff" begin
+    xy = Dict(
+        :^ => (1.3, 0.7),
+        :atan => (0.4, 0.9),
+        :hypot => (0.8, 1.1),
+        :log => (1.7, 2.3),
+    )
+    for (fsym, (x, y)) in xy
+        f = getfield(Base, fsym)
+        for T in (Float64, Float32)
+            check_binary_all_orders(f, x, y, T)
+        end
     end
 end
 
@@ -189,6 +229,15 @@ end
         f = getfield(NaNMath, fsym)
         for T in (Float64, Float32)
             check_against_ForwardDiff(f, x, T)
+        end
+    end
+    xy = Dict(
+        :pow => (1.2, 0.8),
+    )
+    for (fsym, (x, y)) in xy
+        f = getfield(NaNMath, fsym)
+        for T in (Float64, Float32)
+            check_binary_all_orders(f, x, y, T)
         end
     end
 end

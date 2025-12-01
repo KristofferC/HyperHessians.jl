@@ -74,6 +74,58 @@ for (i, rule) in enumerate(DIFF_RULES)
     DIFF_RULES[i] = (rule[1], prec_f′, prec_f′′)
 end
 
+# runic: off
+const BINARY_DIFF_RULES = [
+    (
+        :^,
+        :(y * f / x),
+        :(begin
+            cond = x isa Real && x <= T(0)
+            logx = cond ? zero(float(x)) : log(x)
+            cond
+            logx
+            f * logx
+        end),
+        :(y * (y - one(y)) * f / (x * x)),
+        :(cond ? Base.oftype(float(x), NaN) : (f / x) * (one(x) + y * logx)),
+        :(cond ? Base.oftype(float(x), NaN) : f * logx^2),
+    ),
+    (
+        :atan,
+        :(y / (x^2 + y^2)),
+        :(-x / (x^2 + y^2)),
+        :(-2 * x * y / (x^2 + y^2)^2),
+        :( (x^2 - y^2) / (x^2 + y^2)^2 ),
+        :(2 * x * y / (x^2 + y^2)^2),
+    ),
+    (
+        :hypot,
+        :(x / f),
+        :(y / f),
+        :(y^2 / f^3),
+        :(-x * y / f^3),
+        :(x^2 / f^3),
+    ),
+    (
+        :log,
+        :( log(y) * inv(-log(x)^2 * x) ),
+        :( inv(y) / log(x) ),
+        :( log(y) * (log(x) + 2) / (x^2 * log(x)^3) ),
+        :( -inv(x * y * log(x)^2) ),
+        :( -inv(y^2 * log(x)) ),
+    ),
+]
+# runic: on
+
+for (i, rule) in enumerate(BINARY_DIFF_RULES)
+    prec_fₓ = changeprecision(rule[2])
+    prec_fᵧ = changeprecision(rule[3])
+    prec_fₓₓ = changeprecision(rule[4])
+    prec_fₓᵧ = changeprecision(rule[5])
+    prec_fᵧᵧ = changeprecision(rule[6])
+    BINARY_DIFF_RULES[i] = (rule[1], prec_fₓ, prec_fᵧ, prec_fₓₓ, prec_fₓᵧ, prec_fᵧᵧ)
+end
+
 function rule_expr(f, f′, f′′)
     ex = quote
         # Verify that the cse still works properly when changing this.
@@ -82,6 +134,18 @@ function rule_expr(f, f′, f′′)
         f′′ = $f′′
     end
     # Drop line number metadata so debug output is cleaner and CSE vars are shorter.
+    return Base.remove_linenums!(ex)
+end
+
+function binary_rule_expr(f, fₓ, fᵧ, fₓₓ, fₓᵧ, fᵧᵧ)
+    ex = quote
+        f = $f(x, y)
+        fₓ = $fₓ
+        fᵧ = $fᵧ
+        fₓₓ = $fₓₓ
+        fₓᵧ = $fₓᵧ
+        fᵧᵧ = $fᵧᵧ
+    end
     return Base.remove_linenums!(ex)
 end
 
@@ -94,6 +158,33 @@ Returns a new HyperDual with properly propagated derivatives.
 @inline function chain_rule_dual(h::HyperDual{N1, N2}, f, f′, f′′) where {N1, N2}
     x23 = (f′′ ⊙ h.ϵ1) ⊗ h.ϵ2
     return HyperDual(f, h.ϵ1 ⊙ f′, h.ϵ2 ⊙ f′, ntuple(i -> _muladd(f′, h.ϵ12[i], x23[i]), Val(N1)))
+end
+
+"""
+    chain_rule_dual(hx::HyperDual, hy::HyperDual, f, fₓ, fᵧ, fₓₓ, fₓᵧ, fᵧᵧ)
+
+Apply chain rule to a scalar function of two HyperDual inputs given first and
+second partial derivatives.
+"""
+@inline function chain_rule_dual(
+        hx::HyperDual{N1, N2},
+        hy::HyperDual{N1, N2},
+        f,
+        fₓ,
+        fᵧ,
+        fₓₓ,
+        fₓᵧ,
+        fᵧᵧ,
+    ) where {N1, N2}
+    ϵ1 = _muladd(fₓ, hx.ϵ1, hy.ϵ1 ⊙ fᵧ)
+    ϵ2 = _muladd(fₓ, hx.ϵ2, hy.ϵ2 ⊙ fᵧ)
+    @inline g(i) = begin
+        acc = _muladd(fₓ, hx.ϵ12[i], hy.ϵ12[i] ⊙ fᵧ)
+        acc = _muladd(hx.ϵ1[i] * fₓₓ + hy.ϵ1[i] * fₓᵧ, hx.ϵ2, acc)
+        acc = _muladd(hx.ϵ1[i] * fₓᵧ + hy.ϵ1[i] * fᵧᵧ, hy.ϵ2, acc)
+        acc
+    end
+    return HyperDual(f, ϵ1, ϵ2, ntuple(g, Val(N1)))
 end
 
 @inline function Base.sin(h::HyperDual{N1, N2}) where {N1, N2}
@@ -123,6 +214,32 @@ for (f, f′, f′′) in DIFF_RULES
         x = h.v
         $cse_expr
         return chain_rule_dual(h, f, f′, f′′)
+    end
+end
+
+for (f, fₓ, fᵧ, fₓₓ, fₓᵧ, fᵧᵧ) in BINARY_DIFF_RULES
+    expr = binary_rule_expr(f, fₓ, fᵧ, fₓₓ, fₓᵧ, fᵧᵧ)
+    cse_expr = cse(binarize(expr); warn = false)
+    @eval @inline function Base.$f(hx::HyperDual{N1, N2, T}, hy::HyperDual{N1, N2, T}) where {N1, N2, T}
+        x = hx.v
+        y = hy.v
+        $cse_expr
+        return chain_rule_dual(hx, hy, f, fₓ, fᵧ, fₓₓ, fₓᵧ, fᵧᵧ)
+    end
+    @eval @inline function Base.$f(hx::HyperDual{N1, N2, T1}, hy::HyperDual{N1, N2, T2}) where {N1, N2, T1, T2}
+        return Base.$f(promote(hx, hy)...)
+    end
+    @eval @inline function Base.$f(hx::HyperDual{N1, N2, T}, y_raw::Real) where {N1, N2, T}
+        x = hx.v
+        y = T(y_raw)
+        $cse_expr
+        return chain_rule_dual(hx, f, fₓ, fₓₓ)
+    end
+    @eval @inline function Base.$f(x_raw::Real, hy::HyperDual{N1, N2, T}) where {N1, N2, T}
+        x = T(x_raw)
+        y = hy.v
+        $cse_expr
+        return chain_rule_dual(hy, f, fᵧ, fᵧᵧ)
     end
 end
 
