@@ -21,8 +21,8 @@ There are some limitations compared to ForwardDiff.jl:
 | `hessian!(H, f, x, cfg)` | In-place Hessian into pre-allocated `H` |
 | `hessiangradvalue(f, x)` | Compute Hessian, gradient, and value together |
 | `hessiangradvalue!(H, G, f, x, cfg)` | In-place variant, returns the value |
-| `hvp(f, x, v)` | Hessian–vector product `H(x) * v` |
-| `hvp!(hv, f, x, v, cfg)` | In-place Hessian–vector product |
+| `hvp(f, x, tangents)` | Hessian–vector product(s) `H(x) * tangent(s)` |
+| `hvp!(hvs, f, x, tangents, cfg)` | In-place Hessian–vector product |
 | `HessianConfig(x, chunk)` | Config for caching and chunk size control |
 | `DirectionalHVPConfig(x, chunk)` | Config for Hessian–vector products |
 | `Chunk{N}()` | Specify chunk size `N` |
@@ -146,7 +146,7 @@ There is also an in-place variant `hessiangradvalue!(H, G, f, x, cfg)` that retu
 
 ### Hessian–Vector Products
 
-Use `hvp(f, x, v)` to get `H(x) * v` without forming the full matrix:
+Use `hvp(f, x, v)` (or `hvp(f, x, (v,))[1]`) to get `H(x) * v` without forming the full matrix:
 
 ```julia
 julia> f = x -> sum(sin.(x) .* cos.(x));
@@ -168,7 +168,7 @@ julia> HyperHessians.hessian(f, x) * v
   0.1676492989193555
 ```
 
-You can supply a `DirectionalHVPConfig` to reuse storage and tune chunk size, e.g. `cfg = HyperHessians.DirectionalHVPConfig(x, HyperHessians.Chunk{8}()); hvp(f, x, v, cfg)`. For non-allocating use, call `hvp!(hv, f, x, v[, cfg])` with a preallocated `hv` and a reused config.
+You can pass a single tangent as a vector, or multiple tangents as a tuple of vectors. HyperHessians will evaluate bundled tangents in one pass and return the matching vector or tuple of Hessian–vector products. You can supply a `DirectionalHVPConfig` to reuse storage and tune chunk size, e.g. `cfg = HyperHessians.DirectionalHVPConfig(x, v, HyperHessians.Chunk{8}()); hvp(f, x, v, cfg)` (for a single tangent this is equivalent to `DirectionalHVPConfig(x, HyperHessians.Chunk{8}())`, passing `v` only matters when you have multiple tangents). For non-allocating use, call `hvp!(hvs, f, x, tangents[, cfg])` with a preallocated output container (a vector for a single tangent, or a tuple of vectors for multiple) and a reused config.
 
 ### StaticArrays support
 
@@ -186,7 +186,7 @@ julia> HyperHessians.hvp(x -> sum(sin.(x)), x, ones(SVector{4})) isa SVector
 true
 ```
 
-`hessian`, `hessiangradvalue`, and `hvp` return StaticArrays and avoid heap allocations; bang-variants are intentionally omitted for StaticArrays because mutation is less common for immutable small arrays.
+`hessian`, `hessiangradvalue`, and `hvp` return StaticArrays (for `hvp`, a StaticVector for one tangent or a tuple for multiple) and avoid heap allocations; bang-variants are intentionally omitted for StaticArrays because mutation is less common for immutable small arrays.
 
 ## Performance
 

@@ -24,6 +24,13 @@ using StaticArrays
     @test hv === 2 .* dir
     @test @allocated(hvp(g, x, dir)) == 0 broken = VERSION < v"1.11"
 
+    # Bundled tangents (multiple directions)
+    dir2 = SVector{4}(4.0, 3.0, 2.0, 1.0)
+    hv_bundle = hvp(g, x, (dir, dir2))
+    @test hv_bundle[1] === 2 .* dir
+    @test hv_bundle[2] === 2 .* dir2
+    @test @allocated(hvp(g, x, (dir, dir2))) == 0 broken = VERSION < v"1.11"
+
 
     res = hessiangradvalue(g, x)
     @test res.gradient === 2 .* x
