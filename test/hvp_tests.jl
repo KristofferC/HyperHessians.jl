@@ -1,7 +1,7 @@
 module HVPTests
 
 using Test
-using HyperHessians: hvp, hvp!, DirectionalHVPConfig, Chunk
+using HyperHessians: hvp, hvp!, hvpgrad, hvpgrad!, DirectionalHVPConfig, Chunk
 using DiffTests
 using ForwardDiff
 
@@ -94,6 +94,35 @@ end
     @test hv_single_out ≈ H * v1
 end
 
+@testset "hvpgrad" begin
+    f = DiffTests.ackley
+    x = rand(6)
+    v1 = rand(6)
+    v2 = rand(6)
+    H = ForwardDiff.hessian(f, x)
+    g_expected = ForwardDiff.gradient(f, x)
+
+    # Single tangent allocating
+    res1 = hvpgrad(f, x, v1)
+    @test res1.gradient ≈ g_expected
+    @test res1.hvp ≈ H * v1
+
+    # Multiple tangents allocating
+    res2 = hvpgrad(f, x, (v1, v2))
+    @test res2.gradient ≈ g_expected
+    @test res2.hvp[1] ≈ H * v1
+    @test res2.hvp[2] ≈ H * v2
+
+    # In-place
+    g_out = zeros(length(x))
+    hv_out = (zeros(length(x)), zeros(length(x)))
+    cfg = DirectionalHVPConfig(x, (v1, v2), Chunk{3}())
+    hvpgrad!(g_out, hv_out, f, x, (v1, v2), cfg)
+    @test g_out ≈ g_expected
+    @test hv_out[1] ≈ H * v1
+    @test hv_out[2] ≈ H * v2
+end
+
 @testset "hvp! zero allocations" begin
     f = x -> sum(abs2, x)
     n = 8
@@ -122,6 +151,37 @@ end
     cfg_bundle_chunk = DirectionalHVPConfig(x, hv_bundle, Chunk{4}())
     hvp!(hv_bundle, f, x, (v1, v2), cfg_bundle_chunk)
     @test @allocated(hvp!(hv_bundle, f, x, (v1, v2), cfg_bundle_chunk)) == 0 broken = VERSION < v"1.11"
+end
+
+@testset "hvpgrad! zero allocations" begin
+    f = x -> sum(abs2, x)
+    n = 8
+    x = rand(n)
+    v = rand(n)
+    g = zeros(n)
+    hv = zeros(n)
+
+    # Full chunk (vector path)
+    cfg_full = DirectionalHVPConfig(x, Chunk{n}())
+    hvpgrad!(g, hv, f, x, v, cfg_full)
+    @test @allocated(hvpgrad!(g, hv, f, x, v, cfg_full)) == 0 broken = VERSION < v"1.11"
+
+    # Chunked path
+    cfg_chunk = DirectionalHVPConfig(x, Chunk{4}())
+    hvpgrad!(g, hv, f, x, v, cfg_chunk)
+    @test @allocated(hvpgrad!(g, hv, f, x, v, cfg_chunk)) == 0 broken = VERSION < v"1.11"
+
+    # Bundled tangents (multiple directions)
+    v1 = rand(n)
+    v2 = rand(n)
+    hv_bundle = (zeros(n), zeros(n))
+    cfg_bundle_full = DirectionalHVPConfig(x, hv_bundle, Chunk{n}())
+    hvpgrad!(g, hv_bundle, f, x, (v1, v2), cfg_bundle_full)
+    @test @allocated(hvpgrad!(g, hv_bundle, f, x, (v1, v2), cfg_bundle_full)) == 0 broken = VERSION < v"1.11"
+
+    cfg_bundle_chunk = DirectionalHVPConfig(x, hv_bundle, Chunk{4}())
+    hvpgrad!(g, hv_bundle, f, x, (v1, v2), cfg_bundle_chunk)
+    @test @allocated(hvpgrad!(g, hv_bundle, f, x, (v1, v2), cfg_bundle_chunk)) == 0 broken = VERSION < v"1.11"
 end
 
 end # module

@@ -10,7 +10,7 @@ end
 
 
 if VERSION >= v"1.11.0-"
-    eval(Meta.parse("public hessian, hessian!, hessiangradvalue, hessiangradvalue!, hvp, hvp!, HessianConfig, DirectionalHVPConfig, Chunk"))
+    eval(Meta.parse("public hessian, hessian!, hessiangradvalue, hessiangradvalue!, hvp, hvp!, hvpgrad, hvpgrad!, HessianConfig, DirectionalHVPConfig, Chunk"))
 end
 
 
