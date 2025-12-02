@@ -23,6 +23,8 @@ There are some limitations compared to ForwardDiff.jl:
 | `hessiangradvalue!(H, G, f, x, cfg)` | In-place variant, returns the value |
 | `hvp(f, x, tangents)` | Hessian–vector product(s) `H(x) * tangent(s)` |
 | `hvp!(hvs, f, x, tangents, cfg)` | In-place Hessian–vector product |
+| `hvpgrad(f, x, tangents)` | Gradient and Hessian–vector product(s) |
+| `hvpgrad!(g, hvs, f, x, tangents, cfg)` | In-place gradient and Hessian–vector product |
 | `HessianConfig(x, chunk)` | Config for caching and chunk size control |
 | `DirectionalHVPConfig(x, chunk)` | Config for Hessian–vector products |
 | `Chunk{N}()` | Specify chunk size `N` |
@@ -169,6 +171,8 @@ julia> HyperHessians.hessian(f, x) * v
 ```
 
 You can pass a single tangent as a vector, or multiple tangents as a tuple of vectors. HyperHessians will evaluate bundled tangents in one pass and return the matching vector or tuple of Hessian–vector products. You can supply a `DirectionalHVPConfig` to reuse storage and tune chunk size, e.g. `cfg = HyperHessians.DirectionalHVPConfig(x, v, HyperHessians.Chunk{8}()); hvp(f, x, v, cfg)` (for a single tangent this is equivalent to `DirectionalHVPConfig(x, HyperHessians.Chunk{8}())`, passing `v` only matters when you have multiple tangents). For non-allocating use, call `hvp!(hvs, f, x, tangents[, cfg])` with a preallocated output container (a vector for a single tangent, or a tuple of vectors for multiple) and a reused config.
+
+To get the gradient and Hessian–vector product(s) together, use `hvpgrad`/`hvpgrad!`; this reuses the same directional seeding so the gradient comes “for free” alongside the bundled `H*v` results.
 
 ### StaticArrays support
 

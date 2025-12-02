@@ -1,7 +1,7 @@
 module StaticArraysTests
 
 using Test
-using HyperHessians: hessian, hvp, hessiangradvalue
+using HyperHessians: hessian, hvp, hvpgrad, hessiangradvalue
 using DiffTests
 using ForwardDiff
 using StaticArrays
@@ -24,12 +24,21 @@ using StaticArrays
     @test hv === 2 .* dir
     @test @allocated(hvp(g, x, dir)) == 0 broken = VERSION < v"1.11"
 
+    res = hvpgrad(g, x, dir)
+    @test res.gradient === 2 .* x
+    @test res.hvp === 2 .* dir
+
     # Bundled tangents (multiple directions)
     dir2 = SVector{4}(4.0, 3.0, 2.0, 1.0)
     hv_bundle = hvp(g, x, (dir, dir2))
     @test hv_bundle[1] === 2 .* dir
     @test hv_bundle[2] === 2 .* dir2
     @test @allocated(hvp(g, x, (dir, dir2))) == 0 broken = VERSION < v"1.11"
+
+    res_bundle = hvpgrad(g, x, (dir, dir2))
+    @test res_bundle.gradient === 2 .* x
+    @test res_bundle.hvp[1] === 2 .* dir
+    @test res_bundle.hvp[2] === 2 .* dir2
 
 
     res = hessiangradvalue(g, x)

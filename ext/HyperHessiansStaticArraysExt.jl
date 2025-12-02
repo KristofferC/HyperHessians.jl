@@ -44,7 +44,7 @@ end
     end
 end
 
-@generated function extract_static_gradient(v::HyperDual{N, N, T}, x::StaticVector{N, T}) where {N, T}
+@generated function extract_static_gradient(v::HyperDual{N, M, T}, x::StaticVector{N, T}) where {N, M, T}
     entries = [:(v.ϵ1[$i]) for i in 1:N]
     return quote
         $(Expr(:meta, :inline))
@@ -68,17 +68,20 @@ end
     end
 end
 
-function HyperHessians.hessian(f::F, x::StaticVector{N, T}) where {F, N, T}
+@inline function _static_hessian_core(f, x)
     duals = hyperdualize(x)
     out = f(duals)
     check_scalar(out)
+    return out
+end
+
+function HyperHessians.hessian(f::F, x::StaticVector{N, T}) where {F, N, T}
+    out = _static_hessian_core(f, x)
     return extract_static_hessian(out, x)
 end
 
 function HyperHessians.hessiangradvalue(f::F, x::StaticVector{N, T}) where {F, N, T}
-    duals = hyperdualize(x)
-    out = f(duals)
-    check_scalar(out)
+    out = _static_hessian_core(f, x)
     return (;
         value = out.v,
         gradient = extract_static_gradient(out, x),
@@ -95,6 +98,20 @@ end
 
 function HyperHessians.hvp(f::F, x::StaticVector{N, T}, v::StaticVector{N, T}) where {F, N, T}
     return HyperHessians.hvp(f, x, (v,))[1]
+end
+
+function HyperHessians.hvpgrad(f::F, x::StaticVector{N, T}, tangents::NTuple{M, <:StaticVector{N, T}}) where {F, N, T, M}
+    duals = hyperdualize_dir(x, tangents)
+    out = f(duals)
+    check_scalar(out)
+    g = extract_static_gradient(out, x)
+    hv = extract_static_hvp(out, x)
+    return (; gradient = g, hvp = hv)
+end
+
+function HyperHessians.hvpgrad(f::F, x::StaticVector{N, T}, v::StaticVector{N, T}) where {F, N, T}
+    res = HyperHessians.hvpgrad(f, x, (v,))
+    return (; gradient = res.gradient, hvp = res.hvp[1])
 end
 
 end
