@@ -16,6 +16,36 @@ using ForwardDiff
     @test_throws DimensionMismatch hessian_gradient_value!(zeros(3, 3), zeros(2), f, x, cfg_chunked)
 end
 
+@testset "hessian_gradient_value scalar input" begin
+    # Scalar input, scalar output
+    f_scalar(x) = x^3 - 2x^2 + x
+    x = 2.5
+    res = hessian_gradient_value(f_scalar, x)
+    @test res.value ≈ f_scalar(x)
+    @test res.gradient ≈ ForwardDiff.derivative(f_scalar, x)
+    @test res.hessian ≈ ForwardDiff.derivative(x -> ForwardDiff.derivative(f_scalar, x), x)
+
+    # Scalar input, tuple output
+    f_tuple(x) = (x^2, x^3)
+    res_tuple = hessian_gradient_value(f_tuple, x)
+    @test res_tuple.value == (x^2, x^3)
+    @test res_tuple.gradient[1] ≈ ForwardDiff.derivative(x -> x^2, x)
+    @test res_tuple.gradient[2] ≈ ForwardDiff.derivative(x -> x^3, x)
+    @test res_tuple.hessian[1] ≈ ForwardDiff.derivative(x -> ForwardDiff.derivative(y -> y^2, x), x)
+    @test res_tuple.hessian[2] ≈ ForwardDiff.derivative(x -> ForwardDiff.derivative(y -> y^3, x), x)
+
+    # Scalar input, array output
+    f_array(x) = [x^2, x^3, sin(x)]
+    res_array = hessian_gradient_value(f_array, x)
+    @test res_array.value ≈ f_array(x)
+    @test res_array.gradient[1] ≈ ForwardDiff.derivative(x -> x^2, x)
+    @test res_array.gradient[2] ≈ ForwardDiff.derivative(x -> x^3, x)
+    @test res_array.gradient[3] ≈ ForwardDiff.derivative(sin, x)
+    @test res_array.hessian[1] ≈ 2.0  # d²/dx² x² = 2
+    @test res_array.hessian[2] ≈ 6x   # d²/dx² x³ = 6x
+    @test res_array.hessian[3] ≈ -sin(x)  # d²/dx² sin(x) = -sin(x)
+end
+
 @testset "hessian_gradient_value" begin
     f = DiffTests.ackley
     x = rand(8)
