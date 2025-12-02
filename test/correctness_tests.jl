@@ -9,6 +9,10 @@ using ForwardDiff
     f(x) = exp(x) / sqrt(sin(x)^3 + cos(x)^3)
     x = rand()
     @test hessian(f, x) ≈ ForwardDiff.derivative(x -> ForwardDiff.derivative(f, x), x)
+    res = HyperHessians.hessiangradvalue(f, x)
+    @test res.value ≈ f(x)
+    @test res.gradient ≈ ForwardDiff.derivative(f, x)
+    @test res.hessian ≈ ForwardDiff.derivative(x -> ForwardDiff.derivative(f, x), x)
 end
 
 @testset "HessianConfig errors" begin

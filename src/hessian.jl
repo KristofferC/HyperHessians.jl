@@ -144,11 +144,22 @@ function extract_gradient!(G::AbstractVector, v::HyperDual{N1, N2}, block_i::Int
 end
 
 function hessian(f, x::Real)
-    one_seed = single_seed(NTuple{1, typeof(x)}, Val(1))
-    dual = HyperDual(x, one_seed, one_seed)
+    return hessiangradvalue(f, x).hessian
+end
+
+"""
+    hessiangradvalue(f, x::Real)
+
+Compute value, first derivative, and second derivative for a scalar input.
+Returns a named tuple `(value, gradient, hessian)` where `gradient` and
+`hessian` are numbers.
+"""
+function hessiangradvalue(f, x::Real)
+    seed = single_seed(NTuple{1, typeof(x)}, Val(1))
+    dual = HyperDual(x, seed, seed)
     v = f(dual)
     check_scalar(v)
-    return v.ϵ12[1][1]
+    return (; value = v.v, gradient = v.ϵ1[1], hessian = v.ϵ12[1][1])
 end
 
 hessian(f::F, x::AbstractVector) where {F} = hessian!(similar(x, axes(x, 1), axes(x, 1)), f, x, HessianConfig(x))
