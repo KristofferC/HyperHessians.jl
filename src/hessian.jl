@@ -174,8 +174,11 @@ function hessian_gradient_value(f, x::Real)
     seed = single_seed(NTuple{1, typeof(x)}, Val(1))
     dual = HyperDual(x, seed, seed)
     v = f(dual)
-    check_scalar(v)
-    return (; value = v.v, gradient = v.ϵ1[1], hessian = v.ϵ12[1][1])
+    return (;
+        value = map(v -> v.v, v),
+        gradient = map(v -> v.ϵ1[1], v),
+        hessian = map(v -> v.ϵ12[1][1], v),
+    )
 end
 
 hessian(f::F, x::AbstractVector) where {F} = hessian!(similar(x, axes(x, 1), axes(x, 1)), f, x, HessianConfig(x))
@@ -294,16 +297,19 @@ function hessian_gradient_value(f::F, x::AbstractVector) where {F}
     cfg = HessianConfig(x)
     return hessian_gradient_value(f, x, cfg)
 end
-hessian_gradient_value(f::F, x::AbstractArray, cfg::HessianConfig) where {F} = begin
+hessian_gradient_value(f::F, x::AbstractArray, cfg::HessianConfig) where {F} =
+    _hessian_gradient_value_array(f, x, cfg)
+hessian_gradient_value(f::F, x::AbstractArray) where {F} =
+    _hessian_gradient_value_array(f, x, nothing)
+
+@inline function _hessian_gradient_value_array(f::F, x::AbstractArray, cfg::Union{HessianConfig, Nothing}) where {F}
     f_vec, x_vec, shape = _vectorize_input(f, x)
-    _check_config_length(cfg, length(x_vec))
-    res = hessian_gradient_value(f_vec, x_vec, cfg)
-    grad = shape === nothing ? res.gradient : reshape(res.gradient, shape)
-    return (; value = res.value, gradient = grad, hessian = res.hessian)
-end
-hessian_gradient_value(f::F, x::AbstractArray) where {F} = begin
-    f_vec, x_vec, shape = _vectorize_input(f, x)
-    res = hessian_gradient_value(f_vec, x_vec)
+    res = if cfg === nothing
+        hessian_gradient_value(f_vec, x_vec)
+    else
+        _check_config_length(cfg, length(x_vec))
+        hessian_gradient_value(f_vec, x_vec, cfg)
+    end
     grad = shape === nothing ? res.gradient : reshape(res.gradient, shape)
     return (; value = res.value, gradient = grad, hessian = res.hessian)
 end
@@ -409,18 +415,14 @@ end
     hvp_gradient_value_vector_dir_core!(nothing, hv, f, x, v, cfg, valN)
 
 # Gradient + HVP + value (directional)
-function hvp_gradient_value(f::F, x::AbstractVector, v::TangentBundle) where {F}
-    g = similar(x, eltype(x))
-    hv = similar_output(x, v)
-    value = hvp_gradient_value!(hv, g, f, x, v, DirectionalHVPConfig(x, v))
-    return (; value = value, gradient = g, hvp = hv)
-end
 function hvp_gradient_value(f::F, x::AbstractVector, v::TangentBundle, cfg::DirectionalHVPConfig) where {F}
     g = similar(x, eltype(x))
     hv = similar_output(x, v)
     value = hvp_gradient_value!(hv, g, f, x, v, cfg)
     return (; value = value, gradient = g, hvp = hv)
 end
+hvp_gradient_value(f::F, x::AbstractVector, v::TangentBundle) where {F} =
+    hvp_gradient_value(f, x, v, DirectionalHVPConfig(x, v))
 
 function hvp_gradient_value!(hv::HVBundle, g::AbstractVector, f::F, x::AbstractVector, v::TangentBundle) where {F}
     return hvp_gradient_value!(hv, g, f, x, v, DirectionalHVPConfig(x, v))
