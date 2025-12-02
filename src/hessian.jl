@@ -3,9 +3,6 @@ mutable struct HessianConfig{D <: AbstractVector{<:HyperDual}, S}
     const seeds::S
 end
 @inline _chunksize(::Type{<:NTuple{N}}) where {N} = N
-if USE_SIMD
-    @inline _chunksize(::Type{<:Vec{N}}) where {N} = N
-end
 @inline _chunksize(seeds) = something(_chunksize(eltype(seeds)), length(seeds))
 (chunksize(cfg::HessianConfig)::Int) = _chunksize(cfg.seeds)::Int
 
@@ -46,11 +43,7 @@ end
 
 @generated function single_seed(::Type{NTuple{N, T}}, ::Val{i}) where {N, T, i}
     ex = Expr(:tuple, [ifelse(i === j, :(one(T)), :(zero(T))) for j in 1:N]...)
-    if USE_SIMD
-        return :(Vec($(ex)))
-    else
-        return ex
-    end
+    return ex
 end
 
 @generated construct_seeds(::Type{NTuple{N, T}}) where {N, T} =
@@ -293,11 +286,9 @@ function check_output_dims(hv::NTuple{NT, <:AbstractVector}, n::Int, ntan::Int) 
     return nothing
 end
 
-@inline directional_ϵ2(v::AbstractVector, idx, ::Val{1}) =
-    (@static USE_SIMD ? Vec((v[idx],)) : (v[idx],))
+@inline directional_ϵ2(v::AbstractVector, idx, ::Val{1}) = (v[idx],)
 @inline function directional_ϵ2(v::NTuple{N, <:AbstractVector}, idx, ::Val{N}) where {N}
-    vals = ntuple(j -> v[j][idx], Val(N))
-    return @static USE_SIMD ? Vec(vals) : vals
+    return ntuple(j -> v[j][idx], Val(N))
 end
 
 @inline function store_hvp!(hv::AbstractVector, idx, vals, ::Val{1})

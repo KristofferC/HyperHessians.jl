@@ -1,11 +1,8 @@
 module HyperHessiansStaticArraysExt
 
 using HyperHessians
-using HyperHessians: HyperDual, check_scalar, construct_seeds, ϵT, USE_SIMD
+using HyperHessians: HyperDual, check_scalar, construct_seeds, ϵT
 using StaticArrays
-if HyperHessians.USE_SIMD
-    using SIMD: Vec
-end
 
 @generated function hyperdualize(x::S) where {S <: StaticVector}
     N = length(x)
@@ -23,8 +20,7 @@ end
     eps_exprs = Vector{Any}(undef, N)
     for i in 1:N
         vals = [:(tangents[$j][$i]) for j in 1:M]
-        tuple_expr = Expr(:tuple, vals...)
-        eps_exprs[i] = USE_SIMD ? :(Vec($tuple_expr)) : tuple_expr
+        eps_exprs[i] = Expr(:tuple, vals...)
     end
     dual_exprs = [:(HyperDual(x[$i], seeds[$i], $(eps_exprs[i]))) for i in 1:N]
     return quote

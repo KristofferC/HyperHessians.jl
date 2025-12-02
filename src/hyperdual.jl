@@ -34,11 +34,7 @@ This gives us the first and second derivatives via f' and f''.
 =#
 
 # Allow non-square partial lengths: ϵ₁ ∈ ℝᴺ¹, ϵ₂ ∈ ℝᴺ².
-if USE_SIMD
-    const ϵT{N, T} = Vec{N, T}
-else
-    const ϵT{N, T} = NTuple{N, T}
-end
+const ϵT{N, T} = NTuple{N, T}
 
 # Tuple implementations (default)
 @inline zero_ϵ(::Type{NTuple{N, T}}) where {N, T} = ntuple(_ -> zero(T), Val(N))
