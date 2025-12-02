@@ -19,18 +19,18 @@ end
     end
 end
 
-@generated function hyperdualize_dir(x::S, v::S) where {S <: StaticVector}
-    N = length(x)
-    T = eltype(S)
-    if USE_SIMD
-        dual_exprs = [:(HyperDual(x[$i], seeds[$i], Vec((v[$i],)))) for i in 1:N]
-    else
-        dual_exprs = [:(HyperDual(x[$i], seeds[$i], (v[$i],))) for i in 1:N]
+@generated function hyperdualize_dir(x::StaticVector{N, T}, tangents::NTuple{M, <:StaticVector{N, T}}) where {N, M, T}
+    eps_exprs = Vector{Any}(undef, N)
+    for i in 1:N
+        vals = [:(tangents[$j][$i]) for j in 1:M]
+        tuple_expr = Expr(:tuple, vals...)
+        eps_exprs[i] = USE_SIMD ? :(Vec($tuple_expr)) : tuple_expr
     end
+    dual_exprs = [:(HyperDual(x[$i], seeds[$i], $(eps_exprs[i]))) for i in 1:N]
     return quote
         $(Expr(:meta, :inline))
         seeds = construct_seeds(NTuple{$N, $T})
-        V = StaticArrays.similar_type(x, HyperDual{$N, 1, $T})
+        V = StaticArrays.similar_type(x, HyperDual{$N, $M, $T})
         return V($(Expr(:tuple, dual_exprs...)))
     end
 end
@@ -53,12 +53,18 @@ end
     end
 end
 
-@generated function extract_static_hvp(v::HyperDual{N, 1, T}, x::StaticVector{N, T}) where {N, T}
-    entries = [:(v.ϵ12[$i][1]) for i in 1:N]
+@generated function extract_static_hvp(v::HyperDual{N, M, T}, x::StaticVector{N, T}) where {N, M, T}
+    vectors = Vector{Any}(undef, M)
+    for j in 1:M
+        entries = [:(v.ϵ12[$i][$j]) for i in 1:N]
+        vectors[j] = quote
+            V = StaticArrays.similar_type(x, $T, Size($N))
+            V($(Expr(:tuple, entries...)))
+        end
+    end
     return quote
         $(Expr(:meta, :inline))
-        V = StaticArrays.similar_type(x, $T, Size($N))
-        return V($(Expr(:tuple, entries...)))
+        return ($(vectors...),)
     end
 end
 
@@ -80,11 +86,15 @@ function HyperHessians.hessiangradvalue(f::F, x::StaticVector{N, T}) where {F, N
     )
 end
 
-function HyperHessians.hvp(f::F, x::StaticVector{N, T}, v::StaticVector{N, T}) where {F, N, T}
-    duals = hyperdualize_dir(x, v)
+function HyperHessians.hvp(f::F, x::StaticVector{N, T}, tangents::NTuple{M, <:StaticVector{N, T}}) where {F, N, T, M}
+    duals = hyperdualize_dir(x, tangents)
     out = f(duals)
     check_scalar(out)
     return extract_static_hvp(out, x)
+end
+
+function HyperHessians.hvp(f::F, x::StaticVector{N, T}, v::StaticVector{N, T}) where {F, N, T}
+    return HyperHessians.hvp(f, x, (v,))[1]
 end
 
 end

@@ -28,12 +28,20 @@ mutable struct DirectionalHVPConfig{D <: AbstractVector{<:HyperDual}, S}
 end
 (chunksize(cfg::DirectionalHVPConfig)::Int) = _chunksize(cfg.seeds)
 
-function DirectionalHVPConfig(x::AbstractVector{T}, chunk = Chunk(x)::Chunk) where {T}
+DirectionalHVPConfig(x::AbstractVector{T}, chunk::Chunk = Chunk(x)::Chunk) where {T} =
+    _DirectionalHVPConfig(x, chunk, Val(1))
+DirectionalHVPConfig(x::AbstractVector{T}, ::AbstractVector, chunk::Chunk = Chunk(x)::Chunk) where {T} =
+    _DirectionalHVPConfig(x, chunk, Val(1))
+DirectionalHVPConfig(x::AbstractVector{T}, ::NTuple{N, <:AbstractVector}, chunk::Chunk = Chunk(x)::Chunk) where {T, N} =
+    _DirectionalHVPConfig(x, chunk, Val(N))
+
+function _DirectionalHVPConfig(x::AbstractVector{T}, chunk::Chunk, ::Val{ntangents}) where {T, ntangents}
     N = chunksize(chunk)
     N > 0 || throw(ArgumentError(lazy"chunk size must be positive, got $N"))
-    duals = similar(x, HyperDual{N, 1, T}) # directional: one ε₂ lane
+    ntangents > 0 || throw(ArgumentError(lazy"number of tangents must be positive, got $ntangents"))
+    duals = similar(x, HyperDual{N, ntangents, T}) # directional: ε₂ has one lane per tangent
     seeds = collect(construct_seeds(NTuple{N, T}))
-    return DirectionalHVPConfig(duals, seeds)
+    return DirectionalHVPConfig{typeof(duals), typeof(seeds)}(duals, seeds)
 end
 
 @generated function single_seed(::Type{NTuple{N, T}}, ::Val{i}) where {N, T, i}
@@ -81,6 +89,15 @@ end
     end
     return nothing
 end
+
+const TangentBundle = Union{AbstractVector, NTuple{N, V} where {N, V <: AbstractVector}}
+const HVBundle = Union{AbstractVector, NTuple{N, V} where {N, V <: AbstractVector}}
+
+@inline tangents_count(::AbstractVector) = 1
+@inline tangents_count(::NTuple{N, <:AbstractVector}) where {N} = N
+
+@inline ntangents(::Type{<:HyperDual{<:Any, N2, <:Any}}) where {N2} = N2
+@inline ntangents(cfg::DirectionalHVPConfig) = ntangents(eltype(cfg.duals))
 
 @inline function zero_block_ϵ1!(d::AbstractVector{<:HyperDual{N1, N2}}, seeds, range_i) where {N1, N2}
     zeroϵ1 = zero_ϵ(seeds[1])
@@ -250,42 +267,108 @@ function hessiangradvalue_chunk!(H::AbstractMatrix, G::AbstractVector, f, x::Abs
 end
 
 """
-    hvp(f, x, v[, cfg])
+    hvp(f, x, tangents[, cfg])
 
-Compute the Hessian–vector product `H(x) * v`. Uses the directional path by default;
-pass a `DirectionalHVPConfig` explicitly to control chunking.
+Compute Hessian–vector product(s) `H(x) * v`. `tangents` may be a single vector
+or a tuple of vectors (use `(v,)` for multiple directions); bundled tangents are
+evaluated in one pass. Pass a `DirectionalHVPConfig` explicitly to control
+chunking or reuse allocations.
 """
-hvp(f::F, x::AbstractVector, v::AbstractVector) where {F} = hvp(f, x, v, DirectionalHVPConfig(x))
-hvp(f::F, x::AbstractVector, v::AbstractVector, cfg::DirectionalHVPConfig) where {F} = hvp!(similar(x, eltype(x)), f, x, v, cfg)
-
-hvp!(hv::AbstractVector, f::F, x::AbstractVector, v::AbstractVector) where {F} = hvp!(hv, f, x, v, DirectionalHVPConfig(x))
-hvp!(hv::AbstractVector, f::F, x::AbstractVector, v::AbstractVector, cfg::DirectionalHVPConfig) where {F} = hvp_dir!(hv, f, x, v, cfg)
-
-@inline function hvp_dir!(hv::AbstractVector{T}, f::F, x::AbstractVector{T}, v::AbstractVector{T}, cfg::DirectionalHVPConfig) where {T, F}
-    length(x) == length(v) || throw(DimensionMismatch(lazy"x and v must have same length, got $(length(x)) and $(length(v))"))
-    length(hv) == length(x) || throw(DimensionMismatch(lazy"hv must have length $(length(x)), got $(length(hv))"))
-    if chunksize(cfg) == length(x)
-        return hvp_vector_dir!(hv, f, x, v, cfg)
-    else
-        return hvp_chunk_dir!(hv, f, x, v, cfg)
-    end
+@inline similar_output(x::AbstractVector{T}, _::AbstractVector) where {T} = similar(x, T)
+@inline function similar_output(x::AbstractVector{T}, _::NTuple{N, <:AbstractVector}) where {T, N}
+    return ntuple(_ -> similar(x, T), Val(N))
 end
 
-@inline function hvp_vector_dir!(hv::AbstractVector{T}, f, x::AbstractVector{T}, v::AbstractVector{T}, cfg::DirectionalHVPConfig) where {T}
-    # Seed ε₁ with identity directions and ε₂ with the directional vector v;
-    # the mixed term ε₁ᵀ A ε₂ yields (H * v)[i] in ϵ₁₂[i][1].
-    @inbounds for i in eachindex(x)
-        cfg.duals[i] = HyperDual(x[i], cfg.seeds[i], (@static USE_SIMD ? Vec((v[i],)) : (v[i],)))
+function check_tangent_dims(x, v::AbstractVector)
+    length(v) == length(x) || throw(DimensionMismatch(lazy"tangent must have length $(length(x)), got $(length(v))"))
+    return nothing
+end
+function check_tangent_dims(x, v::NTuple{N, <:AbstractVector}) where {N}
+    expected = length(x)
+    for (i, tangent) in enumerate(v)
+        length(tangent) == expected || throw(DimensionMismatch(lazy"tangent $i must have length $expected, got $(length(tangent))"))
     end
-    out = f(cfg.duals)
-    check_scalar(out)
-    @inbounds for i in 1:length(x)
-        hv[i] = out.ϵ12[i][1]
+    return nothing
+end
+
+function check_output_dims(hv::AbstractVector, n::Int, ntan::Int)
+    ntan == 1 || throw(DimensionMismatch(lazy"hv is a vector but $ntan tangents were provided"))
+    length(hv) == n || throw(DimensionMismatch(lazy"hv must have length $n, got $(length(hv))"))
+    return nothing
+end
+function check_output_dims(hv::NTuple{NT, <:AbstractVector}, n::Int, ntan::Int) where {NT}
+    NT == ntan || throw(DimensionMismatch(lazy"hv tuple length $NT does not match number of tangents $ntan"))
+    for (i, h) in enumerate(hv)
+        length(h) == n || throw(DimensionMismatch(lazy"hv tangent $i must have length $n, got $(length(h))"))
+    end
+    return nothing
+end
+
+@inline directional_ϵ2(v::AbstractVector, idx, ::Val{1}) =
+    (@static USE_SIMD ? Vec((v[idx],)) : (v[idx],))
+@inline function directional_ϵ2(v::NTuple{N, <:AbstractVector}, idx, ::Val{N}) where {N}
+    vals = ntuple(j -> v[j][idx], Val(N))
+    return @static USE_SIMD ? Vec(vals) : vals
+end
+
+@inline function store_hvp!(hv::AbstractVector, idx, vals, ::Val{1})
+    hv[idx] = vals[1]
+    return nothing
+end
+@inline function store_hvp!(hv::NTuple{N, <:AbstractVector}, idx, vals, ::Val{N}) where {N}
+    @inbounds for j in 1:N
+        hv[j][idx] = vals[j]
+    end
+    return nothing
+end
+
+@inline fill_output!(hv::AbstractVector, z) = fill!(hv, z)
+@inline function fill_output!(hv::NTuple{N, <:AbstractVector}, z) where {N}
+    for h in hv
+        fill!(h, z)
     end
     return hv
 end
 
-@inline function seed_hvp_dir!(d::AbstractVector{<:HyperDual{N1, 1}}, seeds, block_i::Int, ax) where {N1}
+hvp(f::F, x::AbstractVector, v::TangentBundle) where {F} =
+    hvp(f, x, v, DirectionalHVPConfig(x, v))
+hvp(f::F, x::AbstractVector, v::TangentBundle, cfg::DirectionalHVPConfig) where {F} =
+    hvp!(similar_output(x, v), f, x, v, cfg)
+
+hvp!(hv::HVBundle, f::F, x::AbstractVector, v::TangentBundle) where {F} =
+    hvp!(hv, f, x, v, DirectionalHVPConfig(x, v))
+hvp!(hv::HVBundle, f::F, x::AbstractVector, v::TangentBundle, cfg::DirectionalHVPConfig) where {F} =
+    hvp_dir!(hv, f, x, v, cfg)
+
+@inline function hvp_dir!(hv::HVBundle, f::F, x::AbstractVector{T}, v::TangentBundle, cfg::DirectionalHVPConfig) where {T, F}
+    n_tangents = tangents_count(v)
+    n_tangents == ntangents(cfg) ||
+        throw(DimensionMismatch(lazy"config expects $(ntangents(cfg)) tangents, but $(n_tangents) were provided"))
+    check_tangent_dims(x, v)
+    check_output_dims(hv, length(x), n_tangents)
+    valN = Val(n_tangents)
+    if chunksize(cfg) == length(x)
+        return hvp_vector_dir!(hv, f, x, v, cfg, valN)
+    else
+        return hvp_chunk_dir!(hv, f, x, v, cfg, valN)
+    end
+end
+
+@inline function hvp_vector_dir!(hv::HVBundle, f, x::AbstractVector{T}, v::TangentBundle, cfg::DirectionalHVPConfig, ::Val{N}) where {T, N}
+    # Seed ε₁ with identity directions and ε₂ with the bundled tangents;
+    # the mixed term ε₁ᵀ A ε₂ yields each H * v column in ϵ₁₂.
+    @inbounds for i in eachindex(x)
+        cfg.duals[i] = HyperDual(x[i], cfg.seeds[i], directional_ϵ2(v, i, Val(N)))
+    end
+    out = f(cfg.duals)
+    check_scalar(out)
+    @inbounds for i in 1:length(x)
+        store_hvp!(hv, i, out.ϵ12[i], Val(N))
+    end
+    return hv
+end
+
+@inline function seed_hvp_dir!(d::AbstractVector{<:HyperDual{N1, N2, <:Any}}, seeds, block_i::Int, ax) where {N1, N2}
     range_i = block_range(block_i, N1, ax)
 
     # Seed ε₁ block rows without creating views
@@ -295,16 +378,16 @@ end
     return range_i
 end
 
-function hvp_chunk_dir!(hv::AbstractVector{T}, f, x::AbstractVector{T}, v::AbstractVector{T}, cfg::DirectionalHVPConfig) where {T}
-    N = chunksize(cfg)
-    fill!(hv, zero(T))
-    n_chunks = ceil(Int, length(x) / N)
+function hvp_chunk_dir!(hv::HVBundle, f, x::AbstractVector{T}, v::TangentBundle, cfg::DirectionalHVPConfig, ::Val{N}) where {T, N}
+    Nchunk = chunksize(cfg)
+    fill_output!(hv, zero(T))
+    n_chunks = ceil(Int, length(x) / Nchunk)
     ax = axes(x, 1)
     zeroϵ1 = zero_ϵ(cfg.seeds[1])
 
     # Initialize ε₂ once and keep ε₁ zeroed globally.
     @inbounds for j in eachindex(x)
-        cfg.duals[j] = HyperDual(x[j], zeroϵ1, (@static USE_SIMD ? Vec((v[j],)) : (v[j],)))
+        cfg.duals[j] = HyperDual(x[j], zeroϵ1, directional_ϵ2(v, j, Val(N)))
     end
 
     for i in 1:n_chunks
@@ -312,7 +395,7 @@ function hvp_chunk_dir!(hv::AbstractVector{T}, f, x::AbstractVector{T}, v::Abstr
         out = f(cfg.duals)
         check_scalar(out)
         @inbounds for (I, idx_i) in enumerate(range_i)
-            hv[idx_i] = out.ϵ12[I][1]
+            store_hvp!(hv, idx_i, out.ϵ12[I], Val(N))
         end
         zero_block_ϵ1!(cfg.duals, cfg.seeds, range_i)
     end

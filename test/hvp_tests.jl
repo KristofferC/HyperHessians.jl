@@ -35,6 +35,7 @@ end
             for chunk in (1, max(1, n ÷ 2), n)
                 cfg = DirectionalHVPConfig(x, Chunk{chunk}())
                 @test hvp(f, x, v, cfg) ≈ H * v
+                @test hvp(f, x, (v,), cfg)[1] ≈ H * v
             end
         end
     end
@@ -56,6 +57,43 @@ end
     @test hv32 ≈ ForwardDiff.hessian(ackley_stable, x32) * v32
 end
 
+@testset "Bundled tangents" begin
+    f = DiffTests.ackley
+    x = rand(6)
+    v1 = rand(6)
+    v2 = rand(6)
+    H = ForwardDiff.hessian(f, x)
+
+    # Tuple input returns a tuple of hvps
+    hv_tuple = hvp(f, x, (v1, v2))
+    @test hv_tuple[1] ≈ H * v1
+    @test hv_tuple[2] ≈ H * v2
+
+    hv_out = (zeros(length(x)), zeros(length(x)))
+    cfg_tuple = DirectionalHVPConfig(x, (v1, v2), Chunk{3}())
+    hvp!(hv_out, f, x, (v1, v2), cfg_tuple)
+    @test hv_out[1] ≈ H * v1
+    @test hv_out[2] ≈ H * v2
+
+    @test_throws DimensionMismatch hvp!((zeros(length(x)), zeros(length(x))), f, x, (v1,))
+
+    # Tuple tangent with wrong length element
+    v_bad = rand(4)
+    @test_throws DimensionMismatch hvp(f, x, (v1, v_bad))
+
+    # hv tuple element with wrong length
+    @test_throws DimensionMismatch hvp!((zeros(length(x)), zeros(4)), f, x, (v1, v2))
+
+    # Config tangent count mismatch
+    cfg_2 = DirectionalHVPConfig(x, (v1, v2))
+    @test_throws DimensionMismatch hvp!(hv_out, f, x, (v1, v2, rand(6)), cfg_2)
+
+    # A single tangent can be provided without wrapping
+    hv_single_out = zeros(length(x))
+    hvp!(hv_single_out, f, x, v1, DirectionalHVPConfig(x, v1, Chunk{3}()))
+    @test hv_single_out ≈ H * v1
+end
+
 @testset "hvp! zero allocations" begin
     f = x -> sum(abs2, x)
     n = 8
@@ -72,6 +110,18 @@ end
     cfg_chunk = DirectionalHVPConfig(x, Chunk{4}())
     hvp!(hv, f, x, v, cfg_chunk)
     @test @allocated(hvp!(hv, f, x, v, cfg_chunk)) == 0
+
+    # Bundled tangents (multiple directions)
+    v1 = rand(n)
+    v2 = rand(n)
+    hv_bundle = (zeros(n), zeros(n))
+    cfg_bundle_full = DirectionalHVPConfig(x, hv_bundle, Chunk{n}())
+    hvp!(hv_bundle, f, x, (v1, v2), cfg_bundle_full)
+    @test @allocated(hvp!(hv_bundle, f, x, (v1, v2), cfg_bundle_full)) == 0 broken = VERSION < v"1.11"
+
+    cfg_bundle_chunk = DirectionalHVPConfig(x, hv_bundle, Chunk{4}())
+    hvp!(hv_bundle, f, x, (v1, v2), cfg_bundle_chunk)
+    @test @allocated(hvp!(hv_bundle, f, x, (v1, v2), cfg_bundle_chunk)) == 0 broken = VERSION < v"1.11"
 end
 
 end # module
