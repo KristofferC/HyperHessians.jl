@@ -2,7 +2,7 @@ module arrayTests
 
 using Test
 using ForwardDiff
-using HyperHessians: hessian, hessian!, hessian_gradient_value, hessian_gradient_value!, HessianConfig, Chunk
+using HyperHessians: hessian, hessian!, hessian_gradient_value, hessian_gradient_value!, hvp, hvp!, hvp_gradient_value, hvp_gradient_value!, HessianConfig, DirectionalHVPConfig, Chunk
 
 @testset "array inputs" begin
     A = reshape(collect(1.0:4.0), 2, 2)
@@ -36,6 +36,33 @@ using HyperHessians: hessian, hessian!, hessian_gradient_value, hessian_gradient
     Galloc = similar(G)
     @test @allocated(hessian!(Halloc, f_noalloc, B, cfg_full)) == 0 broken = true
     @test @allocated(hessian_gradient_value!(Halloc, Galloc, f_noalloc, B, cfg_full)) == 0 broken = true
+
+    C = reshape(collect(0.1:0.1:0.6), 2, 3)
+    g_fun(x) = sum(sin, x)
+    t1 = fill(1.0, size(C))
+    t2 = fill(2.0, size(C))
+    cfg_hvp = DirectionalHVPConfig(C, (t1, t2), Chunk(6))
+
+    hv_expected = reshape(ForwardDiff.hessian(y -> g_fun(reshape(y, size(C))), vec(C)) * vec(t1), size(C))
+    @test hvp(g_fun, C, t1) ≈ hv_expected
+    hv_tuple = hvp(g_fun, C, (t1, t2), cfg_hvp)
+    @test hv_tuple[1] ≈ hv_expected
+    @test hv_tuple[2] ≈ reshape(ForwardDiff.hessian(y -> g_fun(reshape(y, size(C))), vec(C)) * vec(t2), size(C))
+
+    hv_out = similar(C)
+    hvp!(hv_out, g_fun, C, t1)
+    @test hv_out ≈ hv_expected
+
+    gv_res = hvp_gradient_value(g_fun, C, t1)
+    @test gv_res.gradient ≈ ForwardDiff.gradient(g_fun, C)
+    @test gv_res.hvp ≈ hv_expected
+
+    hv_out2 = (similar(C), similar(C))
+    grad_out = similar(C)
+    hvp_gradient_value!(hv_out2, grad_out, g_fun, C, (t1, t2), cfg_hvp)
+    @test grad_out ≈ ForwardDiff.gradient(g_fun, C)
+    @test hv_out2[1] ≈ hv_tuple[1]
+    @test hv_out2[2] ≈ hv_tuple[2]
 end
 
 end

@@ -33,6 +33,12 @@ DirectionalHVPConfig(x::AbstractVector{T}, ::AbstractVector, chunk::Chunk = Chun
     _DirectionalHVPConfig(x, chunk, Val(1))
 DirectionalHVPConfig(x::AbstractVector{T}, ::NTuple{N, <:AbstractVector}, chunk::Chunk = Chunk(x)::Chunk) where {T, N} =
     _DirectionalHVPConfig(x, chunk, Val(N))
+DirectionalHVPConfig(x::AbstractArray{T}, chunk::Chunk = Chunk(x)::Chunk) where {T} =
+    DirectionalHVPConfig(vec(x), chunk)
+DirectionalHVPConfig(x::AbstractArray{T}, v::AbstractVector, chunk::Chunk = Chunk(x)::Chunk) where {T} =
+    DirectionalHVPConfig(vec(x), vec(v), chunk)
+DirectionalHVPConfig(x::AbstractArray{T}, v::NTuple{N, <:AbstractArray}, chunk::Chunk = Chunk(x)::Chunk) where {T, N} =
+    DirectionalHVPConfig(vec(x), ntuple(i -> vec(v[i]), Val(N)), chunk)
 
 function _DirectionalHVPConfig(x::AbstractVector{T}, chunk::Chunk, ::Val{ntangents}) where {T, ntangents}
     N = chunksize(chunk)
@@ -85,11 +91,18 @@ end
     return nothing
 end
 
-const TangentBundle = Union{AbstractVector, NTuple{N, V} where {N, V <: AbstractVector}}
+const TangentBundle = Union{
+    AbstractVector,
+    AbstractArray,
+    NTuple{N, V} where {N, V <: AbstractVector},
+    NTuple{N, V} where {N, V <: AbstractArray},
+}
 const HVBundle = Union{AbstractVector, NTuple{N, V} where {N, V <: AbstractVector}}
 
 @inline tangents_count(::AbstractVector) = 1
+@inline tangents_count(::AbstractArray) = 1
 @inline tangents_count(::NTuple{N, <:AbstractVector}) where {N} = N
+@inline tangents_count(::NTuple{N, <:AbstractArray}) where {N} = N
 
 @inline ntangents(::Type{<:HyperDual{<:Any, N2, <:Any}}) where {N2} = N2
 @inline ntangents(cfg::DirectionalHVPConfig) = ntangents(eltype(cfg.duals))
@@ -113,6 +126,16 @@ end
         y -> f(reshape(y, shape))
     end
     return f_vec, vec(x), shape
+end
+
+@inline _vectorize_tangents(v::AbstractVector, _shape) = (v, nothing)
+@inline function _vectorize_tangents(v::AbstractArray, shape)
+    shape === nothing && return (v, nothing)
+    return vec(v), shape
+end
+@inline function _vectorize_tangents(v::NTuple{N, <:AbstractArray}, shape) where {N}
+    shape === nothing && return v, nothing
+    return ntuple(i -> vec(v[i]), Val(N)), shape
 end
 
 function _check_config_length(cfg::HessianConfig, n::Int)
@@ -363,16 +386,16 @@ function check_output_dims(hv::NTuple{NT, <:AbstractVector}, n::Int, ntan::Int) 
     return nothing
 end
 
-@inline directional_ϵ2(v::AbstractVector, idx, ::Val{1}) = (v[idx],)
-@inline function directional_ϵ2(v::NTuple{N, <:AbstractVector}, idx, ::Val{N}) where {N}
+@inline directional_ϵ2(v::AbstractArray, idx, ::Val{1}) = (v[idx],)
+@inline function directional_ϵ2(v::NTuple{N, <:AbstractArray}, idx, ::Val{N}) where {N}
     return ntuple(j -> v[j][idx], Val(N))
 end
 
-@inline function store_hvp!(hv::AbstractVector, idx, vals, ::Val{1})
+@inline function store_hvp!(hv::AbstractArray, idx, vals, ::Val{1})
     hv[idx] = vals[1]
     return nothing
 end
-@inline function store_hvp!(hv::NTuple{N, <:AbstractVector}, idx, vals, ::Val{N}) where {N}
+@inline function store_hvp!(hv::NTuple{N, <:AbstractArray}, idx, vals, ::Val{N}) where {N}
     @inbounds for j in 1:N
         hv[j][idx] = vals[j]
     end
@@ -387,15 +410,79 @@ end
     return hv
 end
 
+@inline function _reshape_output(hv::AbstractVector, shape, orig_shape)
+    return orig_shape === nothing ? hv : reshape(hv, shape)
+end
+@inline function _reshape_output(hv::NTuple{N, <:AbstractVector}, shape, orig_shape) where {N}
+    orig_shape === nothing && return hv
+    return ntuple(i -> reshape(hv[i], shape), Val(N))
+end
+
+function _hvp_common_array!(hv, g, f, x, v, cfg::Union{DirectionalHVPConfig, Nothing})
+    f_vec, x_vec, shape = _vectorize_input(f, x)
+    v_vec, orig_shape = _vectorize_tangents(v, shape)
+    cfg = cfg === nothing ? DirectionalHVPConfig(x_vec, v_vec) : cfg
+    g_vec = g === nothing ? nothing : vec(g)
+    hv_vec = hv isa NTuple ? ntuple(i -> vec(hv[i]), Val(length(hv))) : vec(hv)
+    value = g_vec === nothing ?
+        hvp!(hv_vec, f_vec, x_vec, v_vec, cfg) :
+        hvp_gradient_value!(hv_vec, g_vec, f_vec, x_vec, v_vec, cfg)
+    if g_vec !== nothing
+        g .= _reshape_output(g_vec, shape, shape)
+    end
+    hv_out = _reshape_output(hv_vec, shape, orig_shape)
+    if hv isa NTuple
+        for i in eachindex(hv)
+            hv[i] .= hv_out[i]
+        end
+    else
+        hv .= hv_out
+    end
+    return g_vec === nothing ? hv : value
+end
+
+function _hvp_gradient_value_array(f, x, v, cfg::Union{DirectionalHVPConfig, Nothing})
+    f_vec, x_vec, shape = _vectorize_input(f, x)
+    v_vec, orig_shape = _vectorize_tangents(v, shape)
+    cfg = cfg === nothing ? DirectionalHVPConfig(x_vec, v_vec) : cfg
+    res = hvp_gradient_value(f_vec, x_vec, v_vec, cfg)
+    grad = _reshape_output(res.gradient, shape, shape)
+    hv = _reshape_output(res.hvp, shape, orig_shape)
+    return (; value = res.value, gradient = grad, hvp = hv)
+end
+
 hvp(f::F, x::AbstractVector, v::TangentBundle) where {F} =
     hvp(f, x, v, DirectionalHVPConfig(x, v))
 hvp(f::F, x::AbstractVector, v::TangentBundle, cfg::DirectionalHVPConfig) where {F} =
     hvp!(similar_output(x, v), f, x, v, cfg)
+hvp(f::F, x::AbstractArray{T, N}, v::TangentBundle) where {F, T, N} = begin
+    f_vec, x_vec, shape = _vectorize_input(f, x)
+    v_vec, orig_shape = _vectorize_tangents(v, shape)
+    hv = hvp(f_vec, x_vec, v_vec, DirectionalHVPConfig(x_vec, v_vec))
+    return _reshape_output(hv, shape, orig_shape)
+end
+function hvp(f::F, x::AbstractArray{T, N}, v::TangentBundle, cfg::DirectionalHVPConfig) where {F, T, N}
+    f_vec, x_vec, shape = _vectorize_input(f, x)
+    v_vec, orig_shape = _vectorize_tangents(v, shape)
+    return _reshape_output(hvp(f_vec, x_vec, v_vec, cfg), shape, orig_shape)
+end
 
 hvp!(hv::HVBundle, f::F, x::AbstractVector, v::TangentBundle) where {F} =
     hvp!(hv, f, x, v, DirectionalHVPConfig(x, v))
 hvp!(hv::HVBundle, f::F, x::AbstractVector, v::TangentBundle, cfg::DirectionalHVPConfig) where {F} =
     hvp_dir!(hv, f, x, v, cfg)
+hvp!(hv::AbstractArray, f::F, x::AbstractArray, v::TangentBundle) where {F} = begin
+    _hvp_common_array!(hv, nothing, f, x, v, nothing)
+end
+function hvp!(hv::AbstractArray, f::F, x::AbstractArray, v::TangentBundle, cfg::DirectionalHVPConfig) where {F}
+    return _hvp_common_array!(hv, nothing, f, x, v, cfg)
+end
+function hvp!(hv::NTuple{N, <:AbstractArray}, f::F, x::AbstractArray, v::TangentBundle) where {N, F}
+    return _hvp_common_array!(hv, nothing, f, x, v, nothing)
+end
+function hvp!(hv::NTuple{N, <:AbstractArray}, f::F, x::AbstractArray, v::TangentBundle, cfg::DirectionalHVPConfig) where {N, F}
+    return _hvp_common_array!(hv, nothing, f, x, v, cfg)
+end
 
 @inline function hvp_dir!(hv::HVBundle, f::F, x::AbstractVector{T}, v::TangentBundle, cfg::DirectionalHVPConfig) where {T, F}
     n_tangents = tangents_count(v)
@@ -415,14 +502,19 @@ end
     hvp_gradient_value_vector_dir_core!(nothing, hv, f, x, v, cfg, valN)
 
 # Gradient + HVP + value (directional)
+hvp_gradient_value(f::F, x::AbstractVector, v::TangentBundle) where {F} =
+    hvp_gradient_value(f, x, v, DirectionalHVPConfig(x, v))
 function hvp_gradient_value(f::F, x::AbstractVector, v::TangentBundle, cfg::DirectionalHVPConfig) where {F}
     g = similar(x, eltype(x))
     hv = similar_output(x, v)
     value = hvp_gradient_value!(hv, g, f, x, v, cfg)
     return (; value = value, gradient = g, hvp = hv)
 end
-hvp_gradient_value(f::F, x::AbstractVector, v::TangentBundle) where {F} =
-    hvp_gradient_value(f, x, v, DirectionalHVPConfig(x, v))
+hvp_gradient_value(f::F, x::AbstractArray{T, N}, v::TangentBundle) where {F, T, N} =
+    _hvp_gradient_value_array(f, x, v, nothing)
+function hvp_gradient_value(f::F, x::AbstractArray{T, N}, v::TangentBundle, cfg::DirectionalHVPConfig) where {F, T, N}
+    return _hvp_gradient_value_array(f, x, v, cfg)
+end
 
 function hvp_gradient_value!(hv::HVBundle, g::AbstractVector, f::F, x::AbstractVector, v::TangentBundle) where {F}
     return hvp_gradient_value!(hv, g, f, x, v, DirectionalHVPConfig(x, v))
@@ -440,6 +532,16 @@ function hvp_gradient_value!(hv::HVBundle, g::AbstractVector, f::F, x::AbstractV
     else
         return hvp_gradient_value_chunk_dir!(g, hv, f, x, v, cfg, valN)
     end
+end
+hvp_gradient_value!(hv::AbstractArray, g::AbstractArray, f::F, x::AbstractArray, v::TangentBundle) where {F} =
+    _hvp_common_array!(hv, g, f, x, v, nothing)
+function hvp_gradient_value!(hv::AbstractArray, g::AbstractArray, f::F, x::AbstractArray, v::TangentBundle, cfg::DirectionalHVPConfig) where {F}
+    return _hvp_common_array!(hv, g, f, x, v, cfg)
+end
+hvp_gradient_value!(hv::NTuple{N, <:AbstractArray}, g::AbstractArray, f::F, x::AbstractArray, v::TangentBundle) where {N, F} =
+    _hvp_common_array!(hv, g, f, x, v, nothing)
+function hvp_gradient_value!(hv::NTuple{N, <:AbstractArray}, g::AbstractArray, f::F, x::AbstractArray, v::TangentBundle, cfg::DirectionalHVPConfig) where {N, F}
+    return _hvp_common_array!(hv, g, f, x, v, cfg)
 end
 
 @inline hvp_gradient_value_vector_dir!(g::AbstractVector{T}, hv::HVBundle, f, x::AbstractVector{T}, v::TangentBundle, cfg::DirectionalHVPConfig, valN::Val{N}) where {T, N} =
