@@ -19,12 +19,12 @@ There are some limitations compared to ForwardDiff.jl:
 | -------- | ----------- |
 | `hessian(f, x)` | Compute Hessian of `f` at `x` (scalar or vector) |
 | `hessian!(H, f, x, cfg)` | In-place Hessian into pre-allocated `H` |
-| `hessiangradvalue(f, x)` | Compute Hessian, gradient, and value together |
-| `hessiangradvalue!(H, G, f, x, cfg)` | In-place variant, returns the value |
+| `hessian_gradient_value(f, x)` | Compute Hessian, gradient, and value together |
+| `hessian_gradient_value!(H, G, f, x, cfg)` | In-place variant, returns the value |
 | `hvp(f, x, tangents)` | Hessian–vector product(s) `H(x) * tangent(s)` |
 | `hvp!(hvs, f, x, tangents, cfg)` | In-place Hessian–vector product |
-| `hvpgrad(f, x, tangents)` | Gradient and Hessian–vector product(s) |
-| `hvpgrad!(g, hvs, f, x, tangents, cfg)` | In-place gradient and Hessian–vector product |
+| `hvp_gradient_value(f, x, tangents)` | Value, gradient, and Hessian–vector product(s) |
+| `hvp_gradient_value!(hvs, g, f, x, tangents, cfg)` | In-place Hessian–vector product and gradient, returns value |
 | `HessianConfig(x, chunk)` | Config for caching and chunk size control |
 | `DirectionalHVPConfig(x, chunk)` | Config for Hessian–vector products |
 | `Chunk{N}()` | Specify chunk size `N` |
@@ -117,14 +117,14 @@ julia> HyperHessians.hessian!(H, f, x, cfg)
 
 ### Computing Hessian, Gradient, and Value Together
 
-Use `hessiangradvalue` to compute all three in a single pass:
+Use `hessian_gradient_value` to compute all three in a single pass:
 
 ```julia
 julia> f = x -> sum(x.^3);
 
 julia> x = [1.0, 2.0, 3.0, 4.0];
 
-julia> result = HyperHessians.hessiangradvalue(f, x);
+julia> result = HyperHessians.hessian_gradient_value(f, x);
 
 julia> result.value
 100.0
@@ -144,7 +144,7 @@ julia> result.hessian
  0.0   0.0   0.0  24.0
 ```
 
-There is also an in-place variant `hessiangradvalue!(H, G, f, x, cfg)` that returns the value.
+There is also an in-place variant `hessian_gradient_value!(H, G, f, x, cfg)` that returns the value.
 
 ### Hessian–Vector Products
 
@@ -172,7 +172,7 @@ julia> HyperHessians.hessian(f, x) * v
 
 You can pass a single tangent as a vector, or multiple tangents as a tuple of vectors. HyperHessians will evaluate bundled tangents in one pass and return the matching vector or tuple of Hessian–vector products. You can supply a `DirectionalHVPConfig` to reuse storage and tune chunk size, e.g. `cfg = HyperHessians.DirectionalHVPConfig(x, v, HyperHessians.Chunk{8}()); hvp(f, x, v, cfg)` (for a single tangent this is equivalent to `DirectionalHVPConfig(x, HyperHessians.Chunk{8}())`, passing `v` only matters when you have multiple tangents). For non-allocating use, call `hvp!(hvs, f, x, tangents[, cfg])` with a preallocated output container (a vector for a single tangent, or a tuple of vectors for multiple) and a reused config.
 
-To get the gradient and Hessian–vector product(s) together, use `hvpgrad`/`hvpgrad!`; this reuses the same directional seeding so the gradient comes “for free” alongside the bundled `H*v` results.
+To get the value, gradient, and Hessian–vector product(s) together, use `hvp_gradient_value`/`hvp_gradient_value!`; this reuses the same directional seeding so the value and gradient come "for free" alongside the bundled `H*v` results.
 
 ### StaticArrays support
 
@@ -190,7 +190,7 @@ julia> HyperHessians.hvp(x -> sum(sin.(x)), x, ones(SVector{4})) isa SVector
 true
 ```
 
-`hessian`, `hessiangradvalue`, and `hvp` return StaticArrays (for `hvp`, a StaticVector for one tangent or a tuple for multiple) and avoid heap allocations; bang-variants are intentionally omitted for StaticArrays because mutation is less common for immutable small arrays.
+`hessian`, `hessian_gradient_value`, and `hvp` return StaticArrays (for `hvp`, a StaticVector for one tangent or a tuple for multiple) and avoid heap allocations; bang-variants are intentionally omitted for StaticArrays because mutation is less common for immutable small arrays.
 
 ## Performance
 

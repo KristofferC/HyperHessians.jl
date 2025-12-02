@@ -76,7 +76,7 @@ function HyperHessians.hessian(f::F, x::StaticVector{N, T}) where {F, N, T}
     return extract_static_hessian(out, x)
 end
 
-function HyperHessians.hessiangradvalue(f::F, x::StaticVector{N, T}) where {F, N, T}
+function HyperHessians.hessian_gradient_value(f::F, x::StaticVector{N, T}) where {F, N, T}
     out = _static_hessian_core(f, x)
     return (;
         value = out.v,
@@ -96,18 +96,18 @@ function HyperHessians.hvp(f::F, x::StaticVector{N, T}, v::StaticVector{N, T}) w
     return HyperHessians.hvp(f, x, (v,))[1]
 end
 
-function HyperHessians.hvpgrad(f::F, x::StaticVector{N, T}, tangents::NTuple{M, <:StaticVector{N, T}}) where {F, N, T, M}
+function HyperHessians.hvp_gradient_value(f::F, x::StaticVector{N, T}, tangents::NTuple{M, <:StaticVector{N, T}}) where {F, N, T, M}
     duals = hyperdualize_dir(x, tangents)
     out = f(duals)
     check_scalar(out)
     g = extract_static_gradient(out, x)
     hv = extract_static_hvp(out, x)
-    return (; gradient = g, hvp = hv)
+    return (; value = out.v, gradient = g, hvp = hv)
 end
 
-function HyperHessians.hvpgrad(f::F, x::StaticVector{N, T}, v::StaticVector{N, T}) where {F, N, T}
-    res = HyperHessians.hvpgrad(f, x, (v,))
-    return (; gradient = res.gradient, hvp = res.hvp[1])
+function HyperHessians.hvp_gradient_value(f::F, x::StaticVector{N, T}, v::StaticVector{N, T}) where {F, N, T}
+    res = HyperHessians.hvp_gradient_value(f, x, (v,))
+    return (; value = res.value, gradient = res.gradient, hvp = res.hvp[1])
 end
 
 end

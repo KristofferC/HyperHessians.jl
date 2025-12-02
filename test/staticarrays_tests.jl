@@ -1,7 +1,7 @@
 module StaticArraysTests
 
 using Test
-using HyperHessians: hessian, hvp, hvpgrad, hessiangradvalue
+using HyperHessians: hessian, hvp, hvp_gradient_value, hessian_gradient_value
 using DiffTests
 using ForwardDiff
 using StaticArrays
@@ -24,7 +24,7 @@ using StaticArrays
     @test hv === 2 .* dir
     @test @allocated(hvp(g, x, dir)) == 0 broken = VERSION < v"1.11"
 
-    res = hvpgrad(g, x, dir)
+    res = hvp_gradient_value(g, x, dir)
     @test res.gradient === 2 .* x
     @test res.hvp === 2 .* dir
 
@@ -35,16 +35,16 @@ using StaticArrays
     @test hv_bundle[2] === 2 .* dir2
     @test @allocated(hvp(g, x, (dir, dir2))) == 0 broken = VERSION < v"1.11"
 
-    res_bundle = hvpgrad(g, x, (dir, dir2))
+    res_bundle = hvp_gradient_value(g, x, (dir, dir2))
     @test res_bundle.gradient === 2 .* x
     @test res_bundle.hvp[1] === 2 .* dir
     @test res_bundle.hvp[2] === 2 .* dir2
 
 
-    res = hessiangradvalue(g, x)
+    res = hessian_gradient_value(g, x)
     @test res.gradient === 2 .* x
     @test res.hessian === expected_H
-    @test @allocated(hessiangradvalue(g, x)) == 0 broken = VERSION < v"1.11"
+    @test @allocated(hessian_gradient_value(g, x)) == 0 broken = VERSION < v"1.11"
 end
 
 end # module

@@ -144,11 +144,22 @@ function extract_gradient!(G::AbstractVector, v::HyperDual{N1, N2}, block_i::Int
 end
 
 function hessian(f, x::Real)
-    one_seed = single_seed(NTuple{1, typeof(x)}, Val(1))
-    dual = HyperDual(x, one_seed, one_seed)
+    return hessian_gradient_value(f, x).hessian
+end
+
+"""
+    hessian_gradient_value(f, x::Real)
+
+Compute value, first derivative, and second derivative for a scalar input.
+Returns a named tuple `(value, gradient, hessian)` where `gradient` and
+`hessian` are numbers.
+"""
+function hessian_gradient_value(f, x::Real)
+    seed = single_seed(NTuple{1, typeof(x)}, Val(1))
+    dual = HyperDual(x, seed, seed)
     v = f(dual)
     check_scalar(v)
-    return v.ϵ12[1][1]
+    return (; value = v.v, gradient = v.ϵ1[1], hessian = v.ϵ12[1][1])
 end
 
 hessian(f::F, x::AbstractVector) where {F} = hessian!(similar(x, axes(x, 1), axes(x, 1)), f, x, HessianConfig(x))
@@ -210,37 +221,37 @@ end
 hessian_chunk!(H::AbstractMatrix, f::F, x::AbstractVector, cfg::HessianConfig) where {F} =
     (hessian_chunk_core!(H, nothing, f, x, cfg); H)
 
-function hessiangradvalue!(H::AbstractMatrix, G::AbstractVector, f::F, x::AbstractVector{T}, cfg::HessianConfig) where {F, T}
+function hessian_gradient_value!(H::AbstractMatrix, G::AbstractVector, f::F, x::AbstractVector{T}, cfg::HessianConfig) where {F, T}
     size(H, 1) == size(H, 2) == length(x) || throw(DimensionMismatch(lazy"H must be square with size matching length(x)=$(length(x)), got size(H)=$(size(H))"))
     length(G) == length(x) || throw(DimensionMismatch(lazy"G must have length $(length(x)), got $(length(G))"))
     if chunksize(cfg) == length(x)
-        return hessiangradvalue_vector!(H, G, f, x, cfg)
+        return hessian_gradient_value_vector!(H, G, f, x, cfg)
     else
-        return hessiangradvalue_chunk!(H, G, f, x, cfg)
+        return hessian_gradient_value_chunk!(H, G, f, x, cfg)
     end
 end
 
-function hessiangradvalue!(H::AbstractMatrix, G::AbstractVector, f::F, x::AbstractVector) where {F}
+function hessian_gradient_value!(H::AbstractMatrix, G::AbstractVector, f::F, x::AbstractVector) where {F}
     cfg = HessianConfig(x)
-    return hessiangradvalue!(H, G, f, x, cfg)
+    return hessian_gradient_value!(H, G, f, x, cfg)
 end
 
-function hessiangradvalue(f::F, x::AbstractVector, cfg::HessianConfig) where {F}
+function hessian_gradient_value(f::F, x::AbstractVector, cfg::HessianConfig) where {F}
     G = similar(x, axes(x, 1))
     H = similar(x, axes(x, 1), axes(x, 1))
-    value = hessiangradvalue!(H, G, f, x, cfg)
+    value = hessian_gradient_value!(H, G, f, x, cfg)
     return (; value = value, gradient = G, hessian = H)
 end
 
-function hessiangradvalue(f::F, x::AbstractVector) where {F}
+function hessian_gradient_value(f::F, x::AbstractVector) where {F}
     cfg = HessianConfig(x)
-    return hessiangradvalue(f, x, cfg)
+    return hessian_gradient_value(f, x, cfg)
 end
 
-hessiangradvalue_vector!(H::AbstractMatrix, G::AbstractVector, f::F, x::AbstractVector, cfg::HessianConfig) where {F} =
+hessian_gradient_value_vector!(H::AbstractMatrix, G::AbstractVector, f::F, x::AbstractVector, cfg::HessianConfig) where {F} =
     hessian_vector_core!(H, G, f, x, cfg)
 
-hessiangradvalue_chunk!(H::AbstractMatrix, G::AbstractVector, f::F, x::AbstractVector{T}, cfg::HessianConfig) where {F, T} =
+hessian_gradient_value_chunk!(H::AbstractMatrix, G::AbstractVector, f::F, x::AbstractVector{T}, cfg::HessianConfig) where {F, T} =
     hessian_chunk_core!(H, G, f, x, cfg)
 
 """
@@ -335,26 +346,26 @@ hvp!(hv::HVBundle, f::F, x::AbstractVector, v::TangentBundle, cfg::DirectionalHV
 end
 
 @inline hvp_vector_dir!(hv::HVBundle, f, x::AbstractVector{T}, v::TangentBundle, cfg::DirectionalHVPConfig, valN::Val{N}) where {T, N} =
-    hvpgrad_vector_dir_core!(nothing, hv, f, x, v, cfg, valN)
+    hvp_gradient_value_vector_dir_core!(nothing, hv, f, x, v, cfg, valN)
 
-# Gradient + HVP (directional)
-function hvpgrad(f::F, x::AbstractVector, v::TangentBundle) where {F}
+# Gradient + HVP + value (directional)
+function hvp_gradient_value(f::F, x::AbstractVector, v::TangentBundle) where {F}
     g = similar(x, eltype(x))
     hv = similar_output(x, v)
-    hvpgrad!(g, hv, f, x, v, DirectionalHVPConfig(x, v))
-    return (; gradient = g, hvp = hv)
+    value = hvp_gradient_value!(hv, g, f, x, v, DirectionalHVPConfig(x, v))
+    return (; value = value, gradient = g, hvp = hv)
 end
-function hvpgrad(f::F, x::AbstractVector, v::TangentBundle, cfg::DirectionalHVPConfig) where {F}
+function hvp_gradient_value(f::F, x::AbstractVector, v::TangentBundle, cfg::DirectionalHVPConfig) where {F}
     g = similar(x, eltype(x))
     hv = similar_output(x, v)
-    hvpgrad!(g, hv, f, x, v, cfg)
-    return (; gradient = g, hvp = hv)
+    value = hvp_gradient_value!(hv, g, f, x, v, cfg)
+    return (; value = value, gradient = g, hvp = hv)
 end
 
-function hvpgrad!(g::AbstractVector, hv::HVBundle, f::F, x::AbstractVector, v::TangentBundle) where {F}
-    return hvpgrad!(g, hv, f, x, v, DirectionalHVPConfig(x, v))
+function hvp_gradient_value!(hv::HVBundle, g::AbstractVector, f::F, x::AbstractVector, v::TangentBundle) where {F}
+    return hvp_gradient_value!(hv, g, f, x, v, DirectionalHVPConfig(x, v))
 end
-function hvpgrad!(g::AbstractVector, hv::HVBundle, f::F, x::AbstractVector{T}, v::TangentBundle, cfg::DirectionalHVPConfig) where {F, T}
+function hvp_gradient_value!(hv::HVBundle, g::AbstractVector, f::F, x::AbstractVector{T}, v::TangentBundle, cfg::DirectionalHVPConfig) where {F, T}
     n_tangents = tangents_count(v)
     n_tangents == ntangents(cfg) ||
         throw(DimensionMismatch(lazy"config expects $(ntangents(cfg)) tangents, but $(n_tangents) were provided"))
@@ -363,22 +374,22 @@ function hvpgrad!(g::AbstractVector, hv::HVBundle, f::F, x::AbstractVector{T}, v
     check_output_dims(hv, length(x), n_tangents)
     valN = Val(n_tangents)
     if chunksize(cfg) == length(x)
-        hvpgrad_vector_dir!(g, hv, f, x, v, cfg, valN)
+        return hvp_gradient_value_vector_dir!(g, hv, f, x, v, cfg, valN)
     else
-        hvpgrad_chunk_dir!(g, hv, f, x, v, cfg, valN)
+        return hvp_gradient_value_chunk_dir!(g, hv, f, x, v, cfg, valN)
     end
-    return (; gradient = g, hvp = hv)
 end
 
-@inline hvpgrad_vector_dir!(g::AbstractVector{T}, hv::HVBundle, f, x::AbstractVector{T}, v::TangentBundle, cfg::DirectionalHVPConfig, valN::Val{N}) where {T, N} =
-    hvpgrad_vector_dir_core!(g, hv, f, x, v, cfg, valN)
+@inline hvp_gradient_value_vector_dir!(g::AbstractVector{T}, hv::HVBundle, f, x::AbstractVector{T}, v::TangentBundle, cfg::DirectionalHVPConfig, valN::Val{N}) where {T, N} =
+    hvp_gradient_value_vector_dir_core!(g, hv, f, x, v, cfg, valN)
 
-@inline function hvpgrad_chunk_dir_core!(g::Union{Nothing, AbstractVector{T}}, hv::HVBundle, f, x::AbstractVector{T}, v::TangentBundle, cfg::DirectionalHVPConfig, ::Val{N}) where {T, N}
+@inline function hvp_gradient_value_chunk_dir_core!(g::Union{Nothing, AbstractVector{T}}, hv::HVBundle, f, x::AbstractVector{T}, v::TangentBundle, cfg::DirectionalHVPConfig, ::Val{N}) where {T, N}
     Nchunk = chunksize(cfg)
     fill_output!(hv, zero(T))
     n_chunks = ceil(Int, length(x) / Nchunk)
     ax = axes(x, 1)
     zeroϵ1 = zero_ϵ(cfg.seeds[1])
+    value = zero(T)
 
     # Initialize ε₂ once and keep ε₁ zeroed globally.
     @inbounds for j in eachindex(x)
@@ -389,6 +400,7 @@ end
         range_i = seed_hvp_dir!(cfg.duals, cfg.seeds, i, ax)
         out = f(cfg.duals)
         check_scalar(out)
+        value = out.v
         @inbounds for (I, idx_i) in enumerate(range_i)
             if g !== nothing
                 g[idx_i] = out.ϵ1[I]
@@ -397,7 +409,7 @@ end
         end
         zero_block_ϵ1!(cfg.duals, cfg.seeds, range_i)
     end
-    return g === nothing ? hv : (g, hv)
+    return g === nothing ? hv : value
 end
 
 @inline function seed_hvp_dir!(d::AbstractVector{<:HyperDual{N1, N2, <:Any}}, seeds, block_i::Int, ax) where {N1, N2}
@@ -411,10 +423,10 @@ end
 end
 
 function hvp_chunk_dir!(hv::HVBundle, f::F, x::AbstractVector{T}, v::TangentBundle, cfg::DirectionalHVPConfig, ::Val{N}) where {F, T, N}
-    return hvpgrad_chunk_dir_core!(nothing, hv, f, x, v, cfg, Val(N))
+    return hvp_gradient_value_chunk_dir_core!(nothing, hv, f, x, v, cfg, Val(N))
 end
 
-@inline function hvpgrad_vector_dir_core!(g::Union{Nothing, AbstractVector{T}}, hv::HVBundle, f, x::AbstractVector{T}, v::TangentBundle, cfg::DirectionalHVPConfig, ::Val{N}) where {T, N}
+@inline function hvp_gradient_value_vector_dir_core!(g::Union{Nothing, AbstractVector{T}}, hv::HVBundle, f, x::AbstractVector{T}, v::TangentBundle, cfg::DirectionalHVPConfig, ::Val{N}) where {T, N}
     # Seed ε₁ with identity directions and ε₂ with the bundled tangents;
     # the mixed term ε₁ᵀ A ε₂ yields each H * v column in ϵ₁₂.
     @inbounds for i in eachindex(x)
@@ -428,8 +440,8 @@ end
         end
         store_hvp!(hv, i, out.ϵ12[i], Val(N))
     end
-    return g === nothing ? hv : (g, hv)
+    return g === nothing ? hv : out.v
 end
 
-hvpgrad_chunk_dir!(g::AbstractVector{T}, hv::HVBundle, f::F, x::AbstractVector{T}, v::TangentBundle, cfg::DirectionalHVPConfig, valN::Val{N}) where {F, T, N} =
-    hvpgrad_chunk_dir_core!(g, hv, f, x, v, cfg, valN)
+hvp_gradient_value_chunk_dir!(g::AbstractVector{T}, hv::HVBundle, f::F, x::AbstractVector{T}, v::TangentBundle, cfg::DirectionalHVPConfig, valN::Val{N}) where {F, T, N} =
+    hvp_gradient_value_chunk_dir_core!(g, hv, f, x, v, cfg, valN)
