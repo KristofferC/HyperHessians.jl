@@ -1,4 +1,4 @@
-using HyperHessians, DiffTests, BenchmarkTools, LinearAlgebra
+using HyperHessians, DiffTests, BenchmarkTools, LinearAlgebra, DifferentiationInterface, ForwardDiff
 
 const f = DiffTests.rosenbrock_1
 const n = 16
@@ -24,6 +24,10 @@ end
 
 @info "Hessian! + mul!"
 @btime hess_vp!($H, $hv, $f, $x, $v, $cfg);
+
+@info "ForwardDiff HVP"
+prep = DifferentiationInterface.prepare_hvp(f, AutoForwardDiff(), x, (v,))
+@btime DifferentiationInterface.hvp!(f, (hv,), prep, AutoForwardDiff(), x, (v,))
 
 
 nothing
