@@ -13,6 +13,8 @@ function HessianConfig(x::AbstractVector{T}, chunk = Chunk(x)::Chunk) where {T}
     seeds = collect(construct_seeds(NTuple{N, T}))
     return HessianConfig(duals, seeds)
 end
+HessianConfig(x::AbstractArray{T}, chunk = Chunk(x)::Chunk) where {T} =
+    HessianConfig(vec(x), chunk)
 
 """
     DirectionalHVPConfig(x; chunk=Chunk(x))
@@ -104,6 +106,20 @@ end
 @noinline check_scalar(x) =
     x isa Number || throw(error("expected a scalar to be returned from function passed to `hessian`"))
 
+@inline _vectorize_input(f, x::AbstractVector) = (f, x, nothing)
+@inline function _vectorize_input(f, x::AbstractArray)
+    shape = size(x)
+    f_vec = let f = f, shape = shape
+        y -> f(reshape(y, shape))
+    end
+    return f_vec, vec(x), shape
+end
+
+function _check_config_length(cfg::HessianConfig, n::Int)
+    length(cfg.duals) == n || throw(DimensionMismatch(lazy"config size $(length(cfg.duals)) does not match input length $n"))
+    return nothing
+end
+
 function extract_hessian!(H::AbstractMatrix, v::HyperDual)
     @inbounds for (icol, col) in enumerate(axes(H, 2))
         H[:, col] .= Tuple(v.ϵ12[icol])
@@ -164,6 +180,15 @@ end
 
 hessian(f::F, x::AbstractVector) where {F} = hessian!(similar(x, axes(x, 1), axes(x, 1)), f, x, HessianConfig(x))
 hessian(f::F, x::AbstractVector, cfg::HessianConfig) where {F} = hessian!(similar(x, axes(x, 1), axes(x, 1)), f, x, cfg)
+hessian(f::F, x::AbstractArray) where {F} = begin
+    f_vec, x_vec, _ = _vectorize_input(f, x)
+    hessian(f_vec, x_vec)
+end
+function hessian(f::F, x::AbstractArray, cfg::HessianConfig) where {F}
+    f_vec, x_vec, _ = _vectorize_input(f, x)
+    _check_config_length(cfg, length(x_vec))
+    return hessian(f_vec, x_vec, cfg)
+end
 
 function hessian!(H::AbstractMatrix, f::F, x::AbstractVector{T}, cfg::HessianConfig) where {F, T}
     if chunksize(cfg) == length(x)
@@ -171,6 +196,15 @@ function hessian!(H::AbstractMatrix, f::F, x::AbstractVector{T}, cfg::HessianCon
     else
         return hessian_chunk!(H, f, x, cfg)
     end
+end
+hessian!(H::AbstractMatrix, f::F, x::AbstractArray) where {F} = begin
+    f_vec, x_vec, _ = _vectorize_input(f, x)
+    hessian!(H, f_vec, x_vec, HessianConfig(x_vec))
+end
+function hessian!(H::AbstractMatrix, f::F, x::AbstractArray, cfg::HessianConfig) where {F}
+    f_vec, x_vec, _ = _vectorize_input(f, x)
+    _check_config_length(cfg, length(x_vec))
+    return hessian!(H, f_vec, x_vec, cfg)
 end
 
 function hessian_vector_core!(H::AbstractMatrix, G::Union{Nothing, AbstractVector}, f, x::AbstractVector, cfg::HessianConfig)
@@ -235,6 +269,19 @@ function hessian_gradient_value!(H::AbstractMatrix, G::AbstractVector, f::F, x::
     cfg = HessianConfig(x)
     return hessian_gradient_value!(H, G, f, x, cfg)
 end
+hessian_gradient_value!(H::AbstractMatrix, G::AbstractArray, f::F, x::AbstractArray) where {F} = begin
+    f_vec, x_vec, _ = _vectorize_input(f, x)
+    g_vec = vec(G)
+    length(g_vec) == length(x_vec) || throw(DimensionMismatch(lazy"G must have length $(length(x_vec)), got $(length(g_vec))"))
+    hessian_gradient_value!(H, g_vec, f_vec, x_vec, HessianConfig(x_vec))
+end
+function hessian_gradient_value!(H::AbstractMatrix, G::AbstractArray, f::F, x::AbstractArray, cfg::HessianConfig) where {F}
+    f_vec, x_vec, _ = _vectorize_input(f, x)
+    g_vec = vec(G)
+    length(g_vec) == length(x_vec) || throw(DimensionMismatch(lazy"G must have length $(length(x_vec)), got $(length(g_vec))"))
+    _check_config_length(cfg, length(x_vec))
+    return hessian_gradient_value!(H, g_vec, f_vec, x_vec, cfg)
+end
 
 function hessian_gradient_value(f::F, x::AbstractVector, cfg::HessianConfig) where {F}
     G = similar(x, axes(x, 1))
@@ -246,6 +293,19 @@ end
 function hessian_gradient_value(f::F, x::AbstractVector) where {F}
     cfg = HessianConfig(x)
     return hessian_gradient_value(f, x, cfg)
+end
+hessian_gradient_value(f::F, x::AbstractArray, cfg::HessianConfig) where {F} = begin
+    f_vec, x_vec, shape = _vectorize_input(f, x)
+    _check_config_length(cfg, length(x_vec))
+    res = hessian_gradient_value(f_vec, x_vec, cfg)
+    grad = shape === nothing ? res.gradient : reshape(res.gradient, shape)
+    return (; value = res.value, gradient = grad, hessian = res.hessian)
+end
+hessian_gradient_value(f::F, x::AbstractArray) where {F} = begin
+    f_vec, x_vec, shape = _vectorize_input(f, x)
+    res = hessian_gradient_value(f_vec, x_vec)
+    grad = shape === nothing ? res.gradient : reshape(res.gradient, shape)
+    return (; value = res.value, gradient = grad, hessian = res.hessian)
 end
 
 hessian_gradient_value_vector!(H::AbstractMatrix, G::AbstractVector, f::F, x::AbstractVector, cfg::HessianConfig) where {F} =
