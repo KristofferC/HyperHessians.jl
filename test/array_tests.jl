@@ -2,7 +2,7 @@ module arrayTests
 
 using Test
 using ForwardDiff
-using HyperHessians: hessian, hessian!, hessian_gradient_value, hessian_gradient_value!, hvp, hvp!, hvp_gradient_value, hvp_gradient_value!, HessianConfig, DirectionalHVPConfig, Chunk
+using HyperHessians: hessian, hessian!, hessian_gradient_value, hessian_gradient_value!, hvp, hvp!, hvp_gradient_value, hvp_gradient_value!, HessianConfig, HVPConfig, Chunk
 
 @testset "array inputs" begin
     A = reshape(collect(1.0:4.0), 2, 2)
@@ -41,7 +41,7 @@ using HyperHessians: hessian, hessian!, hessian_gradient_value, hessian_gradient
     g_fun(x) = sum(sin, x)
     t1 = fill(1.0, size(C))
     t2 = fill(2.0, size(C))
-    cfg_hvp = DirectionalHVPConfig(C, (t1, t2), Chunk(6))
+    cfg_hvp = HVPConfig(C, (t1, t2), Chunk(6))
 
     hv_expected = reshape(ForwardDiff.hessian(y -> g_fun(reshape(y, size(C))), vec(C)) * vec(t1), size(C))
     @test hvp(g_fun, C, t1) ≈ hv_expected

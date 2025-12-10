@@ -1,7 +1,7 @@
 module HyperHessians
 
 if VERSION >= v"1.11.0-"
-    eval(Meta.parse("public hessian, hessian!, hessian_gradient_value, hessian_gradient_value!, hvp, hvp!, hvp_gradient_value, hvp_gradient_value!, HessianConfig, DirectionalHVPConfig, Chunk"))
+    eval(Meta.parse("public hessian, hessian!, hessian_gradient_value, hessian_gradient_value!, hvp, hvp!, hvp_gradient_value, hvp_gradient_value!, vhvp, vhvp_gradient_value, VHVPConfig, HessianConfig, HVPConfig, Chunk"))
 end
 
 

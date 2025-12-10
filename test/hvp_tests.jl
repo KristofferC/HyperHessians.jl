@@ -1,22 +1,22 @@
 module HVPTests
 
 using Test
-using HyperHessians: hvp, hvp!, hvp_gradient_value, hvp_gradient_value!, DirectionalHVPConfig, Chunk
+using HyperHessians: hvp, hvp!, hvp_gradient_value, hvp_gradient_value!, vhvp, vhvp_gradient_value, VHVPConfig, HVPConfig, Chunk
 using DiffTests
 using ForwardDiff
 
 include(joinpath(@__DIR__, "helpers.jl"))
 using .Helpers: ackley_stable
 
-@testset "DirectionalHVPConfig errors" begin
+@testset "HVPConfig errors" begin
     x = [1.0, 2.0, 3.0]
-    @test_throws ArgumentError DirectionalHVPConfig(x, Chunk{0}())
+    @test_throws ArgumentError HVPConfig(x, Chunk{0}())
 end
 
 @testset "hvp! DimensionMismatch" begin
     f(x) = sum(abs2, x)
     x = [1.0, 2.0, 3.0]
-    cfg = DirectionalHVPConfig(x)
+    cfg = HVPConfig(x)
     @test_throws DimensionMismatch hvp!(zeros(3), f, x, zeros(2), cfg)
     @test_throws DimensionMismatch hvp!(zeros(2), f, x, zeros(3), cfg)
 end
@@ -33,7 +33,7 @@ end
             H = ForwardDiff.hessian(f, x)
 
             for chunk in (1, max(1, n ÷ 2), n)
-                cfg = DirectionalHVPConfig(x, Chunk{chunk}())
+                cfg = HVPConfig(x, Chunk{chunk}())
                 @test hvp(f, x, v, cfg) ≈ H * v
                 @test hvp(f, x, (v,), cfg)[1] ≈ H * v
             end
@@ -70,7 +70,7 @@ end
     @test hv_tuple[2] ≈ H * v2
 
     hv_out = (zeros(length(x)), zeros(length(x)))
-    cfg_tuple = DirectionalHVPConfig(x, (v1, v2), Chunk{3}())
+    cfg_tuple = HVPConfig(x, (v1, v2), Chunk{3}())
     hvp!(hv_out, f, x, (v1, v2), cfg_tuple)
     @test hv_out[1] ≈ H * v1
     @test hv_out[2] ≈ H * v2
@@ -85,12 +85,12 @@ end
     @test_throws DimensionMismatch hvp!((zeros(length(x)), zeros(4)), f, x, (v1, v2))
 
     # Config tangent count mismatch
-    cfg_2 = DirectionalHVPConfig(x, (v1, v2))
+    cfg_2 = HVPConfig(x, (v1, v2))
     @test_throws DimensionMismatch hvp!(hv_out, f, x, (v1, v2, rand(6)), cfg_2)
 
     # A single tangent can be provided without wrapping
     hv_single_out = zeros(length(x))
-    hvp!(hv_single_out, f, x, v1, DirectionalHVPConfig(x, v1, Chunk{3}()))
+    hvp!(hv_single_out, f, x, v1, HVPConfig(x, v1, Chunk{3}()))
     @test hv_single_out ≈ H * v1
 end
 
@@ -119,12 +119,39 @@ end
     # In-place
     g_out = zeros(length(x))
     hv_out = (zeros(length(x)), zeros(length(x)))
-    cfg = DirectionalHVPConfig(x, (v1, v2), Chunk{3}())
+    cfg = HVPConfig(x, (v1, v2), Chunk{3}())
     val = hvp_gradient_value!(hv_out, g_out, f, x, (v1, v2), cfg)
     @test val ≈ val_expected
     @test g_out ≈ g_expected
     @test hv_out[1] ≈ H * v1
     @test hv_out[2] ≈ H * v2
+end
+
+@testset "vhvp" begin
+    f = DiffTests.ackley
+    x = rand(6)
+    v = rand(6)
+    H = ForwardDiff.hessian(f, x)
+    g = ForwardDiff.gradient(f, x)
+
+    quad = vhvp(f, x, v)
+    @test quad ≈ sum(v .* (H * v))
+
+    res = vhvp_gradient_value(f, x, v)
+    @test res.value ≈ f(x)
+    @test res.gradient ≈ sum(g .* v)
+    @test res.hessian ≈ quad
+
+    @test_throws DimensionMismatch vhvp(f, x, rand(3))
+end
+
+@testset "vhvp allocations" begin
+    f = sum
+    x = rand(5)
+    v = rand(5)
+    cfg = VHVPConfig(x, v)
+    vhvp_gradient_value(f, x, v, cfg) # warm-up
+    @test @allocated(vhvp_gradient_value(f, x, v, cfg)) == 0
 end
 
 @testset "hvp! zero allocations" begin
@@ -135,12 +162,12 @@ end
     hv = zeros(n)
 
     # Full chunk (vector path)
-    cfg_full = DirectionalHVPConfig(x, Chunk{n}())
+    cfg_full = HVPConfig(x, Chunk{n}())
     hvp!(hv, f, x, v, cfg_full)
     @test @allocated(hvp!(hv, f, x, v, cfg_full)) == 0
 
     # Chunked path
-    cfg_chunk = DirectionalHVPConfig(x, Chunk{4}())
+    cfg_chunk = HVPConfig(x, Chunk{4}())
     hvp!(hv, f, x, v, cfg_chunk)
     @test @allocated(hvp!(hv, f, x, v, cfg_chunk)) == 0
 
@@ -148,11 +175,11 @@ end
     v1 = rand(n)
     v2 = rand(n)
     hv_bundle = (zeros(n), zeros(n))
-    cfg_bundle_full = DirectionalHVPConfig(x, hv_bundle, Chunk{n}())
+    cfg_bundle_full = HVPConfig(x, hv_bundle, Chunk{n}())
     hvp!(hv_bundle, f, x, (v1, v2), cfg_bundle_full)
     @test @allocated(hvp!(hv_bundle, f, x, (v1, v2), cfg_bundle_full)) == 0 broken = VERSION < v"1.11"
 
-    cfg_bundle_chunk = DirectionalHVPConfig(x, hv_bundle, Chunk{4}())
+    cfg_bundle_chunk = HVPConfig(x, hv_bundle, Chunk{4}())
     hvp!(hv_bundle, f, x, (v1, v2), cfg_bundle_chunk)
     @test @allocated(hvp!(hv_bundle, f, x, (v1, v2), cfg_bundle_chunk)) == 0 broken = VERSION < v"1.11"
 end
@@ -166,12 +193,12 @@ end
     hv = zeros(n)
 
     # Full chunk (vector path)
-    cfg_full = DirectionalHVPConfig(x, Chunk{n}())
+    cfg_full = HVPConfig(x, Chunk{n}())
     hvp_gradient_value!(hv, g, f, x, v, cfg_full)
     @test @allocated(hvp_gradient_value!(hv, g, f, x, v, cfg_full)) == 0 broken = VERSION < v"1.11"
 
     # Chunked path
-    cfg_chunk = DirectionalHVPConfig(x, Chunk{4}())
+    cfg_chunk = HVPConfig(x, Chunk{4}())
     hvp_gradient_value!(hv, g, f, x, v, cfg_chunk)
     @test @allocated(hvp_gradient_value!(hv, g, f, x, v, cfg_chunk)) == 0 broken = VERSION < v"1.11"
 
@@ -179,11 +206,11 @@ end
     v1 = rand(n)
     v2 = rand(n)
     hv_bundle = (zeros(n), zeros(n))
-    cfg_bundle_full = DirectionalHVPConfig(x, hv_bundle, Chunk{n}())
+    cfg_bundle_full = HVPConfig(x, hv_bundle, Chunk{n}())
     hvp_gradient_value!(hv_bundle, g, f, x, (v1, v2), cfg_bundle_full)
     @test @allocated(hvp_gradient_value!(hv_bundle, g, f, x, (v1, v2), cfg_bundle_full)) == 0 broken = VERSION < v"1.11"
 
-    cfg_bundle_chunk = DirectionalHVPConfig(x, hv_bundle, Chunk{4}())
+    cfg_bundle_chunk = HVPConfig(x, hv_bundle, Chunk{4}())
     hvp_gradient_value!(hv_bundle, g, f, x, (v1, v2), cfg_bundle_chunk)
     @test @allocated(hvp_gradient_value!(hv_bundle, g, f, x, (v1, v2), cfg_bundle_chunk)) == 0 broken = VERSION < v"1.11"
 end
