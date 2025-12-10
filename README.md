@@ -4,7 +4,6 @@
 [![codecov](https://codecov.io/gh/KristofferC/HyperHessians.jl/graph/badge.svg)](https://codecov.io/gh/KristofferC/HyperHessians.jl)
 [![code style: runic](https://img.shields.io/badge/code_style-%E1%9A%B1%E1%9A%A2%E1%9A%BE%E1%9B%81%E1%9A%B2-black)](https://github.com/fredrikekre/Runic.jl)
 
-
 HyperHessians.jl is a package to compute hessians using forward mode automatic differentiation.
 
 It works similar to `ForwardDiff.hessian` but should have better run-time and compile-time performance in all cases.
@@ -15,18 +14,27 @@ There are some limitations compared to ForwardDiff.jl:
 
 ## API Summary
 
+### Methods
 | Function | Description |
 | -------- | ----------- |
-| `hessian(f, x)` | Compute Hessian of `f` at `x` (scalar or vector) |
-| `hessian!(H, f, x, cfg)` | In-place Hessian into pre-allocated `H` |
-| `hessian_gradient_value(f, x)` | Compute Hessian, gradient, and value together |
-| `hessian_gradient_value!(H, G, f, x, cfg)` | In-place variant, returns the value |
-| `hvp(f, x, tangents)` | Hessian–vector product(s) `H(x) * tangent(s)` |
-| `hvp!(hvs, f, x, tangents, cfg)` | In-place Hessian–vector product |
-| `hvp_gradient_value(f, x, tangents)` | Value, gradient, and Hessian–vector product(s) |
-| `hvp_gradient_value!(hvs, g, f, x, tangents, cfg)` | In-place Hessian–vector product and gradient, returns value |
-| `HessianConfig(x, chunk)` | Config for caching and chunk size control |
-| `DirectionalHVPConfig(x, chunk)` | Config for Hessian–vector products |
+| `hessian(f, x[, h_cfg])` | Compute Hessian of `f` at `x` (scalar or vector) |
+| `hessian!(H, f, x, h_cfg)` | In-place Hessian into pre-allocated `H` |
+| `hessian_gradient_value(f, x[, h_cfg])` | Compute Hessian, gradient, and value together |
+| `hessian_gradient_value!(H, G, f, x, h_cfg)` | In-place variant, returns the value |
+| `hvp(f, x, tangents[, hvp_cfg])` | Hessian–vector product(s) `H(x) * tangent(s)` |
+| `hvp!(hvs, f, x, tangents[, hvp_cfg])` | In-place Hessian–vector product |
+| `hvp_gradient_value(f, x, tangents[, hvp_cfg])` | Value, gradient, and Hessian–vector product(s) |
+| `hvp_gradient_value!(hvs, g, f, x, tangents[, hvp_cfg])` | In-place Hessian–vector product and gradient, returns value |
+| `vhvp(f, x, v[, vhvp_cfg])` | Directional second derivative `v' * H(x) * v` |
+| `vhvp_gradient_value(f, x, v[, vhvp_cfg])` | Value, directional gradient, and `v' * H(x) * v` |
+
+### Types
+
+| Type | Description |
+| ---- | ----------- |
+| `HessianConfig(x, chunk)` | Config for Hessian calls |
+| `HVPConfig(x, chunk)` | Config for Hessian–vector products |
+| `VHVPConfig(x, v)` | Config for vector-Hessian-vector products |
 | `Chunk{N}()` | Specify chunk size `N` |
 
 
@@ -170,9 +178,25 @@ julia> HyperHessians.hessian(f, x) * v
   0.1676492989193555
 ```
 
-You can pass a single tangent as a vector, or multiple tangents as a tuple of vectors. HyperHessians will evaluate bundled tangents in one pass and return the matching vector or tuple of Hessian–vector products. You can supply a `DirectionalHVPConfig` to reuse storage and tune chunk size, e.g. `cfg = HyperHessians.DirectionalHVPConfig(x, v, HyperHessians.Chunk{8}()); hvp(f, x, v, cfg)` (for a single tangent this is equivalent to `DirectionalHVPConfig(x, HyperHessians.Chunk{8}())`, passing `v` only matters when you have multiple tangents). For non-allocating use, call `hvp!(hvs, f, x, tangents[, cfg])` with a preallocated output container (a vector for a single tangent, or a tuple of vectors for multiple) and a reused config.
+You can pass a single tangent as a vector, or multiple tangents as a tuple of vectors. HyperHessians will evaluate bundled tangents in one pass and return the matching vector or tuple of Hessian–vector products. You can supply a `HVPConfig` to reuse storage and tune chunk size, e.g. `cfg = HyperHessians.HVPConfig(x, v, HyperHessians.Chunk{8}()); hvp(f, x, v, cfg)` (for a single tangent this is equivalent to `HVPConfig(x, HyperHessians.Chunk{8}())`, passing `v` only matters when you have multiple tangents). For non-allocating use, call `hvp!(hvs, f, x, tangents[, cfg])` with a preallocated output container (a vector for a single tangent, or a tuple of vectors for multiple) and a reused config.
 
 To get the value, gradient, and Hessian–vector product(s) together, use `hvp_gradient_value`/`hvp_gradient_value!`; this reuses the same directional seeding so the value and gradient come "for free" alongside the bundled `H*v` results.
+
+For the quadratic form `v' * H(x) * v`, use `vhvp` which differentiates along the line `x + t*v` to avoid forming the intermediate `H*v`:
+
+```julia
+julia> HyperHessians.vhvp(f, x, v)  # equal to dot(v, hvp(f, x, v))
+0.09265304076392727
+```
+
+For allocation-free repeated calls, use a preallocated `VHVPConfig`:
+
+```julia
+julia> cfg = HyperHessians.VHVPConfig(x, v);
+
+julia> HyperHessians.vhvp(f, x, v, cfg)
+0.09265304076392727
+```
 
 ### StaticArrays support
 
