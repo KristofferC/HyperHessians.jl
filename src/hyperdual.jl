@@ -59,6 +59,25 @@ const ϵT{N, T} = NTuple{N, T}
     ntuple(i -> muladd(a[i], b, c[i]), Val(N))
 @inline ⊗(t1::NTuple{N1, T1}, t2::NTuple{N2, T2}) where {N1, N2, T1, T2} = ntuple(i -> ⊙(t2, t1[i]), Val(N1))
 
+# Fast-math aware tuple helpers used by Base.@fastmath lowering.
+@inline _fast_add(a::Real, b::Real) = Base.FastMath.add_fast(a, b)
+@inline _fast_add(a::NTuple{N, A}, b::NTuple{N, B}) where {N, A, B} = ntuple(i -> _fast_add(a[i], b[i]), Val(N))
+@inline _fast_neg(a::Real) = @fastmath -a
+@inline _fast_neg(a::NTuple{N, A}) where {N, A} = ntuple(i -> _fast_neg(a[i]), Val(N))
+@inline _fast_sub(a, b) = _fast_add(a, _fast_neg(b))
+@inline _fast_mul(a::Real, r::Real) = Base.FastMath.mul_fast(a, r)
+@inline _fast_mul(a::NTuple{N, A}, r::Real) where {N, A} = ntuple(i -> _fast_mul(a[i], r), Val(N))
+@inline _fast_mul(r::Real, a::NTuple{N, A}) where {N, A} = ntuple(i -> _fast_mul(r, a[i]), Val(N))
+@inline _fast_div(a::Real, r::Real) = Base.FastMath.div_fast(a, r)
+@inline _fast_div(a::NTuple{N, A}, r::Real) where {N, A} = ntuple(i -> _fast_div(a[i], r), Val(N))
+@inline _fast_outer(t1::NTuple{N1, T1}, t2::NTuple{N2, T2}) where {N1, N2, T1, T2} =
+    ntuple(i -> _fast_mul(t2, t1[i]), Val(N1))
+@inline _fast_muladd(a::Real, b::NTuple{N, A}, c::NTuple{N, C}) where {N, A, C} =
+    ntuple(i -> Base.FastMath.add_fast(Base.FastMath.mul_fast(a, b[i]), c[i]), Val(N))
+@inline _fast_muladd(a::NTuple{N, A}, b::Real, c::NTuple{N, C}) where {N, A, C} =
+    ntuple(i -> Base.FastMath.add_fast(Base.FastMath.mul_fast(a[i], b), c[i]), Val(N))
+@inline _fast_muladd(a::Real, b::Real, c::Real) = Base.FastMath.add_fast(Base.FastMath.mul_fast(a, b), c)
+
 struct HyperDual{N1, N2, T} <: Real
     v::T
     ϵ1::ϵT{N1, T}
@@ -176,3 +195,62 @@ end
 @inline Base.literal_pow(::typeof(^), x::HyperDual, ::Val{1}) = x
 @inline Base.literal_pow(::typeof(^), x::HyperDual, ::Val{2}) = x * x
 @inline Base.literal_pow(::typeof(^), x::HyperDual, ::Val{3}) = x * x * x
+
+# FastMath support (used when user code is wrapped in `@fastmath`)
+@inline Base.FastMath.sub_fast(h::HyperDual{N1, N2, T}) where {N1, N2, T} =
+    HyperDual(Base.FastMath.sub_fast(h.v), _fast_neg(h.ϵ1), _fast_neg(h.ϵ2), mapϵ12(_fast_neg, h))
+
+@inline Base.FastMath.add_fast(h1::HyperDual{N1, N2, T}, h2::HyperDual{N1, N2, T}) where {N1, N2, T} =
+    HyperDual(Base.FastMath.add_fast(h1.v, h2.v), _fast_add(h1.ϵ1, h2.ϵ1), _fast_add(h1.ϵ2, h2.ϵ2), mapϵ12(_fast_add, h1, h2))
+@inline Base.FastMath.add_fast(h1::HyperDual{N1, N2, T1}, h2::HyperDual{N1, N2, T2}) where {N1, N2, T1, T2} =
+    Base.FastMath.add_fast(promote(h1, h2)...)
+@inline Base.FastMath.add_fast(h::HyperDual{N1, N2, T}, r::Real) where {N1, N2, T} =
+    HyperDual(Base.FastMath.add_fast(h.v, r), h.ϵ1, h.ϵ2, h.ϵ12)
+@inline Base.FastMath.add_fast(r::Real, h::HyperDual{N1, N2, T}) where {N1, N2, T} =
+    Base.FastMath.add_fast(h, r)
+
+@inline Base.FastMath.sub_fast(h1::HyperDual{N1, N2, T}, h2::HyperDual{N1, N2, T}) where {N1, N2, T} =
+    HyperDual(Base.FastMath.sub_fast(h1.v, h2.v), _fast_sub(h1.ϵ1, h2.ϵ1), _fast_sub(h1.ϵ2, h2.ϵ2), mapϵ12(_fast_sub, h1, h2))
+@inline Base.FastMath.sub_fast(h1::HyperDual{N1, N2, T1}, h2::HyperDual{N1, N2, T2}) where {N1, N2, T1, T2} =
+    Base.FastMath.sub_fast(promote(h1, h2)...)
+@inline Base.FastMath.sub_fast(h::HyperDual{N1, N2, T}, r::Real) where {N1, N2, T} =
+    HyperDual(Base.FastMath.sub_fast(h.v, r), h.ϵ1, h.ϵ2, h.ϵ12)
+@inline Base.FastMath.sub_fast(r::Real, h::HyperDual{N1, N2, T}) where {N1, N2, T} =
+    HyperDual(Base.FastMath.sub_fast(r, h.v), _fast_neg(h.ϵ1), _fast_neg(h.ϵ2), mapϵ12(_fast_neg, h))
+
+@inline function Base.FastMath.mul_fast(h1::HyperDual{N1, N2, T}, h2::HyperDual{N1, N2, T}) where {N1, N2, T}
+    r = Base.FastMath.mul_fast(h1.v, h2.v)
+    ϵ1 = _fast_muladd(h1.v, h2.ϵ1, _fast_mul(h1.ϵ1, h2.v))
+    ϵ2 = _fast_muladd(h1.v, h2.ϵ2, _fast_mul(h1.ϵ2, h2.v))
+    @inline g(i) = _fast_muladd(
+        h1.v,
+        h2.ϵ12[i],
+        _fast_muladd(
+            h1.ϵ12[i],
+            h2.v,
+            _fast_muladd(h1.ϵ1[i], h2.ϵ2, _fast_mul(h2.ϵ1[i], h1.ϵ2))
+        )
+    )
+    ϵ12 = ntuple(g, Val(N1))
+    return HyperDual(r, ϵ1, ϵ2, ϵ12)
+end
+@inline Base.FastMath.mul_fast(h1::HyperDual{N1, N2, T1}, h2::HyperDual{N1, N2, T2}) where {N1, N2, T1, T2} =
+    Base.FastMath.mul_fast(promote(h1, h2)...)
+@inline Base.FastMath.mul_fast(h::HyperDual{N1, N2, T}, r::Real) where {N1, N2, T} =
+    HyperDual(Base.FastMath.mul_fast(h.v, r), _fast_mul(h.ϵ1, r), _fast_mul(h.ϵ2, r), mapϵ12(ϵ -> _fast_mul(ϵ, r), h))
+@inline Base.FastMath.mul_fast(r::Real, h::HyperDual{N1, N2, T}) where {N1, N2, T} =
+    Base.FastMath.mul_fast(h, r)
+
+@inline Base.FastMath.div_fast(h1::HyperDual{N1, N2, T}, h2::HyperDual{N1, N2, T}) where {N1, N2, T} =
+    Base.FastMath.mul_fast(h1, inv(h2))
+@inline Base.FastMath.div_fast(h1::HyperDual{N1, N2, T1}, h2::HyperDual{N1, N2, T2}) where {N1, N2, T1, T2} =
+    Base.FastMath.div_fast(promote(h1, h2)...)
+@inline Base.FastMath.div_fast(h::HyperDual{N1, N2, T}, r::Real) where {N1, N2, T} =
+    HyperDual(Base.FastMath.div_fast(h.v, r), _fast_div(h.ϵ1, r), _fast_div(h.ϵ2, r), mapϵ12(ϵ -> _fast_div(ϵ, r), h))
+@inline Base.FastMath.div_fast(r::Real, h::HyperDual{N1, N2, T}) where {N1, N2, T} =
+    Base.FastMath.mul_fast(r, inv(h))
+
+@inline Base.FastMath.pow_fast(x::HyperDual, ::Val{0}) = one(typeof(x))
+@inline Base.FastMath.pow_fast(x::HyperDual, ::Val{1}) = x
+@inline Base.FastMath.pow_fast(x::HyperDual, ::Val{2}) = Base.FastMath.mul_fast(x, x)
+@inline Base.FastMath.pow_fast(x::HyperDual, ::Val{3}) = Base.FastMath.mul_fast(Base.FastMath.mul_fast(x, x), x)
