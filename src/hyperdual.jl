@@ -75,6 +75,10 @@ function HyperDual(v::T1, ϵ1::ϵT{N1, T2}, ϵ2::ϵT{N2, T2}, ϵ12::NTuple{N1, �
     return HyperDual(T(v), to_ϵ(ϵT{N1, T}, ϵ1), to_ϵ(ϵT{N2, T}, ϵ2), convert_cross(ϵT{N2, T}, ϵ12))
 end
 
+# Accessor Functions
+@inline value(x) = x
+@inline value(x::HyperDual) = x.value
+
 @inline mapϵ12(f, h::HyperDual{N1, N2}) where {N1, N2} = ntuple(i -> f(h.ϵ12[i]), Val(N1))
 @inline mapϵ12(f, h1::HyperDual{N1, N2}, h2::HyperDual{N1, N2}) where {N1, N2} =
     ntuple(i -> f(h1.ϵ12[i], h2.ϵ12[i]), Val(N1))
