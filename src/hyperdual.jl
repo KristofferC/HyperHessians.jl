@@ -77,7 +77,7 @@ end
 
 # Accessor Functions
 @inline value(x) = x
-@inline value(x::HyperDual) = x.value
+@inline value(x::HyperDual) = x.v
 
 @inline mapϵ12(f, h::HyperDual{N1, N2}) where {N1, N2} = ntuple(i -> f(h.ϵ12[i]), Val(N1))
 @inline mapϵ12(f, h1::HyperDual{N1, N2}, h2::HyperDual{N1, N2}) where {N1, N2} =

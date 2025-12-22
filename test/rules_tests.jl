@@ -19,6 +19,7 @@ function check_against_ForwardDiff(f, x, ::Type{T} = Float64) where {T}
     fd1 = ForwardDiff.derivative(z -> f(z), xT)
     fd2 = ForwardDiff.derivative(z -> ForwardDiff.derivative(y -> f(y), z), xT)
     @test res isa HyperDual{1, 1, T}
+    @test HyperHessians.value(res) ≈ f(xT)
     # For now, don't verify precision for Float32, seems we need to reduce the tolerances for it
     T == Float32 && return
     @test res.ϵ1[1] ≈ fd1 atol = 1.0e-10 rtol = 1.0e-8
