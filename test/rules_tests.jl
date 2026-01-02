@@ -270,4 +270,18 @@ end
     @test (h_neg^20).v == (-2.0)^20
 end
 
+@testset "HyperDual Construction Test" begin
+    T = Float64
+    x = T(0.5)
+    seed = ϵT{1, T}((one(T),))
+    zero_seed = ϵT{1, T}((zero(T),))
+    h = HyperDual(x, seed, seed, (zero_seed,))
+
+    @test h isa HyperDual{1, 1, T}
+    h2 = typeof(h)(h)
+    @test h2 isa HyperDual{1, 1, T}
+    h3 = typeof(h)(x)
+    @test h3 isa HyperDual{1, 1, T}
+end
+
 end # module
