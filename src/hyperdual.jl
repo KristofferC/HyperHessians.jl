@@ -69,6 +69,7 @@ HyperDual(v::T, ϵ1::ϵT{N1, T}, ϵ2::ϵT{N2, T}) where {N1, N2, T} =
     HyperDual(v, ϵ1, ϵ2, ntuple(_ -> zero_ϵ(ϵT{N2, T}), Val(N1)))
 HyperDual{N1, N2}(v::T) where {N1, N2, T} = HyperDual(v, zero_ϵ(ϵT{N1, T}), zero_ϵ(ϵT{N2, T}))
 HyperDual{N1, N2, T}(v) where {N1, N2, T} = HyperDual{N1, N2}(T(v))
+HyperDual{N1, N2, T}(v::HyperDual{N1, N2, T}) where {N1, N2, T} = v
 
 function HyperDual(v::T1, ϵ1::ϵT{N1, T2}, ϵ2::ϵT{N2, T2}, ϵ12::NTuple{N1, ϵT{N2, T2}}) where {N1, N2, T1, T2}
     T = promote_type(T1, T2)
