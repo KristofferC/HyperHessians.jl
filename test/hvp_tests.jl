@@ -215,4 +215,24 @@ end
     @test @allocated(hvp_gradient_value!(hv_bundle, g, f, x, (v1, v2), cfg_bundle_chunk)) == 0 broken = VERSION < v"1.11"
 end
 
+@testset "constant function" begin
+    f_const(x) = 42.0
+    x = [1.0, 2.0, 3.0]
+    v = [1.0, 0.0, 0.0]
+
+    # hvp (vector and chunked paths)
+    @test hvp(f_const, x, v) == zeros(3)
+    cfg_chunk = HVPConfig(x, Chunk{2}())
+    @test hvp(f_const, x, v, cfg_chunk) == zeros(3)
+
+    # hvp_gradient_value
+    res = hvp_gradient_value(f_const, x, v)
+    @test res.value == 42.0
+    @test res.gradient == zeros(3)
+    @test res.hvp == zeros(3)
+
+    # vhvp
+    @test vhvp(f_const, x, v) == 0.0
+end
+
 end # module
