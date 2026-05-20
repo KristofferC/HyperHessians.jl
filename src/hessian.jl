@@ -136,6 +136,11 @@ end
 @noinline check_scalar(x) =
     x isa Number || throw(error("expected a scalar to be returned from function passed to `hessian`"))
 
+@inline _ensure_dual(v::HyperDual, ::AbstractVector{<:HyperDual}) = v
+@inline _ensure_dual(v::HyperDual, ::HyperDual) = v
+@inline _ensure_dual(v::Real, ::AbstractVector{H}) where {H <: HyperDual} = H(v)
+@inline _ensure_dual(v::Real, ::H) where {H <: HyperDual} = H(v)
+
 @inline _vectorize_input(f, x::AbstractVector) = (f, x, nothing)
 @inline function _vectorize_input(f, x::AbstractArray)
     shape = size(x)
@@ -214,6 +219,7 @@ function hessian_gradient_value(f, x::Real)
     seed = single_seed(NTuple{1, typeof(x)}, Val(1))
     dual = HyperDual(x, seed, seed)
     v = f(dual)
+    v = map(v -> _ensure_dual(v, dual), v)
     return (;
         value = map(v -> v.v, v),
         gradient = map(v -> v.ϵ1[1], v),
@@ -256,6 +262,7 @@ function hessian_vector_core!(H::AbstractMatrix, G::Union{Nothing, AbstractVecto
     cfg.duals .= HyperDual.(x, cfg.seeds, cfg.seeds)
     v = f(cfg.duals)
     check_scalar(v)
+    v = _ensure_dual(v, cfg.duals)
     if G !== nothing
         G .= Tuple(v.ϵ1)
     end
@@ -282,6 +289,7 @@ function hessian_chunk_core!(H::AbstractMatrix, G::Union{Nothing, AbstractVector
             seed_block_ϵ2!(cfg.duals, cfg.seeds, range_j)
             v = f(cfg.duals)
             check_scalar(v)
+            v = _ensure_dual(v, cfg.duals)
             value = v.v
             extract_hessian!(H, v, i, j)
             if G !== nothing && j == i
@@ -639,6 +647,7 @@ end
         range_i = seed_hvp_dir!(cfg.duals, cfg.seeds, i, ax)
         out = f(cfg.duals)
         check_scalar(out)
+        out = _ensure_dual(out, cfg.duals)
         value = out.v
         @inbounds for (I, idx_i) in enumerate(range_i)
             if g !== nothing
@@ -673,6 +682,7 @@ end
     end
     out = f(cfg.duals)
     check_scalar(out)
+    out = _ensure_dual(out, cfg.duals)
     @inbounds for i in 1:length(x)
         if g !== nothing
             g[i] = out.ϵ1[i]

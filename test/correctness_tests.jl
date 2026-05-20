@@ -79,4 +79,27 @@ end
     @test @allocated(hessian!(H, f, x, cfg_chunk)) == 0
 end
 
+@testset "constant function" begin
+    f_const(x) = 42.0
+    x = [1.0, 2.0, 3.0]
+
+    # hessian (vector and chunked paths)
+    @test hessian(f_const, x) == zeros(3, 3)
+    cfg_chunk = HessianConfig(x, Chunk{2}())
+    @test hessian(f_const, x, cfg_chunk) == zeros(3, 3)
+
+    # hessian_gradient_value
+    res = hessian_gradient_value(f_const, x)
+    @test res.value == 42.0
+    @test res.gradient == zeros(3)
+    @test res.hessian == zeros(3, 3)
+
+    # scalar
+    @test hessian(f_const, 1.0) == 0.0
+    res_s = hessian_gradient_value(f_const, 1.0)
+    @test res_s.value == 42.0
+    @test res_s.gradient == 0.0
+    @test res_s.hessian == 0.0
+end
+
 end # module
