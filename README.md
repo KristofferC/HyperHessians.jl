@@ -6,7 +6,7 @@
 
 HyperHessians.jl is a package to compute hessians using forward mode automatic differentiation.
 
-It works similar to `ForwardDiff.hessian` but should have better run-time and compile-time performance in all cases.
+It works similarly to `ForwardDiff.hessian` but should have better run-time and compile-time performance in all cases.
 
 ## API Summary
 

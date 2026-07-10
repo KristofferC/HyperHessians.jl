@@ -126,6 +126,13 @@ end
     for T in (Float64,)
         check_against_ForwardDiff(sinc, zero(T), T)
     end
+    # Rules whose derivatives contain abs/sign have different formulas on each
+    # domain branch; check the branch not covered by the points in `xs` above.
+    for (f, x) in [(asec, -2.0), (asecd, -2.0), (acsc, 1.6), (acscd, 1.5), (acsch, 1.3), (abs, 0.9)]
+        for T in (Float64, Float32)
+            check_against_ForwardDiff(f, x, T)
+        end
+    end
 end
 
 @testset "binary rule derivatives vs ForwardDiff" begin
@@ -268,6 +275,20 @@ end
     @test (h_neg^2).v == 4.0
     @test (h_neg^3).v == -8.0
     @test (h_neg^20).v == (-2.0)^20
+    # Derivatives against the analytic n*x^(n-1) and n*(n-1)*x^(n-2)
+    for n in (2, 3, 4, 5, -1, -3), x in (2.0, -1.3)
+        res = HyperHessians.hessian_gradient_value(t -> t^n, x)
+        @test res.gradient ≈ n * x^(n - 1) rtol = 1.0e-13
+        @test res.hessian ≈ n * (n - 1) * x^(n - 2) rtol = 1.0e-13
+    end
+    # x = 0: the generic `^` rule divides by x; integer powers must not NaN here
+    for n in (2, 3, 4, 5)
+        res = HyperHessians.hessian_gradient_value(t -> t^n, 0.0)
+        @test res.gradient == (n == 1 ? 1.0 : 0.0)
+        @test res.hessian == (n == 2 ? 2.0 : 0.0)
+    end
+    n_runtime = 4
+    @test HyperHessians.hessian(x -> x[1]^n_runtime, [0.0]) == fill(0.0, 1, 1)
 end
 
 @testset "HyperDual Construction Test" begin

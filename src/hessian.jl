@@ -17,9 +17,11 @@ HessianConfig(x::AbstractArray{T}, chunk = Chunk(x)::Chunk) where {T} =
     HessianConfig(vec(x), chunk)
 
 """
-    HVPConfig(x; chunk=Chunk(x))
+    HVPConfig(x[, tangents], chunk::Chunk = Chunk(x))
 
-Configuration for Hessian–vector products.
+Configuration for Hessian–vector products. Pass the tangents (a vector, or a
+tuple of vectors for multiple directions) so the config allocates one ϵ₂ lane
+per tangent.
 """
 mutable struct HVPConfig{D <: AbstractVector{<:HyperDual}, S}
     const duals::D
@@ -134,7 +136,7 @@ const HVBundle = Union{AbstractVector, NTuple{N, V} where {N, V <: AbstractVecto
 end
 
 @noinline check_scalar(x) =
-    x isa Number || throw(error("expected a scalar to be returned from function passed to `hessian`"))
+    x isa Number || throw(ErrorException("expected a scalar to be returned from function passed to `hessian`"))
 
 @inline _ensure_dual(v::HyperDual, ::AbstractVector{<:HyperDual}) = v
 @inline _ensure_dual(v::HyperDual, ::HyperDual) = v
@@ -188,7 +190,7 @@ function extract_hessian!(H::AbstractMatrix, v::HyperDual{N1, N2}, block_i::Int,
     range_i = block_range(block_i, N1, axes(H, 1))
     range_j = block_range(block_j, N2, axes(H, 2))
 
-    for (I, i) in enumerate(range_i)
+    @inbounds for (I, i) in enumerate(range_i)
         for (J, j) in enumerate(range_j)
             H[i, j] = v.ϵ12[I][J]
         end
@@ -198,7 +200,7 @@ end
 
 function extract_gradient!(G::AbstractVector, v::HyperDual{N1, N2}, block_i::Int) where {N1, N2}
     range_i = block_range(block_i, N1, axes(G, 1))
-    for (I, i) in enumerate(range_i)
+    @inbounds for (I, i) in enumerate(range_i)
         G[i] = v.ϵ1[I]
     end
     return G
@@ -372,8 +374,8 @@ hessian_gradient_value_chunk!(H::AbstractMatrix, G::AbstractVector, f::F, x::Abs
     hvp(f, x, tangents[, cfg])
 
 Compute Hessian–vector product(s) `H(x) * v`. `tangents` may be a single vector
-or a tuple of vectors (use `(v,)` for multiple directions); bundled tangents are
-evaluated in one pass. Pass a `HVPConfig` explicitly to control
+or a tuple of vectors for multiple directions (e.g. `(v1, v2)`); bundled
+tangents are evaluated in one pass. Pass a `HVPConfig` explicitly to control
 chunking or reuse allocations.
 """
 @inline similar_output(x::AbstractVector{T}, _::AbstractVector) where {T} = similar(x, T)
@@ -503,24 +505,14 @@ end
 
 function _hvp_common_array!(hv, g, f, x, v, cfg::Union{HVPConfig, Nothing})
     f_vec, x_vec, shape = _vectorize_input(f, x)
-    v_vec, orig_shape = _vectorize_tangents(v, shape)
+    v_vec, _ = _vectorize_tangents(v, shape)
     cfg = cfg === nothing ? HVPConfig(x_vec, v_vec) : cfg
     g_vec = g === nothing ? nothing : vec(g)
+    # vec/reshape share memory with hv and g, so writes land in place.
     hv_vec = hv isa NTuple ? ntuple(i -> vec(hv[i]), Val(length(hv))) : vec(hv)
     value = g_vec === nothing ?
         hvp!(hv_vec, f_vec, x_vec, v_vec, cfg) :
         hvp_gradient_value!(hv_vec, g_vec, f_vec, x_vec, v_vec, cfg)
-    if g_vec !== nothing
-        g .= _reshape_output(g_vec, shape, shape)
-    end
-    hv_out = _reshape_output(hv_vec, shape, orig_shape)
-    if hv isa NTuple
-        for i in eachindex(hv)
-            hv[i] .= hv_out[i]
-        end
-    else
-        hv .= hv_out
-    end
     return g_vec === nothing ? hv : value
 end
 
