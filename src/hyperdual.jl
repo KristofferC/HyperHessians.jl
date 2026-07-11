@@ -70,6 +70,7 @@ HyperDual(v::T, ϵ1::ϵT{N1, T}, ϵ2::ϵT{N2, T}) where {N1, N2, T} =
 HyperDual{N1, N2}(v::T) where {N1, N2, T} = HyperDual(v, zero_ϵ(ϵT{N1, T}), zero_ϵ(ϵT{N2, T}))
 HyperDual{N1, N2, T}(v) where {N1, N2, T} = HyperDual{N1, N2}(T(v))
 HyperDual{N1, N2, T}(v::HyperDual{N1, N2, T}) where {N1, N2, T} = v
+HyperDual{N1, N2, T}(v::HyperDual{N1, N2}) where {N1, N2, T} = convert(HyperDual{N1, N2, T}, v)
 
 function HyperDual(v::T1, ϵ1::ϵT{N1, T2}, ϵ2::ϵT{N2, T2}, ϵ12::NTuple{N1, ϵT{N2, T2}}) where {N1, N2, T1, T2}
     T = promote_type(T1, T2)
@@ -131,7 +132,16 @@ Base.float(h::HyperDual{N1, N2, T}) where {N1, N2, T} = convert(HyperDual{N1, N2
     HyperDual(r * h.v, r ⊙ h.ϵ1, r ⊙ h.ϵ2, mapϵ12(ϵ -> r ⊙ ϵ, h))
 
 @inline Base.:(/)(r::Real, h::HyperDual{N1, N2}) where {N1, N2} = r * inv(h)
-@inline Base.:(/)(h1::HyperDual{N1, N2, T}, h2::HyperDual{N1, N2, T}) where {N1, N2, T} = h1 * inv(h2)
+# Dedicated division rule: cheaper than h1 * inv(h2) (fewer chain-rule products).
+# f = x/y, fₓ = 1/y, fᵧ = -f/y, fₓₓ = 0, fₓᵧ = -1/y², fᵧᵧ = 2f/y²
+@inline function Base.:(/)(h1::HyperDual{N1, N2, T}, h2::HyperDual{N1, N2, T}) where {N1, N2, T}
+    x, y = h1.v, h2.v
+    invy = inv(y)
+    f = x * invy
+    fᵧ = -f * invy
+    return chain_rule_dual(h1, h2, f, invy, fᵧ, zero(invy), -invy * invy, -2 * fᵧ * invy)
+end
+@inline Base.:(/)(h1::HyperDual{N1, N2, T1}, h2::HyperDual{N1, N2, T2}) where {N1, N2, T1, T2} = /(promote(h1, h2)...)
 
 @inline function Base.muladd(x::HyperDual{N1, N2, T}, y::Real, z::HyperDual{N1, N2, T}) where {N1, N2, T}
     return HyperDual(
@@ -165,7 +175,50 @@ end
         ntuple(i -> y.ϵ12[i] ⊙ x, Val(N1)),
     )
 end
-@inline Base.muladd(x::Real, y::Real, z::HyperDual{N1, N2, T}) where {N1, N2, T} = muladd(x, y, z.v) + z - z.v
+@inline Base.muladd(x::Real, y::Real, z::HyperDual{N1, N2, T}) where {N1, N2, T} =
+    HyperDual(muladd(x, y, z.v), z.ϵ1, z.ϵ2, z.ϵ12)
+
+# Comparisons and predicates act on the primal value (ForwardDiff semantics):
+# derivative components are ignored so branching code sees plain numbers.
+@inline Base.isless(h1::HyperDual{N1, N2}, h2::HyperDual{N1, N2}) where {N1, N2} = isless(h1.v, h2.v)
+@inline Base.isless(h::HyperDual, r::Real) = isless(h.v, r)
+@inline Base.isless(r::Real, h::HyperDual) = isless(r, h.v)
+# Disambiguate against Base.isless(::Real, ::AbstractFloat) and its mirror.
+@inline Base.isless(h::HyperDual, r::AbstractFloat) = isless(h.v, r)
+@inline Base.isless(r::AbstractFloat, h::HyperDual) = isless(r, h.v)
+@inline Base.:<(h1::HyperDual{N1, N2}, h2::HyperDual{N1, N2}) where {N1, N2} = h1.v < h2.v
+@inline Base.:<(h::HyperDual, r::Real) = h.v < r
+@inline Base.:<(r::Real, h::HyperDual) = r < h.v
+@inline Base.:<=(h1::HyperDual{N1, N2}, h2::HyperDual{N1, N2}) where {N1, N2} = h1.v <= h2.v
+@inline Base.:<=(h::HyperDual, r::Real) = h.v <= r
+@inline Base.:<=(r::Real, h::HyperDual) = r <= h.v
+@inline Base.:(==)(h1::HyperDual{N1, N2}, h2::HyperDual{N1, N2}) where {N1, N2} = h1.v == h2.v
+@inline Base.:(==)(h::HyperDual, r::Real) = h.v == r
+@inline Base.:(==)(r::Real, h::HyperDual) = r == h.v
+Base.hash(h::HyperDual, u::UInt) = hash(h.v, u)
+
+for f in (:isnan, :isinf, :isfinite, :signbit, :isinteger, :iseven, :isodd)
+    @eval @inline Base.$f(h::HyperDual) = $f(h.v)
+end
+
+# Rounding: derivative is zero almost everywhere.
+for f in (:floor, :ceil, :trunc)
+    @eval @inline Base.$f(h::HyperDual{N1, N2}) where {N1, N2} = HyperDual{N1, N2}($f(h.v))
+    @eval @inline Base.$f(::Type{I}, h::HyperDual) where {I <: Real} = $f(I, h.v)
+end
+@inline Base.round(h::HyperDual{N1, N2}, r::RoundingMode = RoundNearest) where {N1, N2} =
+    HyperDual{N1, N2}(round(h.v, r))
+@inline Base.round(::Type{I}, h::HyperDual) where {I <: Real} = round(I, h.v)
+
+# mod/rem: derivative w.r.t. x is 1 almost everywhere, so ϵ parts pass through.
+# The two-dual methods use mod(x, y) = x - fld(x, y) * y with fld constant a.e.
+@inline Base.mod(h::HyperDual{N1, N2}, r::Real) where {N1, N2} = HyperDual(mod(h.v, r), h.ϵ1, h.ϵ2, h.ϵ12)
+@inline Base.rem(h::HyperDual{N1, N2}, r::Real) where {N1, N2} = HyperDual(rem(h.v, r), h.ϵ1, h.ϵ2, h.ϵ12)
+@inline Base.mod(h1::HyperDual{N1, N2}, h2::HyperDual{N1, N2}) where {N1, N2} = h1 - fld(h1.v, h2.v) * h2
+@inline Base.rem(h1::HyperDual{N1, N2}, h2::HyperDual{N1, N2}) where {N1, N2} = h1 - div(h1.v, h2.v) * h2
+@inline Base.mod2pi(h::HyperDual{N1, N2}) where {N1, N2} = HyperDual(mod2pi(h.v), h.ϵ1, h.ϵ2, h.ϵ12)
+@inline Base.rem2pi(h::HyperDual{N1, N2}, r::RoundingMode) where {N1, N2} =
+    HyperDual(rem2pi(h.v, r), h.ϵ1, h.ϵ2, h.ϵ12)
 
 @inline Base.:(*)(h1::HyperDual{N1, N2, T1}, h2::HyperDual{N1, N2, T2}) where {N1, N2, T1, T2} = *(promote(h1, h2)...)
 @inline function Base.:(*)(h1::HyperDual{N1, N2, T}, h2::HyperDual{N1, N2, T}) where {N1, N2, T}
@@ -179,5 +232,31 @@ end
 end
 @inline Base.literal_pow(::typeof(^), x::HyperDual, ::Val{0}) = one(typeof(x))
 @inline Base.literal_pow(::typeof(^), x::HyperDual, ::Val{1}) = x
-@inline Base.literal_pow(::typeof(^), x::HyperDual, ::Val{2}) = x * x
-@inline Base.literal_pow(::typeof(^), x::HyperDual, ::Val{3}) = x * x * x
+@inline Base.literal_pow(::typeof(^), x::HyperDual, ::Val{p}) where {p} = x^p
+
+# Integer powers use the monomial derivatives n*x^(n-1) and n*(n-1)*x^(n-2)
+# directly (the generic `^` rule divides by x and returns NaN at x = 0).
+# This is also cheaper than repeated HyperDual multiplication.
+# Also resolves the ambiguity with Base.^(::Number, ::Integer).
+@inline function Base.:(^)(h::HyperDual{N1, N2, T}, n::Integer) where {N1, N2, T}
+    x = h.v
+    if n == 0
+        return one(h)
+    elseif n == 1
+        return h
+    elseif n == 2
+        # Small exponents get explicit branches so that literal_pow constant-folds
+        # them down to plain multiplications (no runtime pow call).
+        return chain_rule_dual(h, x * x, 2 * x, 2 * one(x))
+    elseif n == 3
+        x2 = x * x
+        return chain_rule_dual(h, x2 * x, 3 * x2, 6 * x)
+    else
+        p = x^(n - 2)
+        xp = x * p
+        f = x * xp
+        f′ = n * xp
+        f′′ = (n * (n - 1)) * p
+        return chain_rule_dual(h, f, f′, f′′)
+    end
+end

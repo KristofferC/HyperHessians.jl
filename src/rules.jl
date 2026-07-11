@@ -27,13 +27,13 @@ const DIFF_RULES = [
     (:asin     , :(1 / sqrt(1 - x^2))                             , :(x * f′^3))
     (:acos     , :(-1 / sqrt(1 - x^2))                            , :(x * f′^3))
     (:atan     , :(1 / (1 + x^2))                                 , :(-2 * x * f′^2))
-    (:asec     , :(1 / (x * sqrt(x^2 - 1)))                       , :(-(2 * x^2 - 1) / (x^2 * (x^2 - 1)^(3 / 2))))
+    (:asec     , :(1 / (abs(x) * sqrt(x^2 - 1)))                  , :(-sign(x) * (2 * x^2 - 1) / (x^2 * (x^2 - 1)^(3 / 2))))
     (:acsc     , :(-1 / (abs(x) * sqrt(x^2 - 1)))                 , :(sign(x) * (2 * x^2 - 1) / (x^2 * (x^2 - 1)^(3 / 2))))
     (:acot     , :(-1 / (1 + x^2))                                , :(2 * x * f′^2))
     (:asind    , :((180 / π) / sqrt(1 - x^2))                     , :((180 / π) * x / (1 - x^2)^(3 / 2)))
     (:acosd    , :(-(180 / π) / sqrt(1 - x^2))                    , :(-(180 / π) * x / (1 - x^2)^(3 / 2)))
     (:atand    , :((180 / π) / (1 + x^2))                         , :(-2 * x * f′^2 / (180 / π)))
-    (:asecd    , :((180 / π) / (x * sqrt(x^2 - 1)))               , :(-(180 / π) * (2 * x^2 - 1) / (x^2 * (x^2 - 1)^(3 / 2))))
+    (:asecd    , :((180 / π) / (abs(x) * sqrt(x^2 - 1)))          , :(-(180 / π) * sign(x) * (2 * x^2 - 1) / (x^2 * (x^2 - 1)^(3 / 2))))
     (:acscd    , :(-(180 / π) / (abs(x) * sqrt(x^2 - 1)))         , :((180 / π) * sign(x) * (2 * x^2 - 1) / (x^2 * (x^2 - 1)^(3 / 2))))
     (:acotd    , :(-(180 / π) / (1 + x^2))                        , :(2 * x * f′^2 / (180 / π)))
     (:sinh     , :(cosh(x))                                       , :(f))
@@ -265,16 +265,10 @@ for (f, fₓ, fᵧ, fₓₓ, fₓᵧ, fᵧᵧ) in BINARY_DIFF_RULES
         $cse_expr
         return chain_rule_dual(hy, f, fᵧ, fᵧᵧ)
     end
-    # Resolve ambiguity with Base.^(::Number, ::Integer)
-    if f == :^
-        @eval @inline function Base.$f(hx::HyperDual{N1, N2, T}, n::Integer) where {N1, N2, T}
-            x = hx.v
-            y = n
-            $cse_expr
-            return chain_rule_dual(hx, f, fₓ, fₓₓ)
-        end
-    end
 end
+# NOTE: `^(::HyperDual, ::Integer)` is defined in hyperdual.jl with dedicated
+# monomial derivatives (the generic rule divides by x and is NaN at x = 0);
+# it also resolves the ambiguity with Base.^(::Number, ::Integer).
 
 
 """
