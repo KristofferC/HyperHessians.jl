@@ -6,4 +6,6 @@ testsuite = find_tests(@__DIR__)
 haskey(testsuite, "helpers") && delete!(testsuite, "helpers")
 
 push!(ARGS, "--jobs=$(Sys.CPU_THREADS)")
-runtests(HyperHessians, ARGS; testsuite)
+# --threads overrides the JULIA_NUM_THREADS=1 that ParallelTestRunner sets for
+# its workers; threaded_tests.jl needs real parallelism.
+runtests(HyperHessians, ARGS; testsuite, exeflags = ["--threads=4"])
