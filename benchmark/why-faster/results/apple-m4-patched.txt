@@ -1,0 +1,817 @@
+=== SECTION: info ===
+cpu: apple-m4
+arch: aarch64
+julia: 1.12.6
+threads: 1
+ForwardDiff: v1.4.1 at /Users/kc/JuliaPkgs/HyperHessians.jl/ForwardDiff.jl
+variant: patched
+HyperDual type: HyperHessians.HyperDual{8, 8, Float64} (648 bytes)
+nested Dual type: ForwardDiff.Dual{Nothing, ForwardDiff.Dual{Nothing, Float64, 8}, 8} (648 bytes)
+
+=== SECTION: per-op ns/element (n=256 vectors) ===
+HyperDual{8,8}     mul=17.8ns div=22.8ns exp=26.4ns sqrt=13.8ns sin=29.6ns
+nested Dual 8x8    mul=22.8ns div=25.7ns exp=24.4ns sqrt=14.5ns sin=31.7ns
+
+=== SECTION: one f eval (n=256) ===
+ackley        HyperDual{8,8}    16.08 µs
+ackley        nested Dual 8x8   16.5 µs
+rosenbrock_1  HyperDual{8,8}    11.21 µs
+rosenbrock_1  nested Dual 8x8   19.46 µs
+
+=== SECTION: hessian! totals (n=256, chunk 8 both) ===
+ackley        FD evals=1024 t=22.0ms alloc=657456B | HH t=8.87ms | speedup=2.48x
+rosenbrock_1  FD evals=1024 t=24.08ms alloc=657456B | HH t=6.28ms | speedup=3.83x
+
+=== SECTION: native mul stats ===
+HyperDual{8,8}     instrs=276 fma=104 calls=0 xmm=0 ymm=0 zmm=0
+nested Dual 8x8    instrs=493 fma=0 calls=0 xmm=0 ymm=0 zmm=0
+
+=== SECTION: asm mul HyperDual{8,8} ===
+	.section	__TEXT,__text,regular,pure_instructions
+	.build_version macos, 16, 0
+	.globl	"_julia_*_11518"                ; -- Begin function julia_*_11518
+	.p2align	2
+"_julia_*_11518":                       ; @"julia_*_11518"
+; Function Signature: *(HyperHessians.HyperDual{8, 8, Float64}, HyperHessians.HyperDual{8, 8, Float64})
+; %bb.0:                                ; %top
+	;DEBUG_VALUE: *:h1 <- [$x0+0]
+	;DEBUG_VALUE: *:h1 <- [$x0+0]
+	;DEBUG_VALUE: *:h2 <- [$x1+0]
+	;DEBUG_VALUE: *:h2 <- [$x1+0]
+	sub	sp, sp, #272
+	stp	d15, d14, [sp, #192]            ; 16-byte Folded Spill
+	stp	d13, d12, [sp, #208]            ; 16-byte Folded Spill
+	stp	d11, d10, [sp, #224]            ; 16-byte Folded Spill
+	stp	d9, d8, [sp, #240]              ; 16-byte Folded Spill
+	stp	x28, x27, [sp, #256]            ; 16-byte Folded Spill
+	ldr	d7, [x1]
+	ldur	q12, [x0, #40]
+	fmul.2d	v18, v12, v7[0]
+	ldur	q2, [x0, #56]
+	fmul.2d	v0, v2, v7[0]
+	ldr	d3, [x0]
+	ldur	q4, [x1, #56]
+	fmla.2d	v0, v4, v3[0]
+	str	q0, [sp, #176]                  ; 16-byte Folded Spill
+	ldur	q28, [x0, #72]
+	fmul.2d	v0, v28, v4[0]
+	ldur	q23, [x0, #88]
+	fmul.2d	v1, v23, v4[0]
+	ldur	q21, [x0, #104]
+	fmul.2d	v6, v21, v4[0]
+	ldur	q20, [x0, #120]
+	fmul.2d	v16, v20, v4[0]
+	ldur	q29, [x1, #72]
+	fmla.2d	v0, v29, v2[0]
+	mov.16b	v17, v0
+	ldur	q27, [x1, #88]
+	mov.16b	v0, v1
+	fmla.2d	v0, v27, v2[0]
+	ldur	q24, [x1, #104]
+	fmla.2d	v6, v24, v2[0]
+	ldur	q22, [x1, #120]
+	fmla.2d	v16, v22, v2[0]
+	add	x10, x0, #264
+	ldp	q1, q5, [x10, #256]
+	fmla.2d	v17, v1, v7[0]
+	fmla.2d	v0, v5, v7[0]
+	ldp	q1, q5, [x10, #288]
+	fmla.2d	v6, v1, v7[0]
+	fmla.2d	v16, v5, v7[0]
+	add	x9, x1, #264
+	ldp	q5, q1, [x9, #256]
+	fmla.2d	v17, v5, v3[0]
+	fmla.2d	v0, v1, v3[0]
+	stp	q0, q17, [sp, #144]             ; 32-byte Folded Spill
+	ldp	q5, q1, [x9, #288]
+	fmla.2d	v6, v5, v3[0]
+	fmla.2d	v16, v1, v3[0]
+	stp	q16, q6, [sp, #112]             ; 32-byte Folded Spill
+	fmul.2d	v0, v28, v4[1]
+	fmul.2d	v16, v23, v4[1]
+	fmul.2d	v17, v21, v4[1]
+	ldur	q1, [x0, #24]
+	fmul.2d	v19, v20, v4[1]
+	fmla.2d	v0, v29, v2[1]
+	mov.16b	v25, v0
+	ldp	q4, q5, [x10, #128]
+	fmla.2d	v16, v27, v2[1]
+	fmla.2d	v17, v24, v2[1]
+	ldp	q6, q0, [x10, #320]
+	fmla.2d	v19, v22, v2[1]
+	fmla.2d	v25, v6, v7[0]
+	ldp	q2, q6, [x10, #352]
+	fmla.2d	v16, v0, v7[0]
+	fmla.2d	v17, v2, v7[0]
+	ldp	q0, q2, [x9, #320]
+	fmla.2d	v19, v6, v7[0]
+	fmla.2d	v25, v0, v3[0]
+	ldp	q0, q6, [x9, #352]
+	fmla.2d	v16, v2, v3[0]
+	stp	q16, q25, [sp, #80]             ; 32-byte Folded Spill
+	fmla.2d	v17, v0, v3[0]
+	ldp	q2, q0, [x10, #160]
+	fmla.2d	v19, v6, v3[0]
+	stp	q19, q17, [sp, #48]             ; 32-byte Folded Spill
+	ldur	q6, [x1, #40]
+	fmul.2d	v19, v28, v6[0]
+	fmul.2d	v26, v23, v6[0]
+	ldp	q16, q17, [x10, #192]
+	fmla.2d	v19, v29, v12[0]
+	fmla.2d	v19, v4, v7[0]
+	ldp	q8, q4, [x9, #128]
+	fmla.2d	v26, v27, v12[0]
+	fmla.2d	v26, v5, v7[0]
+	fmul.2d	v30, v21, v6[0]
+	fmla.2d	v30, v24, v12[0]
+	fmla.2d	v30, v2, v7[0]
+	fmul.2d	v31, v20, v6[0]
+	fmla.2d	v31, v22, v12[0]
+	fmla.2d	v31, v0, v7[0]
+	fmla.2d	v19, v8, v3[0]
+	ldp	q5, q2, [x9, #160]
+	fmla.2d	v18, v6, v3[0]
+	stp	q18, q19, [sp, #16]             ; 32-byte Folded Spill
+	fmla.2d	v26, v4, v3[0]
+	fmla.2d	v30, v5, v3[0]
+	fmla.2d	v31, v2, v3[0]
+	fmul.2d	v8, v28, v6[1]
+	fmul.2d	v9, v23, v6[1]
+	fmul.2d	v10, v21, v6[1]
+	fmul.2d	v11, v20, v6[1]
+	fmla.2d	v8, v29, v12[1]
+	fmla.2d	v9, v27, v12[1]
+	fmla.2d	v10, v24, v12[1]
+	fmla.2d	v11, v22, v12[1]
+	fmla.2d	v8, v16, v7[0]
+	ldp	q2, q4, [x10, #224]
+	fmla.2d	v9, v17, v7[0]
+	fmla.2d	v10, v2, v7[0]
+	ldp	q5, q2, [x9, #192]
+	fmla.2d	v11, v4, v7[0]
+	fmla.2d	v8, v5, v3[0]
+	ldp	q5, q4, [x9, #224]
+	fmla.2d	v9, v2, v3[0]
+	fmla.2d	v10, v5, v3[0]
+	fmla.2d	v11, v4, v3[0]
+	ldur	q6, [x1, #24]
+	fmul.2d	v12, v28, v6[0]
+	fmla.2d	v12, v29, v1[0]
+	ldp	q2, q4, [x10]
+	fmla.2d	v12, v2, v7[0]
+	fmul.2d	v13, v23, v6[0]
+	fmla.2d	v13, v27, v1[0]
+	fmla.2d	v13, v4, v7[0]
+	fmul.2d	v14, v21, v6[0]
+	fmla.2d	v14, v24, v1[0]
+	ldp	q2, q4, [x10, #32]
+	fmla.2d	v14, v2, v7[0]
+	fmul.2d	v15, v20, v6[0]
+	fmla.2d	v15, v22, v1[0]
+	fmla.2d	v15, v4, v7[0]
+	ldp	q0, q2, [x9]
+	fmla.2d	v12, v0, v3[0]
+	fmla.2d	v13, v2, v3[0]
+	ldp	q0, q2, [x9, #32]
+	fmla.2d	v14, v0, v3[0]
+	fmla.2d	v15, v2, v3[0]
+	fmul.2d	v0, v1, v7[0]
+	fmla.2d	v0, v6, v3[0]
+	str	q0, [sp]                        ; 16-byte Folded Spill
+	fmul.2d	v16, v28, v6[1]
+	fmul.2d	v17, v23, v6[1]
+	fmul.2d	v18, v21, v6[1]
+	fmul.2d	v6, v20, v6[1]
+	fmla.2d	v16, v29, v1[1]
+	fmla.2d	v17, v27, v1[1]
+	fmla.2d	v18, v24, v1[1]
+	fmla.2d	v6, v22, v1[1]
+	ldp	q1, q0, [x10, #64]
+	fmla.2d	v16, v1, v7[0]
+	fmla.2d	v17, v0, v7[0]
+	ldp	q1, q0, [x10, #96]
+	fmla.2d	v18, v1, v7[0]
+	fmla.2d	v6, v0, v7[0]
+	ldp	q0, q1, [x9, #64]
+	fmla.2d	v16, v0, v3[0]
+	fmla.2d	v17, v1, v3[0]
+	ldp	q0, q1, [x9, #96]
+	fmla.2d	v18, v0, v3[0]
+	fmla.2d	v6, v1, v3[0]
+	fmul.2d	v25, v28, v7[0]
+	fmla.2d	v25, v29, v3[0]
+	ldur	q0, [x0, #8]
+	ldur	q1, [x1, #8]
+	fmul.2d	v4, v28, v1[0]
+	fmla.2d	v4, v29, v0[0]
+	fmul.2d	v28, v28, v1[1]
+	fmla.2d	v28, v29, v0[1]
+	fmul.2d	v19, v23, v7[0]
+	fmla.2d	v19, v27, v3[0]
+	fmul.2d	v29, v23, v1[0]
+	fmla.2d	v29, v27, v0[0]
+	fmul.2d	v23, v23, v1[1]
+	fmla.2d	v23, v27, v0[1]
+	fmul.2d	v5, v21, v7[0]
+	fmla.2d	v5, v24, v3[0]
+	fmul.2d	v27, v21, v1[0]
+	fmla.2d	v27, v24, v0[0]
+	fmul.2d	v21, v21, v1[1]
+	fmla.2d	v21, v24, v0[1]
+	fmul.2d	v24, v20, v7[0]
+	fmla.2d	v24, v22, v3[0]
+	fmul.2d	v2, v20, v1[0]
+	fmla.2d	v2, v22, v0[0]
+	fmul.2d	v20, v20, v1[1]
+	fmla.2d	v20, v22, v0[1]
+	fmul.2d	v0, v0, v7[0]
+	fmla.2d	v0, v1, v3[0]
+	ldur	q1, [x0, #136]
+	fmla.2d	v4, v1, v7[0]
+	ldur	q1, [x0, #152]
+	fmla.2d	v29, v1, v7[0]
+	ldur	q1, [x0, #168]
+	fmla.2d	v27, v1, v7[0]
+	ldur	q1, [x0, #184]
+	fmla.2d	v2, v1, v7[0]
+	ldur	q1, [x1, #136]
+	fmla.2d	v4, v1, v3[0]
+	ldur	q1, [x1, #152]
+	fmla.2d	v29, v1, v3[0]
+	ldur	q1, [x1, #168]
+	fmla.2d	v27, v1, v3[0]
+	ldur	q1, [x1, #184]
+	fmla.2d	v2, v1, v3[0]
+	ldur	q1, [x0, #200]
+	fmla.2d	v28, v1, v7[0]
+	ldur	q1, [x0, #216]
+	fmla.2d	v23, v1, v7[0]
+	ldur	q1, [x0, #232]
+	fmla.2d	v21, v1, v7[0]
+	ldur	q1, [x0, #248]
+	fmla.2d	v20, v1, v7[0]
+	ldur	q1, [x1, #200]
+	fmla.2d	v28, v1, v3[0]
+	ldur	q1, [x1, #216]
+	fmla.2d	v23, v1, v3[0]
+	ldur	q1, [x1, #232]
+	fmla.2d	v21, v1, v3[0]
+	ldur	q1, [x1, #248]
+	fmla.2d	v20, v1, v3[0]
+	fmul	d1, d3, d7
+	str	d1, [x8]
+	stur	q0, [x8, #8]
+	ldp	q1, q0, [sp]                    ; 32-byte Folded Reload
+	stur	q1, [x8, #24]
+	stur	q0, [x8, #40]
+	ldr	q0, [sp, #176]                  ; 16-byte Folded Reload
+	stur	q0, [x8, #56]
+	stur	q25, [x8, #72]
+	stur	q19, [x8, #88]
+	stur	q5, [x8, #104]
+	stur	q24, [x8, #120]
+	stur	q4, [x8, #136]
+	stur	q29, [x8, #152]
+	stur	q27, [x8, #168]
+	stur	q2, [x8, #184]
+	stur	q28, [x8, #200]
+	stur	q23, [x8, #216]
+	stur	q21, [x8, #232]
+	stur	q20, [x8, #248]
+	add	x8, x8, #264
+	stp	q12, q13, [x8]
+	stp	q14, q15, [x8, #32]
+	stp	q16, q17, [x8, #64]
+	stp	q18, q6, [x8, #96]
+	ldr	q0, [sp, #32]                   ; 16-byte Folded Reload
+	stp	q0, q26, [x8, #128]
+	stp	q30, q31, [x8, #160]
+	stp	q8, q9, [x8, #192]
+	stp	q10, q11, [x8, #224]
+	ldp	q0, q1, [sp, #144]              ; 32-byte Folded Reload
+	stp	q1, q0, [x8, #256]
+	ldp	q0, q1, [sp, #112]              ; 32-byte Folded Reload
+	stp	q1, q0, [x8, #288]
+	ldp	q0, q1, [sp, #80]               ; 32-byte Folded Reload
+	stp	q1, q0, [x8, #320]
+	ldp	q0, q1, [sp, #48]               ; 32-byte Folded Reload
+	stp	q1, q0, [x8, #352]
+	ldp	x28, x27, [sp, #256]            ; 16-byte Folded Reload
+	ldp	d9, d8, [sp, #240]              ; 16-byte Folded Reload
+	ldp	d11, d10, [sp, #224]            ; 16-byte Folded Reload
+	ldp	d13, d12, [sp, #208]            ; 16-byte Folded Reload
+	ldp	d15, d14, [sp, #192]            ; 16-byte Folded Reload
+	add	sp, sp, #272
+	ret
+                                        ; -- End function
+	.section	__DATA,__const
+	.p2align	3, 0x0                          ; @"+HyperHessians.HyperDual#11520"
+"l_+HyperHessians.HyperDual#11520":
+	.quad	"l_+HyperHessians.HyperDual#11520.jit"
+
+.set "l_+HyperHessians.HyperDual#11520.jit", 4976563920
+.subsections_via_symbols
+
+
+=== SECTION: asm mul nested Dual 8x8 ===
+	.section	__TEXT,__text,regular,pure_instructions
+	.build_version macos, 16, 0
+	.globl	"_julia_*_11521"                ; -- Begin function julia_*_11521
+	.p2align	2
+"_julia_*_11521":                       ; @"julia_*_11521"
+; Function Signature: *(ForwardDiff.Dual{Nothing, ForwardDiff.Dual{Nothing, Float64, 8}, 8}, ForwardDiff.Dual{Nothing, ForwardDiff.Dual{Nothing, Float64, 8}, 8})
+; %bb.0:                                ; %top
+	;DEBUG_VALUE: *:x <- [$x0+0]
+	;DEBUG_VALUE: *:x <- [$x0+0]
+	;DEBUG_VALUE: *:y <- [$x1+0]
+	;DEBUG_VALUE: *:y <- [$x1+0]
+	stp	d15, d14, [sp, #-80]!           ; 16-byte Folded Spill
+	stp	d13, d12, [sp, #16]             ; 16-byte Folded Spill
+	stp	d11, d10, [sp, #32]             ; 16-byte Folded Spill
+	stp	d9, d8, [sp, #48]               ; 16-byte Folded Spill
+	stp	x28, x27, [sp, #64]             ; 16-byte Folded Spill
+	sub	sp, sp, #704
+	ldr	d27, [x1]
+	ldr	d23, [x0, #72]
+	fmul	d0, d23, d27
+	ldr	d24, [x0]
+	ldr	d28, [x1, #72]
+	fmul	d1, d28, d24
+	fadd	d0, d0, d1
+	str	d0, [sp, #640]                  ; 8-byte Folded Spill
+	ldr	d1, [x0, #144]
+	fmul	d0, d1, d27
+	mov.16b	v7, v1
+	ldr	d29, [x1, #144]
+	fmul	d1, d29, d24
+	fadd	d0, d0, d1
+	str	d0, [sp, #648]                  ; 8-byte Folded Spill
+	ldr	d15, [x0, #216]
+	fmul	d0, d15, d27
+	ldr	d30, [x1, #216]
+	fmul	d1, d30, d24
+	fadd	d0, d0, d1
+	str	d0, [sp, #656]                  ; 8-byte Folded Spill
+	ldr	d1, [x0, #288]
+	fmul	d0, d1, d27
+	mov.16b	v20, v1
+	str	q1, [sp, #336]                  ; 16-byte Folded Spill
+	ldr	d31, [x1, #288]
+	fmul	d1, d31, d24
+	fadd	d0, d0, d1
+	str	d0, [sp, #664]                  ; 8-byte Folded Spill
+	ldr	d1, [x0, #360]
+	fmul	d0, d1, d27
+	mov.16b	v16, v1
+	str	q1, [sp, #352]                  ; 16-byte Folded Spill
+	ldr	d8, [x1, #360]
+	fmul	d1, d8, d24
+	fadd	d0, d0, d1
+	str	d0, [sp, #672]                  ; 8-byte Folded Spill
+	ldr	d1, [x0, #432]
+	fmul	d0, d1, d27
+	mov.16b	v17, v1
+	str	q1, [sp, #416]                  ; 16-byte Folded Spill
+	ldr	d9, [x1, #432]
+	fmul	d1, d9, d24
+	fadd	d0, d0, d1
+	str	d0, [sp, #680]                  ; 8-byte Folded Spill
+	ldr	d1, [x0, #504]
+	fmul	d0, d1, d27
+	mov.16b	v18, v1
+	str	q1, [sp, #496]                  ; 16-byte Folded Spill
+	ldr	d10, [x1, #504]
+	fmul	d1, d10, d24
+	fadd	d0, d0, d1
+	str	d0, [sp, #688]                  ; 8-byte Folded Spill
+	ldr	d1, [x0, #576]
+	fmul	d0, d1, d27
+	mov.16b	v19, v1
+	str	q1, [sp, #544]                  ; 16-byte Folded Spill
+	ldr	d21, [x1, #576]
+	fmul	d1, d21, d24
+	fadd	d0, d0, d1
+	str	d0, [sp, #696]                  ; 8-byte Folded Spill
+	ldur	q1, [x0, #56]
+	fmul.2d	v0, v1, v27[0]
+	ldur	q3, [x1, #56]
+	fmul.2d	v2, v3, v24[0]
+	fadd.2d	v0, v0, v2
+	str	q0, [sp, #624]                  ; 16-byte Folded Spill
+	ldr	q0, [x0, #128]
+	fmul.2d	v0, v0, v27[0]
+	fmul.2d	v2, v3, v23[0]
+	fadd.2d	v0, v0, v2
+	ldp	q4, q2, [x1, #112]
+	fmul.2d	v2, v2, v24[0]
+	fmul.2d	v5, v1, v28[0]
+	fadd.2d	v2, v2, v5
+	fadd.2d	v6, v0, v2
+	ldur	q0, [x0, #200]
+	fmul.2d	v0, v0, v27[0]
+	fmul.2d	v2, v3, v7[0]
+	mov.16b	v26, v7
+	fadd.2d	v0, v0, v2
+	ldur	q2, [x1, #200]
+	fmul.2d	v2, v2, v24[0]
+	fmul.2d	v5, v1, v29[0]
+	fadd.2d	v2, v2, v5
+	fadd.2d	v0, v0, v2
+	stp	q6, q0, [sp, #464]              ; 32-byte Folded Spill
+	ldr	q0, [x0, #272]
+	fmul.2d	v0, v0, v27[0]
+	fmul.2d	v2, v3, v15[0]
+	fadd.2d	v0, v0, v2
+	ldp	q2, q5, [x1, #256]
+	fmul.2d	v5, v5, v24[0]
+	fmul.2d	v6, v1, v30[0]
+	fadd.2d	v5, v5, v6
+	fadd.2d	v0, v0, v5
+	str	q0, [sp, #528]                  ; 16-byte Folded Spill
+	add	x9, x0, #296
+	ldr	q0, [x9, #48]
+	fmul.2d	v0, v0, v27[0]
+	fmul.2d	v5, v3, v20[0]
+	fadd.2d	v0, v0, v5
+	add	x10, x1, #296
+	ldp	q5, q6, [x10, #32]
+	fmul.2d	v6, v6, v24[0]
+	fmul.2d	v7, v1, v31[0]
+	fadd.2d	v6, v6, v7
+	fadd.2d	v0, v0, v6
+	str	q0, [sp, #512]                  ; 16-byte Folded Spill
+	ldr	q0, [x0, #416]
+	fmul.2d	v0, v0, v27[0]
+	fmul.2d	v6, v3, v16[0]
+	fadd.2d	v0, v0, v6
+	ldp	q6, q7, [x1, #400]
+	fmul.2d	v7, v7, v24[0]
+	fmul.2d	v16, v1, v8[0]
+	fadd.2d	v7, v7, v16
+	fadd.2d	v0, v0, v7
+	str	q0, [sp, #560]                  ; 16-byte Folded Spill
+	ldr	q0, [x9, #192]
+	fmul.2d	v0, v0, v27[0]
+	fmul.2d	v7, v3, v17[0]
+	fadd.2d	v0, v0, v7
+	ldp	q16, q7, [x10, #176]
+	fmul.2d	v7, v7, v24[0]
+	fmul.2d	v17, v1, v9[0]
+	fadd.2d	v7, v7, v17
+	fadd.2d	v0, v0, v7
+	str	q0, [sp, #576]                  ; 16-byte Folded Spill
+	ldr	q0, [x0, #560]
+	fmul.2d	v0, v0, v27[0]
+	fmul.2d	v7, v3, v18[0]
+	fadd.2d	v0, v0, v7
+	ldp	q17, q7, [x1, #544]
+	fmul.2d	v7, v7, v24[0]
+	fmul.2d	v18, v1, v10[0]
+	fadd.2d	v7, v7, v18
+	fadd.2d	v0, v0, v7
+	str	q0, [sp, #592]                  ; 16-byte Folded Spill
+	ldr	q0, [x9, #336]
+	fmul.2d	v0, v0, v27[0]
+	fmul.2d	v3, v3, v19[0]
+	fadd.2d	v0, v0, v3
+	ldp	q7, q3, [x10, #320]
+	str	q7, [sp, #240]                  ; 16-byte Folded Spill
+	fmul.2d	v3, v3, v24[0]
+	str	q21, [sp, #176]                 ; 16-byte Folded Spill
+	fmul.2d	v1, v1, v21[0]
+	fadd.2d	v1, v3, v1
+	fadd.2d	v0, v0, v1
+	str	q0, [sp, #608]                  ; 16-byte Folded Spill
+	ldp	q1, q0, [x10, #288]
+	fmul.2d	v0, v0, v24[0]
+	ldur	q3, [x0, #24]
+	fmul.2d	v7, v3, v21[0]
+	fadd.2d	v0, v0, v7
+	str	q0, [sp, #448]                  ; 16-byte Folded Spill
+	fmul.2d	v0, v1, v24[0]
+	ldur	q1, [x0, #8]
+	fmul.2d	v7, v1, v21[0]
+	fadd.2d	v0, v0, v7
+	str	q0, [sp, #432]                  ; 16-byte Folded Spill
+	fmul.2d	v7, v17, v24[0]
+	ldur	q19, [x0, #40]
+	fmul.2d	v17, v19, v10[0]
+	fadd.2d	v0, v7, v17
+	str	q0, [sp, #400]                  ; 16-byte Folded Spill
+	ldp	q17, q7, [x1, #512]
+	fmul.2d	v7, v7, v24[0]
+	fmul.2d	v18, v3, v10[0]
+	fadd.2d	v0, v7, v18
+	str	q0, [sp, #368]                  ; 16-byte Folded Spill
+	fmul.2d	v7, v1, v10[0]
+	fmul.2d	v17, v17, v24[0]
+	fadd.2d	v0, v17, v7
+	str	q0, [sp, #384]                  ; 16-byte Folded Spill
+	fmul.2d	v7, v16, v24[0]
+	fmul.2d	v16, v19, v9[0]
+	fadd.2d	v0, v7, v16
+	str	q0, [sp, #304]                  ; 16-byte Folded Spill
+	ldp	q16, q7, [x10, #144]
+	fmul.2d	v7, v7, v24[0]
+	fmul.2d	v17, v3, v9[0]
+	fadd.2d	v0, v7, v17
+	str	q0, [sp, #288]                  ; 16-byte Folded Spill
+	fmul.2d	v7, v1, v9[0]
+	fmul.2d	v16, v16, v24[0]
+	fadd.2d	v0, v16, v7
+	str	q0, [sp, #320]                  ; 16-byte Folded Spill
+	fmul.2d	v6, v6, v24[0]
+	fmul.2d	v7, v19, v8[0]
+	fadd.2d	v0, v6, v7
+	str	q0, [sp, #224]                  ; 16-byte Folded Spill
+	ldp	q7, q6, [x1, #368]
+	fmul.2d	v6, v6, v24[0]
+	fmul.2d	v16, v3, v8[0]
+	fadd.2d	v0, v6, v16
+	str	q0, [sp, #256]                  ; 16-byte Folded Spill
+	fmul.2d	v6, v1, v8[0]
+	fmul.2d	v7, v7, v24[0]
+	fadd.2d	v0, v7, v6
+	str	q0, [sp, #272]                  ; 16-byte Folded Spill
+	fmul.2d	v5, v5, v24[0]
+	fmul.2d	v6, v19, v31[0]
+	fadd.2d	v0, v5, v6
+	str	q0, [sp, #128]                  ; 16-byte Folded Spill
+	ldp	q6, q5, [x10]
+	fmul.2d	v5, v5, v24[0]
+	fmul.2d	v7, v3, v31[0]
+	fadd.2d	v0, v5, v7
+	str	q0, [sp, #192]                  ; 16-byte Folded Spill
+	fmul.2d	v5, v1, v31[0]
+	fmul.2d	v6, v6, v24[0]
+	fadd.2d	v0, v6, v5
+	str	q0, [sp, #208]                  ; 16-byte Folded Spill
+	fmul.2d	v2, v2, v24[0]
+	fmul.2d	v5, v19, v30[0]
+	fadd.2d	v2, v2, v5
+	ldp	q6, q5, [x1, #224]
+	fmul.2d	v5, v5, v24[0]
+	fmul.2d	v7, v3, v30[0]
+	fadd.2d	v0, v5, v7
+	str	q0, [sp, #144]                  ; 16-byte Folded Spill
+	fmul.2d	v5, v1, v30[0]
+	fmul.2d	v6, v6, v24[0]
+	fadd.2d	v0, v6, v5
+	str	q0, [sp, #160]                  ; 16-byte Folded Spill
+	ldur	q5, [x1, #184]
+	fmul.2d	v5, v5, v24[0]
+	fmul.2d	v6, v19, v29[0]
+	fadd.2d	v5, v5, v6
+	ldur	q6, [x1, #168]
+	fmul.2d	v6, v6, v24[0]
+	fmul.2d	v7, v3, v29[0]
+	fadd.2d	v0, v6, v7
+	str	q0, [sp, #112]                  ; 16-byte Folded Spill
+	fmul.2d	v6, v1, v29[0]
+	ldur	q7, [x1, #152]
+	fmul.2d	v7, v7, v24[0]
+	fadd.2d	v0, v7, v6
+	str	q0, [sp, #96]                   ; 16-byte Folded Spill
+	fmul.2d	v4, v4, v24[0]
+	fmul.2d	v6, v19, v28[0]
+	fadd.2d	v4, v4, v6
+	ldp	q7, q6, [x1, #80]
+	fmul.2d	v6, v6, v24[0]
+	fmul.2d	v16, v3, v28[0]
+	fadd.2d	v14, v6, v16
+	fmul.2d	v6, v1, v28[0]
+	fmul.2d	v7, v7, v24[0]
+	fadd.2d	v0, v7, v6
+	str	q0, [sp]                        ; 16-byte Folded Spill
+	fmul.2d	v6, v19, v27[0]
+	ldur	q28, [x1, #40]
+	fmul.2d	v7, v28, v24[0]
+	fadd.2d	v31, v6, v7
+	ldr	q6, [x0, #112]
+	fmul.2d	v6, v6, v27[0]
+	fmul.2d	v7, v28, v23[0]
+	fadd.2d	v6, v6, v7
+	fadd.2d	v13, v6, v4
+	ldur	q4, [x0, #184]
+	fmul.2d	v4, v4, v27[0]
+	fmul.2d	v6, v28, v26[0]
+	mov.16b	v8, v26
+	fadd.2d	v4, v4, v6
+	fadd.2d	v0, v4, v5
+	str	q0, [sp, #16]                   ; 16-byte Folded Spill
+	ldr	q4, [x0, #256]
+	fmul.2d	v4, v4, v27[0]
+	fmul.2d	v5, v28, v15[0]
+	fadd.2d	v4, v4, v5
+	fadd.2d	v0, v4, v2
+	str	q0, [sp, #64]                   ; 16-byte Folded Spill
+	fmul.2d	v2, v3, v27[0]
+	ldur	q29, [x1, #24]
+	fmul.2d	v3, v29, v24[0]
+	fadd.2d	v3, v2, v3
+	fmul.2d	v2, v1, v27[0]
+	ldp	q1, q4, [x0, #80]
+	fmul.2d	v6, v1, v27[0]
+	fmul.2d	v4, v4, v27[0]
+	ldur	q1, [x0, #152]
+	fmul.2d	v16, v1, v27[0]
+	ldur	q1, [x0, #168]
+	fmul.2d	v7, v1, v27[0]
+	ldp	q1, q5, [x0, #224]
+	fmul.2d	v20, v1, v27[0]
+	fmul.2d	v17, v5, v27[0]
+	ldp	q1, q5, [x9]
+	fmul.2d	v22, v1, v27[0]
+	fmul.2d	v21, v5, v27[0]
+	ldr	q1, [x9, #32]
+	fmul.2d	v1, v1, v27[0]
+	ldp	q5, q18, [x0, #368]
+	fmul.2d	v10, v5, v27[0]
+	fmul.2d	v26, v18, v27[0]
+	ldr	q5, [x0, #400]
+	fmul.2d	v5, v5, v27[0]
+	ldp	q18, q25, [x9, #144]
+	fmul.2d	v11, v18, v27[0]
+	fmul.2d	v25, v25, v27[0]
+	ldr	q18, [x9, #176]
+	fmul.2d	v18, v18, v27[0]
+	ldp	q30, q9, [x0, #512]
+	fmul.2d	v0, v30, v27[0]
+	str	q0, [sp, #32]                   ; 16-byte Folded Spill
+	fmul.2d	v9, v9, v27[0]
+	ldr	q30, [x0, #544]
+	fmul.2d	v30, v30, v27[0]
+	ldp	q12, q0, [x9, #288]
+	fmul.2d	v12, v12, v27[0]
+	str	q12, [sp, #48]                  ; 16-byte Folded Spill
+	fmul.2d	v12, v0, v27[0]
+	ldr	q0, [x9, #320]
+	fmul.2d	v0, v0, v27[0]
+	str	q0, [sp, #80]                   ; 16-byte Folded Spill
+	fmul	d0, d24, d27
+	str	d0, [x8]
+	ldur	q27, [x1, #8]
+	fmul.2d	v0, v27, v24[0]
+	fadd.2d	v2, v2, v0
+	ldr	q0, [sp, #176]                  ; 16-byte Folded Reload
+	fmul.2d	v0, v19, v0[0]
+	stur	q2, [x8, #8]
+	stur	q3, [x8, #24]
+	ldr	q19, [sp, #336]                 ; 16-byte Folded Reload
+	fmul.2d	v2, v28, v19[0]
+	fadd.2d	v1, v1, v2
+	ldr	q2, [sp, #240]                  ; 16-byte Folded Reload
+	fmul.2d	v2, v2, v24[0]
+	stur	q31, [x8, #40]
+	ldr	q3, [sp, #624]                  ; 16-byte Folded Reload
+	stur	q3, [x8, #56]
+	fmul.2d	v3, v29, v23[0]
+	fadd.2d	v3, v4, v3
+	fadd.2d	v3, v3, v14
+	ldr	d4, [sp, #640]                  ; 8-byte Folded Reload
+	str	d4, [x8, #72]
+	fmul.2d	v4, v27, v23[0]
+	fadd.2d	v4, v6, v4
+	ldr	q6, [sp]                        ; 16-byte Folded Reload
+	fadd.2d	v4, v4, v6
+	stp	q4, q3, [x8, #80]
+	ldr	q3, [sp, #128]                  ; 16-byte Folded Reload
+	fadd.2d	v1, v1, v3
+	fmul.2d	v3, v29, v8[0]
+	fadd.2d	v3, v7, v3
+	ldr	q6, [sp, #464]                  ; 16-byte Folded Reload
+	stp	q13, q6, [x8, #112]
+	ldr	d6, [sp, #648]                  ; 8-byte Folded Reload
+	str	d6, [x8, #144]
+	fmul.2d	v4, v27, v8[0]
+	fadd.2d	v4, v16, v4
+	ldr	q6, [sp, #96]                   ; 16-byte Folded Reload
+	fadd.2d	v4, v4, v6
+	stur	q4, [x8, #152]
+	ldr	q4, [sp, #112]                  ; 16-byte Folded Reload
+	fadd.2d	v3, v3, v4
+	stur	q3, [x8, #168]
+	ldr	q7, [sp, #352]                  ; 16-byte Folded Reload
+	fmul.2d	v3, v28, v7[0]
+	fadd.2d	v3, v5, v3
+	ldr	q4, [sp, #16]                   ; 16-byte Folded Reload
+	stur	q4, [x8, #184]
+	ldr	q4, [sp, #480]                  ; 16-byte Folded Reload
+	stur	q4, [x8, #200]
+	fmul.2d	v4, v29, v15[0]
+	fadd.2d	v4, v17, v4
+	ldr	q6, [sp, #144]                  ; 16-byte Folded Reload
+	fadd.2d	v4, v4, v6
+	ldr	d6, [sp, #656]                  ; 8-byte Folded Reload
+	str	d6, [x8, #216]
+	fmul.2d	v5, v27, v15[0]
+	fadd.2d	v5, v20, v5
+	ldr	q6, [sp, #160]                  ; 16-byte Folded Reload
+	fadd.2d	v5, v5, v6
+	stp	q5, q4, [x8, #224]
+	ldr	q4, [sp, #224]                  ; 16-byte Folded Reload
+	fadd.2d	v3, v3, v4
+	fmul.2d	v4, v29, v19[0]
+	fadd.2d	v4, v21, v4
+	ldr	q5, [sp, #64]                   ; 16-byte Folded Reload
+	ldr	q6, [sp, #528]                  ; 16-byte Folded Reload
+	stp	q5, q6, [x8, #256]
+	ldr	q6, [sp, #192]                  ; 16-byte Folded Reload
+	fadd.2d	v4, v4, v6
+	ldr	d6, [sp, #664]                  ; 8-byte Folded Reload
+	str	d6, [x8, #288]
+	fmul.2d	v5, v27, v19[0]
+	fadd.2d	v5, v22, v5
+	ldr	q6, [sp, #208]                  ; 16-byte Folded Reload
+	fadd.2d	v5, v5, v6
+	add	x9, x8, #296
+	stp	q5, q4, [x9]
+	ldr	q6, [sp, #416]                  ; 16-byte Folded Reload
+	fmul.2d	v4, v28, v6[0]
+	fadd.2d	v4, v18, v4
+	str	q1, [x9, #32]
+	ldr	q1, [sp, #512]                  ; 16-byte Folded Reload
+	str	q1, [x9, #48]
+	mov.16b	v5, v7
+	fmul.2d	v1, v29, v7[0]
+	fadd.2d	v1, v26, v1
+	ldr	q7, [sp, #256]                  ; 16-byte Folded Reload
+	fadd.2d	v1, v1, v7
+	ldr	d7, [sp, #672]                  ; 8-byte Folded Reload
+	str	d7, [x8, #360]
+	fmul.2d	v5, v27, v5[0]
+	fadd.2d	v5, v10, v5
+	ldr	q7, [sp, #272]                  ; 16-byte Folded Reload
+	fadd.2d	v5, v5, v7
+	stp	q5, q1, [x8, #368]
+	ldp	q1, q5, [sp, #304]              ; 32-byte Folded Reload
+	fadd.2d	v7, v4, v1
+	fmul.2d	v4, v29, v6[0]
+	fadd.2d	v4, v25, v4
+	str	q3, [x8, #400]
+	ldr	q3, [sp, #560]                  ; 16-byte Folded Reload
+	str	q3, [x8, #416]
+	ldr	q3, [sp, #288]                  ; 16-byte Folded Reload
+	fadd.2d	v3, v4, v3
+	ldr	d4, [sp, #680]                  ; 8-byte Folded Reload
+	str	d4, [x8, #432]
+	fmul.2d	v4, v27, v6[0]
+	fadd.2d	v4, v11, v4
+	fadd.2d	v4, v4, v5
+	stp	q4, q3, [x9, #144]
+	ldr	q4, [sp, #496]                  ; 16-byte Folded Reload
+	fmul.2d	v3, v28, v4[0]
+	fadd.2d	v3, v30, v3
+	ldr	q1, [sp, #576]                  ; 16-byte Folded Reload
+	stp	q7, q1, [x9, #176]
+	fmul.2d	v1, v29, v4[0]
+	fadd.2d	v1, v9, v1
+	ldr	q5, [sp, #368]                  ; 16-byte Folded Reload
+	fadd.2d	v1, v1, v5
+	ldr	d5, [sp, #688]                  ; 8-byte Folded Reload
+	str	d5, [x8, #504]
+	fmul.2d	v4, v27, v4[0]
+	ldr	q5, [sp, #32]                   ; 16-byte Folded Reload
+	fadd.2d	v4, v5, v4
+	ldr	q5, [sp, #384]                  ; 16-byte Folded Reload
+	fadd.2d	v4, v4, v5
+	stp	q4, q1, [x8, #512]
+	ldr	q1, [sp, #400]                  ; 16-byte Folded Reload
+	fadd.2d	v5, v3, v1
+	ldr	q4, [sp, #544]                  ; 16-byte Folded Reload
+	fmul.2d	v3, v29, v4[0]
+	fadd.2d	v3, v12, v3
+	ldr	q1, [sp, #592]                  ; 16-byte Folded Reload
+	stp	q5, q1, [x8, #544]
+	ldr	q1, [sp, #448]                  ; 16-byte Folded Reload
+	fadd.2d	v1, v3, v1
+	ldr	d3, [sp, #696]                  ; 8-byte Folded Reload
+	str	d3, [x8, #576]
+	fmul.2d	v3, v27, v4[0]
+	ldr	q5, [sp, #48]                   ; 16-byte Folded Reload
+	fadd.2d	v3, v5, v3
+	ldr	q5, [sp, #432]                  ; 16-byte Folded Reload
+	fadd.2d	v3, v3, v5
+	stp	q3, q1, [x9, #288]
+	fadd.2d	v0, v2, v0
+	fmul.2d	v1, v28, v4[0]
+	ldr	q2, [sp, #80]                   ; 16-byte Folded Reload
+	fadd.2d	v1, v2, v1
+	fadd.2d	v2, v1, v0
+	ldr	q0, [sp, #608]                  ; 16-byte Folded Reload
+	stp	q2, q0, [x9, #320]
+	add	sp, sp, #704
+	ldp	x28, x27, [sp, #64]             ; 16-byte Folded Reload
+	ldp	d9, d8, [sp, #48]               ; 16-byte Folded Reload
+	ldp	d11, d10, [sp, #32]             ; 16-byte Folded Reload
+	ldp	d13, d12, [sp, #16]             ; 16-byte Folded Reload
+	ldp	d15, d14, [sp], #80             ; 16-byte Folded Reload
+	ret
+                                        ; -- End function
+	.section	__DATA,__const
+	.p2align	3, 0x0                          ; @"+ForwardDiff.Dual#11523"
+"l_+ForwardDiff.Dual#11523":
+	.quad	"l_+ForwardDiff.Dual#11523.jit"
+
+.set "l_+ForwardDiff.Dual#11523.jit", 4976564688
+.subsections_via_symbols
