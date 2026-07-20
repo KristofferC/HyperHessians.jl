@@ -29,6 +29,7 @@ It works similarly to `ForwardDiff.hessian` but should have better run-time and 
 | Type | Description |
 | ---- | ----------- |
 | `HessianConfig(x, chunk)` | Config for Hessian calls |
+| `ThreadedHessianConfig(x, chunk; ntasks)` | Config for multithreaded Hessian calls |
 | `HVPConfig(x, chunk)` | Config for Hessian–vector products |
 | `VHVPConfig(x, v)` | Config for vector-Hessian-vector products |
 | `Chunk{N}()` | Specify chunk size `N` |
@@ -118,6 +119,30 @@ julia> cfg = HyperHessians.HessianConfig(x, HyperHessians.Chunk{8}());
 
 julia> HyperHessians.hessian!(H, f, x, cfg)
 ```
+
+### Multithreaded Hessians
+
+When the chunk size is smaller than the input, the `k(k+1)÷2` calls to `f` are
+independent and can run in parallel. Use a `ThreadedHessianConfig` (with Julia
+started with multiple threads) to opt in:
+
+```julia
+julia> x = rand(512);
+
+julia> cfg = HyperHessians.ThreadedHessianConfig(x, HyperHessians.Chunk{8}());
+
+julia> HyperHessians.hessian(f, x, cfg)
+```
+
+This requires that `f` can be called concurrently and returns the same result
+regardless of evaluation order — in particular it must not mutate state shared
+between calls, such as a closed-over work buffer. A config instance must not
+be shared between concurrent `hessian` calls.
+
+The number of tasks defaults to `Threads.nthreads()` and can be set with the
+`ntasks` keyword. Speedups are close to linear in the number of threads once a
+Hessian takes more than ~100µs serially; for small inputs the serial
+`HessianConfig` remains the better choice.
 
 ### Computing Hessian, Gradient, and Value Together
 

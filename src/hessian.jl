@@ -17,6 +17,44 @@ HessianConfig(x::AbstractArray{T}, chunk = Chunk(x)::Chunk) where {T} =
     HessianConfig(vec(x), chunk)
 
 """
+    ThreadedHessianConfig(x, chunk::Chunk = Chunk(x); ntasks = Threads.nthreads())
+
+Like [`HessianConfig`](@ref), but `hessian`/`hessian!` calls evaluate the
+independent Hessian blocks in parallel on `ntasks` tasks.
+
+`f` must be safe to call concurrently and return the same result regardless of
+evaluation order: it must not close over shared mutable state (e.g. a
+preallocated work buffer), and any side effects run in unspecified order.
+A config instance must not be shared between concurrent `hessian` calls, and
+the output `H` (and `G`) must be dense arrays without aliased entries.
+"""
+mutable struct ThreadedHessianConfig{D <: AbstractVector{<:HyperDual}, S}
+    const duals::Vector{D} # one buffer per task
+    const seeds::S
+end
+(chunksize(cfg::ThreadedHessianConfig)::Int) = _chunksize(cfg.seeds)::Int
+
+n_block_pairs(n::Int, N::Int) = (k = N == 0 ? 0 : cld(n, N); k * (k + 1) ÷ 2)
+
+function ThreadedHessianConfig(x::AbstractVector{T}, chunk::Chunk = Chunk(x); ntasks::Integer = Threads.nthreads()) where {T}
+    N = chunksize(chunk)
+    N > 0 || (N == 0 && isempty(x)) || throw(ArgumentError(lazy"chunk size must be positive, got $N"))
+    ntasks > 0 || throw(ArgumentError(lazy"ntasks must be positive, got $ntasks"))
+    nbuffers = max(1, min(Int(ntasks), n_block_pairs(length(x), N)))
+    duals = [similar(x, HyperDual{N, N, T}) for _ in 1:nbuffers]
+    seeds = NTuple{N, T}[construct_seeds(NTuple{N, T})...]
+    return ThreadedHessianConfig(duals, seeds)
+end
+ThreadedHessianConfig(x::AbstractArray{T}, chunk::Chunk = Chunk(x); ntasks::Integer = Threads.nthreads()) where {T} =
+    ThreadedHessianConfig(vec(x), chunk; ntasks)
+
+const AnyHessianConfig = Union{HessianConfig, ThreadedHessianConfig}
+
+# Serial view of a threaded config, for paths with nothing to parallelize.
+_serial_config(cfg::ThreadedHessianConfig) =
+    HessianConfig{eltype(cfg.duals), typeof(cfg.seeds)}(cfg.duals[1], cfg.seeds)
+
+"""
     HVPConfig(x[, tangents], chunk::Chunk = Chunk(x))
 
 Configuration for Hessian–vector products. Pass the tangents (a vector, or a
@@ -176,6 +214,13 @@ function _check_config_length(cfg::HVPConfig, n::Int)
     return nothing
 end
 
+function _check_config_length(cfg::ThreadedHessianConfig, n::Int)
+    for duals in cfg.duals
+        length(duals) == n || throw(DimensionMismatch(lazy"config size $(length(duals)) does not match input length $n"))
+    end
+    return nothing
+end
+
 function extract_hessian!(H::AbstractMatrix, v::HyperDual)
     @inbounds for (icol, col) in enumerate(axes(H, 2))
         H[:, col] .= Tuple(v.ϵ12[icol])
@@ -239,12 +284,12 @@ function hessian_gradient_value(f, x::Real)
 end
 
 hessian(f::F, x::AbstractVector) where {F} = hessian!(similar(x, axes(x, 1), axes(x, 1)), f, x, HessianConfig(x))
-hessian(f::F, x::AbstractVector, cfg::HessianConfig) where {F} = hessian!(similar(x, axes(x, 1), axes(x, 1)), f, x, cfg)
+hessian(f::F, x::AbstractVector, cfg::AnyHessianConfig) where {F} = hessian!(similar(x, axes(x, 1), axes(x, 1)), f, x, cfg)
 hessian(f::F, x::AbstractArray) where {F} = begin
     f_vec, x_vec, _ = _vectorize_input(f, x)
     hessian(f_vec, x_vec)
 end
-function hessian(f::F, x::AbstractArray, cfg::HessianConfig) where {F}
+function hessian(f::F, x::AbstractArray, cfg::AnyHessianConfig) where {F}
     f_vec, x_vec, _ = _vectorize_input(f, x)
     _check_config_length(cfg, length(x_vec))
     return hessian(f_vec, x_vec, cfg)
@@ -261,7 +306,7 @@ hessian!(H::AbstractMatrix, f::F, x::AbstractArray) where {F} = begin
     f_vec, x_vec, _ = _vectorize_input(f, x)
     hessian!(H, f_vec, x_vec, HessianConfig(x_vec))
 end
-function hessian!(H::AbstractMatrix, f::F, x::AbstractArray, cfg::HessianConfig) where {F}
+function hessian!(H::AbstractMatrix, f::F, x::AbstractArray, cfg::AnyHessianConfig) where {F}
     f_vec, x_vec, _ = _vectorize_input(f, x)
     _check_config_length(cfg, length(x_vec))
     return hessian!(H, f_vec, x_vec, cfg)
@@ -317,6 +362,104 @@ end
 hessian_chunk!(H::AbstractMatrix, f::F, x::AbstractVector, cfg::HessianConfig) where {F} =
     (hessian_chunk_core!(H, nothing, f, x, cfg); H)
 
+# Map linear pair index p ∈ 1:k(k+1)/2 to upper-triangle (i, j), i ≤ j, in
+# row-major order: (1,1) (1,2) ... (1,k) (2,2) ... (k,k). Called once per
+# task; the pair loop advances (i, j) incrementally from there.
+function linear_to_pair(p::Int, k::Int)
+    i = ceil(Int, (2k + 1 - sqrt((2k + 1)^2 - 8p)) / 2)
+    while (i - 1) * k - ((i - 1) * (i - 2)) ÷ 2 >= p # fp guard
+        i -= 1
+    end
+    while i * k - (i * (i - 1)) ÷ 2 < p # fp guard
+        i += 1
+    end
+    offset = (i - 1) * k - ((i - 1) * (i - 2)) ÷ 2
+    j = (p - offset) + i - 1
+    return i, j
+end
+
+function hessian_pair_range!(H, G, f::F, x, duals::AbstractVector{HyperDual{N, N, T}}, seeds, prange, n_chunks) where {F, N, T}
+    ax = axes(x, 1)
+    duals .= HyperDual{N, N, T}.(x)
+    value = zero(eltype(x))
+    isempty(prange) && return value
+    i, j = linear_to_pair(first(prange), n_chunks)
+    for _ in prange
+        range_i = seed_block_ϵ1!(duals, seeds, i, ax)
+        range_j = j == i ? range_i : block_range(j, N, ax)
+        seed_block_ϵ2!(duals, seeds, range_j)
+        v = f(duals)
+        check_scalar(v)
+        v = _ensure_dual(v, duals)
+        value = v.v
+        extract_hessian!(H, v, i, j)
+        if G !== nothing && j == i
+            extract_gradient!(G, v, i)
+        end
+        zero_block_ϵ2!(duals, seeds, range_j)
+        zero_block_ϵ1!(duals, seeds, range_i)
+        j += 1
+        if j > n_chunks
+            i += 1
+            j = i
+        end
+    end
+    return value
+end
+
+function hessian_chunk_threaded_core!(H::AbstractMatrix, G::Union{Nothing, AbstractVector}, f::F, x::AbstractVector{T}, cfg::ThreadedHessianConfig) where {F, T}
+    size(H, 1) == size(H, 2) == length(x) || throw(DimensionMismatch(lazy"H must be square with size matching length(x)=$(length(x)), got size(H)=$(size(H))"))
+    G === nothing || length(G) == length(x) || throw(DimensionMismatch(lazy"gradient must have length $(length(x)), got $(length(G))"))
+    N = chunksize(cfg)
+    n_chunks = cld(length(x), N)
+    npairs = n_block_pairs(length(x), N)
+    ntasks = min(length(cfg.duals), npairs)
+    local value
+    if ntasks <= 1
+        value = hessian_pair_range!(H, G, f, x, cfg.duals[1], cfg.seeds, 1:npairs, n_chunks)
+    else
+        tasks = Vector{Task}(undef, ntasks)
+        # @sync guarantees every task has finished (or failed) before we
+        # return or rethrow, so none can still be writing into H/G/cfg.
+        @sync for t in 1:ntasks
+            lo = div((t - 1) * npairs, ntasks) + 1
+            hi = div(t * npairs, ntasks)
+            duals = cfg.duals[t]
+            tasks[t] = Threads.@spawn hessian_pair_range!(H, G, f, x, duals, cfg.seeds, lo:hi, n_chunks)
+        end
+        # The last task owns the final (k, k) pair, matching serial traversal.
+        # `fetch(::Task)` is untyped; recover inferrability with a type assert.
+        RT = Base.promote_op(
+            hessian_pair_range!, typeof(H), typeof(G), F, typeof(x),
+            eltype(cfg.duals), typeof(cfg.seeds), UnitRange{Int}, Int
+        )
+        value = fetch(tasks[ntasks])::RT
+    end
+    symmetrize!(H)
+    return value
+end
+
+function hessian!(H::AbstractMatrix, f::F, x::AbstractVector{T}, cfg::ThreadedHessianConfig) where {F, T}
+    _check_config_length(cfg, length(x))
+    if chunksize(cfg) == length(x) # single evaluation, includes empty input
+        hessian_vector_core!(H, nothing, f, x, _serial_config(cfg))
+        return H
+    else
+        return (hessian_chunk_threaded_core!(H, nothing, f, x, cfg); H)
+    end
+end
+
+function hessian_gradient_value!(H::AbstractMatrix, G::AbstractVector, f::F, x::AbstractVector{T}, cfg::ThreadedHessianConfig) where {F, T}
+    _check_config_length(cfg, length(x))
+    size(H, 1) == size(H, 2) == length(x) || throw(DimensionMismatch(lazy"H must be square with size matching length(x)=$(length(x)), got size(H)=$(size(H))"))
+    length(G) == length(x) || throw(DimensionMismatch(lazy"G must have length $(length(x)), got $(length(G))"))
+    if chunksize(cfg) == length(x)
+        return hessian_vector_core!(H, G, f, x, _serial_config(cfg))
+    else
+        return hessian_chunk_threaded_core!(H, G, f, x, cfg)
+    end
+end
+
 function hessian_gradient_value!(H::AbstractMatrix, G::AbstractVector, f::F, x::AbstractVector{T}, cfg::HessianConfig) where {F, T}
     size(H, 1) == size(H, 2) == length(x) || throw(DimensionMismatch(lazy"H must be square with size matching length(x)=$(length(x)), got size(H)=$(size(H))"))
     length(G) == length(x) || throw(DimensionMismatch(lazy"G must have length $(length(x)), got $(length(G))"))
@@ -337,7 +480,7 @@ hessian_gradient_value!(H::AbstractMatrix, G::AbstractArray, f::F, x::AbstractAr
     length(g_vec) == length(x_vec) || throw(DimensionMismatch(lazy"G must have length $(length(x_vec)), got $(length(g_vec))"))
     hessian_gradient_value!(H, g_vec, f_vec, x_vec, HessianConfig(x_vec))
 end
-function hessian_gradient_value!(H::AbstractMatrix, G::AbstractArray, f::F, x::AbstractArray, cfg::HessianConfig) where {F}
+function hessian_gradient_value!(H::AbstractMatrix, G::AbstractArray, f::F, x::AbstractArray, cfg::AnyHessianConfig) where {F}
     f_vec, x_vec, _ = _vectorize_input(f, x)
     g_vec = vec(G)
     length(g_vec) == length(x_vec) || throw(DimensionMismatch(lazy"G must have length $(length(x_vec)), got $(length(g_vec))"))
@@ -345,7 +488,7 @@ function hessian_gradient_value!(H::AbstractMatrix, G::AbstractArray, f::F, x::A
     return hessian_gradient_value!(H, g_vec, f_vec, x_vec, cfg)
 end
 
-function hessian_gradient_value(f::F, x::AbstractVector, cfg::HessianConfig) where {F}
+function hessian_gradient_value(f::F, x::AbstractVector, cfg::AnyHessianConfig) where {F}
     G = similar(x, axes(x, 1))
     H = similar(x, axes(x, 1), axes(x, 1))
     value = hessian_gradient_value!(H, G, f, x, cfg)
@@ -356,12 +499,12 @@ function hessian_gradient_value(f::F, x::AbstractVector) where {F}
     cfg = HessianConfig(x)
     return hessian_gradient_value(f, x, cfg)
 end
-hessian_gradient_value(f::F, x::AbstractArray, cfg::HessianConfig) where {F} =
+hessian_gradient_value(f::F, x::AbstractArray, cfg::AnyHessianConfig) where {F} =
     _hessian_gradient_value_array(f, x, cfg)
 hessian_gradient_value(f::F, x::AbstractArray) where {F} =
     _hessian_gradient_value_array(f, x, nothing)
 
-@inline function _hessian_gradient_value_array(f::F, x::AbstractArray, cfg::Union{HessianConfig, Nothing}) where {F}
+@inline function _hessian_gradient_value_array(f::F, x::AbstractArray, cfg::Union{AnyHessianConfig, Nothing}) where {F}
     f_vec, x_vec, shape = _vectorize_input(f, x)
     res = if cfg === nothing
         hessian_gradient_value(f_vec, x_vec)
