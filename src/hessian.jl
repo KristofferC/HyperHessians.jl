@@ -1,4 +1,15 @@
-mutable struct HessianConfig{D <: AbstractVector{<:HyperDual}, S}
+"""
+    HessianConfig(x[, chunk::Chunk])
+
+Configuration (buffers, seeds, chunk size) for `hessian`/`hessian!` calls.
+
+With no explicit `chunk`, small inputs (`length(x) <= 4`) use a symmetric
+[`Jet`](@ref) number that computes the whole Hessian in a single evaluation
+while storing the gradient once and only the upper triangle — measured faster
+than `HyperDual` at these sizes. Passing a `Chunk` explicitly always selects
+the `HyperDual`-based configuration.
+"""
+mutable struct HessianConfig{D <: AbstractVector{<:SecondOrderNumber}, S}
     const duals::D
     const seeds::S
 end
@@ -6,14 +17,38 @@ end
 @inline _chunksize(seeds) = something(_chunksize(eltype(seeds)), length(seeds))
 (chunksize(cfg::HessianConfig)::Int) = _chunksize(cfg.seeds)::Int
 
-function HessianConfig(x::AbstractVector{T}, chunk = Chunk(x)::Chunk) where {T}
+# Up to this input length the default config uses a Jet (one evaluation,
+# gradient stored once, upper-triangle Hessian). Measured crossovers
+# (Apple M4 and AMD Zen 4, see benchmark/why-faster/exp9_jet.jl): jets win
+# 1.1-1.8x for n <= 4 on all tested functions; from n = 5 the ragged triangle
+# stops vectorizing and multiply-heavy functions (rosenbrock-like) regress
+# up to 2x even though transcendental-heavy ones still gain, and at n = 8 a
+# HyperDual{8,8}'s 8-wide lanes are register-exact (one zmm on AVX-512).
+const JET_VECTOR_MAX_N = 4
+
+function _jet_hessian_config(x::AbstractVector{T}) where {T}
+    N = length(x)
+    duals = similar(x, Jet{N, nupper(N), T})
+    seeds = NTuple{N, T}[construct_seeds(NTuple{N, T})...]
+    return HessianConfig(duals, seeds)
+end
+
+function HessianConfig(x::AbstractVector{T}) where {T}
+    if 1 <= length(x) <= JET_VECTOR_MAX_N
+        return _jet_hessian_config(x)
+    end
+    return HessianConfig(x, Chunk(x))
+end
+
+function HessianConfig(x::AbstractVector{T}, chunk::Chunk) where {T}
     N = chunksize(chunk)
     N > 0 || (N == 0 && isempty(x)) || throw(ArgumentError(lazy"chunk size must be positive, got $N"))
     duals = similar(x, HyperDual{N, N, T}) # not Vector
     seeds = NTuple{N, T}[construct_seeds(NTuple{N, T})...]
     return HessianConfig(duals, seeds)
 end
-HessianConfig(x::AbstractArray{T}, chunk = Chunk(x)::Chunk) where {T} =
+HessianConfig(x::AbstractArray{T}) where {T} = HessianConfig(vec(x))
+HessianConfig(x::AbstractArray{T}, chunk::Chunk) where {T} =
     HessianConfig(vec(x), chunk)
 
 """
@@ -184,6 +219,8 @@ end
 @inline _ensure_dual(v::HyperDual{N1, N2}, ::HyperDual{N1, N2}) where {N1, N2} = v
 @inline _ensure_dual(v::Real, ::AbstractVector{<:HyperDual{N1, N2}}) where {N1, N2} = HyperDual{N1, N2}(v)
 @inline _ensure_dual(v::Real, ::HyperDual{N1, N2}) where {N1, N2} = HyperDual{N1, N2}(v)
+@inline _ensure_dual(v::Jet{N, M}, ::AbstractVector{<:Jet{N, M}}) where {N, M} = v
+@inline _ensure_dual(v::Real, ::AbstractVector{<:Jet{N, M}}) where {N, M} = Jet{N, M}(v)
 
 @inline _vectorize_input(f, x::AbstractVector) = (f, x, nothing)
 @inline function _vectorize_input(f, x::AbstractArray)
@@ -328,6 +365,52 @@ end
 
 hessian_vector!(H::AbstractMatrix, f::F, x::AbstractVector, cfg::HessianConfig) where {F} =
     (hessian_vector_core!(H, nothing, f, x, cfg); H)
+
+# Jet path: one evaluation, gradient read from j.g, Hessian upper triangle
+# from j.h, mirrored into the lower triangle.
+const JetHessianConfig = HessianConfig{<:AbstractVector{<:Jet}}
+
+function hessian_jet_core!(H::AbstractMatrix, G::Union{Nothing, AbstractVector}, f::F, x::AbstractVector{T}, cfg::JetHessianConfig) where {F, T}
+    size(H, 1) == size(H, 2) == length(x) || throw(DimensionMismatch(lazy"H must be square with size matching length(x)=$(length(x)), got size(H)=$(size(H))"))
+    G === nothing || length(G) == length(x) || throw(DimensionMismatch(lazy"gradient must have length $(length(x)), got $(length(G))"))
+    duals = cfg.duals
+    seeds = cfg.seeds
+    JT = eltype(duals)
+    MT = fieldtype(JT, :h)
+    zeroh = zero_ϵ(MT)
+    @inbounds for (k, i) in enumerate(eachindex(duals))
+        duals[i] = JT(x[i], seeds[k], zeroh)
+    end
+    v = f(duals)
+    check_scalar(v)
+    v = _ensure_dual(v, duals)
+    if G !== nothing
+        G .= Tuple(v.g)
+    end
+    ax1, ax2 = axes(H, 1), axes(H, 2)
+    k = 0
+    @inbounds for i_pos in 1:length(ax1)
+        i = ax1[i_pos]
+        for j_pos in i_pos:length(ax2)
+            j = ax2[j_pos]
+            k += 1
+            H[i, j] = v.h[k]
+            H[j, i] = v.h[k]
+        end
+    end
+    return v.v
+end
+
+function hessian!(H::AbstractMatrix, f::F, x::AbstractVector{T}, cfg::JetHessianConfig) where {F, T}
+    _check_config_length(cfg, length(x))
+    hessian_jet_core!(H, nothing, f, x, cfg)
+    return H
+end
+
+function hessian_gradient_value!(H::AbstractMatrix, G::AbstractVector, f::F, x::AbstractVector{T}, cfg::JetHessianConfig) where {F, T}
+    _check_config_length(cfg, length(x))
+    return hessian_jet_core!(H, G, f, x, cfg)
+end
 
 function hessian_chunk_core!(H::AbstractMatrix, G::Union{Nothing, AbstractVector}, f, x::AbstractVector{T}, cfg::HessianConfig) where {T}
     size(H, 1) == size(H, 2) == length(x) || throw(DimensionMismatch(lazy"H must be square with size matching length(x)=$(length(x)), got size(H)=$(size(H))"))

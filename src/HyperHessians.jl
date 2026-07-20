@@ -8,6 +8,7 @@ end
 using CommonSubexpressions: cse, binarize
 
 include("hyperdual.jl")
+include("jet.jl")
 include("rules.jl")
 include("chunks.jl")
 include("hessian.jl")

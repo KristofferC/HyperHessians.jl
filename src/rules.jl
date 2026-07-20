@@ -314,6 +314,26 @@ end
     return chain_rule_dual(h, c, -π * s, -π^2 * c)
 end
 
+@inline function Base.sin(j::Jet{N, M}) where {N, M}
+    s, c = sincos(j.v)
+    return chain_rule_jet(j, s, c, -s)
+end
+
+@inline function Base.cos(j::Jet{N, M}) where {N, M}
+    s, c = sincos(j.v)
+    return chain_rule_jet(j, c, -s, -c)
+end
+
+@inline function Base.sinpi(j::Jet{N, M}) where {N, M}
+    s, c = sincospi(j.v)
+    return chain_rule_jet(j, s, π * c, -π^2 * s)
+end
+
+@inline function Base.cospi(j::Jet{N, M}) where {N, M}
+    s, c = sincospi(j.v)
+    return chain_rule_jet(j, c, -π * s, -π^2 * c)
+end
+
 for (f, f′, f′′) in DIFF_RULES
     expr = rule_expr(f, f′, f′′)
     cse_expr = rule_cse(expr; warn = false)
@@ -321,6 +341,12 @@ for (f, f′, f′′) in DIFF_RULES
         x = h.v
         $cse_expr
         return chain_rule_dual(h, f, f′, f′′)
+    end
+
+    @eval @inline function Base.$f(j::Jet{N, M, T}) where {N, M, T}
+        x = j.v
+        $cse_expr
+        return chain_rule_jet(j, f, f′, f′′)
     end
 
     fast_sym = get(FAST_UNARY_OPS, f, nothing)
@@ -361,6 +387,28 @@ for (f, fₓ, fᵧ, fₓₓ, fₓᵧ, fᵧᵧ) in BINARY_DIFF_RULES
         y = hy.v
         $cse_expr
         return chain_rule_dual(hy, f, fᵧ, fᵧᵧ)
+    end
+
+    @eval @inline function Base.$f(jx::Jet{N, M, T}, jy::Jet{N, M, T}) where {N, M, T}
+        x = jx.v
+        y = jy.v
+        $cse_expr
+        return chain_rule_jet(jx, jy, f, fₓ, fᵧ, fₓₓ, fₓᵧ, fᵧᵧ)
+    end
+    @eval @inline function Base.$f(jx::Jet{N, M, T1}, jy::Jet{N, M, T2}) where {N, M, T1, T2}
+        return Base.$f(promote(jx, jy)...)
+    end
+    @eval @inline function Base.$f(jx::Jet{N, M, T}, y_raw::Real) where {N, M, T}
+        x = jx.v
+        y = y_raw
+        $cse_expr
+        return chain_rule_jet(jx, f, fₓ, fₓₓ)
+    end
+    @eval @inline function Base.$f(x_raw::Real, jy::Jet{N, M, T}) where {N, M, T}
+        x = x_raw
+        y = jy.v
+        $cse_expr
+        return chain_rule_jet(jy, f, fᵧ, fᵧᵧ)
     end
 
     fast_sym = FAST_BINARY_OPS[f]
@@ -410,6 +458,8 @@ end
 # Base.log(::Irrational{:ℯ}, ::Number).
 @inline Base.:(^)(::Irrational{:ℯ}, h::HyperDual) = exp(h)
 @inline Base.log(::Irrational{:ℯ}, h::HyperDual) = log(h)
+@inline Base.:(^)(::Irrational{:ℯ}, j::Jet) = exp(j)
+@inline Base.log(::Irrational{:ℯ}, j::Jet) = log(j)
 
 
 """
