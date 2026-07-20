@@ -13,7 +13,7 @@ function run_benchmark(; compare_forwarddiff::Bool = true)
     for f in (DiffTests.ackley, DiffTests.rosenbrock_1) # DiffTests.VECTOR_TO_NUMBER_FUNCS
         @info f
         # ForwardDiff and HyperHessians should use the same default chunk size for these sizes
-        for n in (1, 8, 128)
+        for n in (1, 4, 8, 128)
             x = rand(n)
 
             time_fd = nothing
