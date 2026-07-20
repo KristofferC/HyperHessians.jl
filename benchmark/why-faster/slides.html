@@ -37,54 +37,45 @@
 # HyperHessians.jl
 ~ Hessians from hyper-dual numbers. This talk: how dual numbers work, what a hyper-dual number is, and how the package uses them — with a section on why it ends up fast.
 @chips github.com/KristofferC/HyperHessians.jl | Hessians · Hessian-vector products · threading
-@footer → / ← / click to navigate · p to print
 
 ---
 @eyebrow Dual numbers
 # One rule: ε² = 0
-@footer no step size, no symbolic engine — the derivative is exact
 
-::: cols
-:: col
 ```The rule | an infinitesimal that squares to zero
 ε² = 0,   ε ≠ 0
 
-f(x + ε) = f(x) + f′(x)·ε
+f(x + ε) = f(x) + f′(x)·ε      # the Taylor series cuts itself off:
+                               # every higher term has an ε² in it
+```
 
-# the Taylor series cuts itself off:
-# every higher term has an ε² in it
-```
-:: col
 ```The product rule comes out by itself | no calculus needed
-(a + a′ε) · (b + b′ε)
-    = ab + (a′b + ab′)ε + a′b′·ε²
-    = ab + (a′b + ab′)ε
+(a + a′ε) · (b + b′ε)  =  ab + (a′b + ab′)ε + a′b′·ε²
+                       =  ab + (a′b + ab′)ε
 ```
-:::
 
 > A dual number is a pair (value, derivative). Push pairs through your function and each operation updates both. Write down one rule per operation and you are done.
 
 ---
 @eyebrow Dual numbers
 # Forward mode in a dozen lines
-@footer Julia dispatch does the rest — the function you differentiate doesn't change
 
 ::: cols
 :: col 1.3
 ```mini ForwardDiff | complete and runnable
 struct Dual{T} <: Number
-    x::T   # value
-    ẋ::T   # derivative
+    v::T   # value
+    ϵ::T   # coefficient of ε
 end
 
-Base.:+(a::Dual, b::Dual) = Dual(a.x + b.x, a.ẋ + b.ẋ)
-Base.:-(a::Dual, b::Dual) = Dual(a.x - b.x, a.ẋ - b.ẋ)
-Base.:*(a::Dual, b::Dual) = Dual(a.x*b.x, a.ẋ*b.x + a.x*b.ẋ)
-Base.sin(d::Dual) = Dual(sin(d.x),  cos(d.x) * d.ẋ)
-Base.cos(d::Dual) = Dual(cos(d.x), -sin(d.x) * d.ẋ)
-Base.exp(d::Dual) = Dual(exp(d.x),  exp(d.x) * d.ẋ)
+Base.:+(a::Dual, b::Dual) = Dual(a.v + b.v, a.ϵ + b.ϵ)
+Base.:-(a::Dual, b::Dual) = Dual(a.v - b.v, a.ϵ - b.ϵ)
+Base.:*(a::Dual, b::Dual) = Dual(a.v*b.v, a.ϵ*b.v + a.v*b.ϵ)
+Base.sin(d::Dual) = Dual(sin(d.v),  cos(d.v) * d.ϵ)
+Base.cos(d::Dual) = Dual(cos(d.v), -sin(d.v) * d.ϵ)
+Base.exp(d::Dual) = Dual(exp(d.v),  exp(d.v) * d.ϵ)
 
-[+] derivative(f, x) = f(Dual(x, one(x))).ẋ   # seed ẋ = 1
+[+] derivative(f, x) = f(Dual(x, one(x))).ϵ   # seed ϵ = 1
 ```
 :: col
 ```julia> | seed, run, read off
@@ -103,19 +94,18 @@ julia> 2 + cos(1.0)        # by hand
 ---
 @eyebrow Dual numbers
 # Gradients: N partials per number
-@footer this tuple is ForwardDiff's Partials — its width N is the "chunk size"
 
 ::: cols
 :: col 1.3
 ```the whole diff | one field changes, rules get a dot
 struct Dual{N,T} <: Number
-    x::T
-[-]     ẋ::T                # one derivative…
+    v::T
+[-]     ϵ::T                # one derivative…
 [+]     ∂::NTuple{N,T}      # …becomes N partials
 end
 
-[-] Base.:*(a, b) = Dual(a.x*b.x, a.ẋ*b.x + a.x*b.ẋ)
-[+] Base.:*(a, b) = Dual(a.x*b.x, b.x .* a.∂ .+ a.x .* b.∂)
+[-] Base.:*(a, b) = Dual(a.v*b.v, a.ϵ*b.v + a.v*b.ϵ)
+[+] Base.:*(a, b) = Dual(a.v*b.v, b.v .* a.∂ .+ a.v .* b.∂)
 
 function gradient(f, x::Vector{T}) where T
     N = length(x)
@@ -138,7 +128,6 @@ julia> gradient(v -> v[1]*v[2] + sin(v[1]),
 ---
 @eyebrow Dual numbers
 # Second derivatives: differentiate twice
-@footer ForwardDiff.hessian is exactly this: jacobian(x -> gradient(f, x))
 
 ::: cols
 :: col
@@ -157,7 +146,7 @@ f(x + ε₁ + ε₂)
 second_derivative(f, x) =
     derivative(y -> derivative(f, y), x)
 
-[+] Base.one(d::Dual) = Dual(one(d.x), zero(d.x))
+[+] Base.one(d::Dual) = Dual(one(d.v), zero(d.v))
 # ↑ the seed of the outer pass must be a Dual
 ```
 
@@ -173,7 +162,6 @@ julia> Dual(Dual(1.0, 1.0), Dual(1.0, 0.0))
 ---
 @eyebrow Hyper-dual numbers
 # The same algebra, flattened to one level
-@footer seed ϵ₁ and ϵ₂ with different basis vectors → any Hessian entry (i, j)
 
 ::: cols
 :: col
@@ -216,7 +204,6 @@ second_derivative(f, x) =
 ---
 @eyebrow The package
 # What's in the box
-@footer all exported · works for any f(x::AbstractVector)::Real, scalar x too
 
 ```using HyperHessians | the API
 julia> H = hessian(f, x)                 # dense n×n Hessian
@@ -238,7 +225,6 @@ julia> hessian!(H, f, x, cfg)
 ---
 @eyebrow The package
 # Scaling up: wide lanes, one block per call
-@footer chunk size is configurable — 8 is the default and usually the sweet spot
 
 ::: cols
 :: col 1.15
@@ -264,7 +250,6 @@ v    :: T
 ---
 @eyebrow Performance
 # Compared with ForwardDiff
-@footer ForwardDiff with our inlining fix applied (upstreamed) · BenchmarkTools minimum times, single thread
 
 Both packages get identical settings: chunk size 8, so both dual types hold exactly the same 81 Float64s — 648 bytes, same algebra, same flop count. Any speed difference is implementation, not math.
 
@@ -280,7 +265,6 @@ Both packages get identical settings: chunk size 8, so both dual types hold exac
 ---
 @eyebrow Performance
 # Single ops are close. Whole functions are not.
-@footer both dual types: 81 floats, 648 bytes
 
 ::: cols
 :: col 1.3
@@ -302,7 +286,6 @@ Both packages get identical settings: chunk size 8, so both dual types hold exac
 ---
 @eyebrow Performance
 # 8 doubles fill registers. 9 don't.
-@footer cheap on 2-wide NEON, expensive on 8-wide AVX-512 →
 
 ::: panel HyperDual{8,8} — every lane is 8 doubles: exactly one AVX-512 register
 {{lane-hh}}
@@ -317,7 +300,6 @@ Both packages get identical settings: chunk size 8, so both dual types hold exac
 ---
 @eyebrow Performance
 # What the CPU runs for one multiply (Zen 4)
-@footer code_native on an AMD EPYC 9354 · full listings in benchmark/why-faster/results/
 
 ::: cols
 :: col
@@ -349,7 +331,6 @@ Both packages get identical settings: chunk size 8, so both dual types hold exac
 ---
 @eyebrow Performance
 # Flat structs let LLVM throw away dead lanes
-@footer same zeros, same algebra — one layout is just easier to see through
 
 ::: cols
 :: col 1.2
@@ -375,7 +356,6 @@ end
 ---
 @eyebrow Performance
 # Bookkeeping: allocations, seeding, extraction
-@footer measured with @allocated after warmup, n = 256, chunk 8
 
 | per hessian! call | ForwardDiff | HyperHessians |
 |---|---|---|
@@ -391,7 +371,6 @@ end
 ---
 @eyebrow Performance
 # Adding it up
-@footer each factor measured on its own; product vs measured end-to-end
 
 ::: tiles
 Symmetry | 1.94× | 528 evals instead of 1024
@@ -413,7 +392,6 @@ Bookkeeping | 1.1–1.3× | zero alloc, cheap seeding
 ---
 @eyebrow More in the package
 # Hessian-vector products and threads
-@footer hvp / hvp! / vhvp and ThreadedHessianConfig
 
 ::: cols
 :: col
@@ -439,7 +417,6 @@ HyperDual{8, 1, Float64}
 ---
 @eyebrow Summary
 # Summary
-@footer github.com/KristofferC/HyperHessians.jl · analysis & scripts in benchmark/why-faster/
 
 - Dual numbers turn derivatives into algebra. Hyper-duals do the same for second order — in one flat number instead of two nested ones.
 - One evaluation per 8×8 Hessian block, upper triangle only, blocks in parallel if you want.
@@ -634,6 +611,8 @@ HyperDual{8, 1, Float64}
   .cc-title { font-family: -apple-system, system-ui, sans-serif; font-size: 0.72em; font-weight: 700; }
   .cc-sub { font-family: ui-monospace, monospace; font-size: 0.58em; color: var(--faint); }
   .codecard pre { margin: 0; padding: 0.55em 0 0.65em; background: var(--code-bg); color: var(--code-ink); font-size: 0.72em; line-height: 1.5; overflow-x: auto; flex: 1 1 auto; }
+  /* full-width cards (not inside columns) have room for bigger code */
+  .grow > .codecard pre { font-size: 0.85em; }
   .codecard pre .ln { display: block; padding: 0 1.1em; white-space: pre; }
   .codecard pre .cm { color: var(--code-cm); }
   .codecard pre .bad { background: var(--bad-bg); box-shadow: inset 3px 0 0 var(--bad-edge); }

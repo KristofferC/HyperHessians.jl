@@ -1,32 +1,32 @@
 # Verify the minimal AD implementations that will appear on the intro slides.
 module MiniDual
     struct Dual{T} <: Number
-        x::T   # value
-        ẋ::T   # derivative
+        v::T   # value
+        ϵ::T   # coefficient of ε = the derivative
     end
 
-    Base.:+(a::Dual, b::Dual) = Dual(a.x + b.x, a.ẋ + b.ẋ)
-    Base.:-(a::Dual, b::Dual) = Dual(a.x - b.x, a.ẋ - b.ẋ)
-    Base.:*(a::Dual, b::Dual) = Dual(a.x * b.x, a.ẋ * b.x + a.x * b.ẋ)
-    Base.sin(d::Dual) = Dual(sin(d.x), cos(d.x) * d.ẋ)
-    Base.cos(d::Dual) = Dual(cos(d.x), -sin(d.x) * d.ẋ)
-    Base.exp(d::Dual) = Dual(exp(d.x), exp(d.x) * d.ẋ)
-    Base.one(d::Dual) = Dual(one(d.x), zero(d.x))   # lets Duals nest
+    Base.:+(a::Dual, b::Dual) = Dual(a.v + b.v, a.ϵ + b.ϵ)
+    Base.:-(a::Dual, b::Dual) = Dual(a.v - b.v, a.ϵ - b.ϵ)
+    Base.:*(a::Dual, b::Dual) = Dual(a.v * b.v, a.ϵ * b.v + a.v * b.ϵ)
+    Base.sin(d::Dual) = Dual(sin(d.v), cos(d.v) * d.ϵ)
+    Base.cos(d::Dual) = Dual(cos(d.v), -sin(d.v) * d.ϵ)
+    Base.exp(d::Dual) = Dual(exp(d.v), exp(d.v) * d.ϵ)
+    Base.one(d::Dual) = Dual(one(d.v), zero(d.v))   # lets Duals nest
 
-    derivative(f, x) = f(Dual(x, one(x))).ẋ
+    derivative(f, x) = f(Dual(x, one(x))).ϵ
     second_derivative(f, x) = derivative(y -> derivative(f, y), x)
 end
 
 module MiniGrad
     struct Dual{N, T} <: Number
-        x::T
+        v::T
         ∂::NTuple{N, T}   # one lane per input
     end
 
-    Base.:+(a::Dual{N}, b::Dual{N}) where {N} = Dual(a.x + b.x, a.∂ .+ b.∂)
-    Base.:-(a::Dual{N}, b::Dual{N}) where {N} = Dual(a.x - b.x, a.∂ .- b.∂)
-    Base.:*(a::Dual{N}, b::Dual{N}) where {N} = Dual(a.x * b.x, b.x .* a.∂ .+ a.x .* b.∂)
-    Base.sin(d::Dual) = Dual(sin(d.x), cos(d.x) .* d.∂)
+    Base.:+(a::Dual{N}, b::Dual{N}) where {N} = Dual(a.v + b.v, a.∂ .+ b.∂)
+    Base.:-(a::Dual{N}, b::Dual{N}) where {N} = Dual(a.v - b.v, a.∂ .- b.∂)
+    Base.:*(a::Dual{N}, b::Dual{N}) where {N} = Dual(a.v * b.v, b.v .* a.∂ .+ a.v .* b.∂)
+    Base.sin(d::Dual) = Dual(sin(d.v), cos(d.v) .* d.∂)
 
     function gradient(f, x::Vector{T}) where {T}
         N = length(x)
