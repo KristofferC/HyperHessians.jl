@@ -110,6 +110,17 @@ HyperDual{N1, N2}(v::T) where {N1, N2, T} =
 HyperDual{N1, N2, T}(v) where {N1, N2, T} = HyperDual{N1, N2}(T(v))
 HyperDual{N1, N2, T}(v::HyperDual{N1, N2, T}) where {N1, N2, T} = v
 HyperDual{N1, N2, T}(v::HyperDual{N1, N2}) where {N1, N2, T} = convert(HyperDual{N1, N2, T}, v)
+HyperDual{N1, N2}(v::HyperDual{N1, N2}) where {N1, N2} = v
+
+# Disambiguate against Base's numeric conversion constructors (Complex, Char,
+# TwicePrecision), which also target Real/Number. Route through the scalar value.
+_scalar(z::Complex) = real(typeof(z))(z)
+_scalar(c::AbstractChar) = Int(c)
+_scalar(v::Base.TwicePrecision{T}) where {T} = T(v)
+for R in (:Complex, :AbstractChar, :(Base.TwicePrecision))
+    @eval HyperDual{N1, N2, T}(v::$R) where {N1, N2, T} = HyperDual{N1, N2}(T(v))
+    @eval HyperDual{N1, N2}(v::$R) where {N1, N2} = HyperDual{N1, N2}(_scalar(v))
+end
 
 function HyperDual(v::T1, ϵ1::ϵT{N1, T2}, ϵ2::ϵT{N2, T2}, ϵ12::NTuple{N1, ϵT{N2, T2}}) where {N1, N2, T1, T2}
     T = promote_type(T1, T2)
@@ -284,6 +295,12 @@ end
 end
 @inline Base.muladd(x::Real, y::Real, z::HyperDual{N1, N2, T}) where {N1, N2, T} =
     HyperDual(muladd(x, y, z.v), z.ϵ1, z.ϵ2, z.ϵ12)
+# All-HyperDual multiplicands are ambiguous between the mixed methods above, so
+# resolve them explicitly via the general product-then-sum.
+@inline Base.muladd(x::HyperDual{N1, N2, T}, y::HyperDual{N1, N2, T}, z::HyperDual{N1, N2, T}) where {N1, N2, T} =
+    x * y + z
+@inline Base.muladd(x::HyperDual{N1, N2, T}, y::HyperDual{N1, N2, T}, z::Real) where {N1, N2, T} =
+    x * y + z
 
 # Comparisons and predicates act on the primal value (ForwardDiff semantics):
 # derivative components are ignored so branching code sees plain numbers.
@@ -302,6 +319,9 @@ end
 @inline Base.:(==)(h1::HyperDual{N1, N2}, h2::HyperDual{N1, N2}) where {N1, N2} = h1.v == h2.v
 @inline Base.:(==)(h::HyperDual, r::Real) = h.v == r
 @inline Base.:(==)(r::Real, h::HyperDual) = r == h.v
+# Disambiguate against Base.==(::Real, ::AbstractIrrational) and its mirror.
+@inline Base.:(==)(h::HyperDual, r::AbstractIrrational) = h.v == r
+@inline Base.:(==)(r::AbstractIrrational, h::HyperDual) = r == h.v
 Base.hash(h::HyperDual, u::UInt) = hash(h.v, u)
 
 for f in (:isnan, :isinf, :isfinite, :signbit, :isinteger, :iseven, :isodd)
@@ -394,6 +414,8 @@ end
     end
 end
 @inline Base.:(^)(h::HyperDual, n::Integer) = _pow_hyperdual(IEEE_MODE, h, n)
+# Disambiguate against Base.^(::Number, ::Rational): use the general real-power rule.
+@inline Base.:(^)(h::HyperDual, r::Rational) = h^float(r)
 
 # `@fastmath` rewrites user arithmetic to these functions. The methods below
 # select fast arithmetic for both the primal and all derivative components.
