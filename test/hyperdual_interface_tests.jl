@@ -100,6 +100,16 @@ end
     @test H == fill(2.0, 1, 1)
 end
 
+@testset "muladd with HyperDual multiplicands (issue #53)" begin
+    x = HyperDual(2.0, (1.0,), (2.0,), ((3.0,),))
+    y = HyperDual(5.0, (0.5,), (1.5,), ((0.7,),))
+    z = HyperDual(7.0, (0.1,), (0.2,), ((0.3,),))
+    @test muladd(x, y, z) == x * y + z
+    @test muladd(x, y, 4.0) == x * y + 4.0
+    H = HyperHessians.hessian(v -> muladd(v[1], v[1], v[1]), [1.3])
+    @test H == fill(2.0, 1, 1)
+end
+
 @testset "division" begin
     x, y = 1.2, 0.7
     res = HyperHessians.hessian_gradient_value(v -> v[1] / v[2], [x, y])
@@ -111,6 +121,32 @@ end
     h32 = HyperDual(3.0f0, (1.0f0,), (0.0f0,), ((0.0f0,),))
     @test h64 / h32 isa HyperDual{1, 1, Float64}
     @test (h64 / h32).v ≈ 2 / 3
+end
+
+@testset "disambiguation against Base numeric types" begin
+    h = HyperDual(1.3, (1.0,), (1.0,), ((0.0,),))
+    # comparison with irrationals resolves and compares the primal value
+    @test (h == π) == false && (π == h) == false
+    @test (h == 1.3) && !(h == 1.4)
+    # two-argument power/log against Base's ℯ- and Rational-specialized methods
+    @test h^(3 // 2) ≈ 1.3^(3 // 2)
+    @test (ℯ^h).v ≈ exp(1.3)
+    @test log(ℯ, h).v ≈ log(1.3)
+    # construction from Base numeric conversion types
+    @test HyperDual{1, 1}(1.0 + 0.0im).v == 1.0
+    @test HyperDual{1, 1, Float64}(1.0 + 0.0im).v == 1.0
+    @test HyperDual{1, 1}(h) === h
+end
+
+# Guard against ambiguities against foreign (Base/other) methods. Internal
+# HyperDual-vs-HyperDual pairs are only reachable with mismatched chunk sizes
+# (a nonsensical call) and are intentionally left unresolved, so filter them out.
+@testset "no ambiguities against Base methods" begin
+    ambs = Test.detect_ambiguities(HyperHessians; recursive = true)
+    external = filter(ambs) do (m1, m2)
+        !(m1.module === HyperHessians && m2.module === HyperHessians)
+    end
+    @test isempty(external)
 end
 
 @testset "conversions" begin
