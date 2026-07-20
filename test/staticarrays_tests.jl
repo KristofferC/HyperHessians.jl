@@ -45,6 +45,16 @@ using StaticArrays
     @test res.gradient === 2 .* x
     @test res.hessian === expected_H
     @test @allocated(hessian_gradient_value(g, x)) == 0 broken = VERSION < v"1.11"
+
+    constant = _ -> big"7.0000000000000000000000000000000000001"
+    constant_hessian = hessian(constant, x)
+    @test constant_hessian === zero(SMatrix{4, 4, Float64})
+    constant_hvp = hvp(constant, x, dir)
+    @test constant_hvp === zero(SVector{4, Float64})
+    constant_res = hessian_gradient_value(constant, x)
+    @test constant_res.value === constant(x)
+    @test iszero(constant_res.gradient)
+    @test iszero(constant_res.hessian)
 end
 
 end # module

@@ -229,7 +229,6 @@ end
         :log2 => 1.5,
         :log10 => 1.6,
         :log1p => 0.2,
-        :lgamma => 1.7,
     )
     Ext = Base.get_extension(HyperHessians, :HyperHessiansNaNMathExt)
     for (fsym, _, _) in Ext.NANMATH_DIFF_RULES
@@ -239,6 +238,7 @@ end
             check_against_ForwardDiff(f, x, T)
         end
     end
+    check_against_ForwardDiff(NaNMath.lgamma, 1.7)
     xy = Dict(
         :pow => (1.2, 0.8),
     )
@@ -248,6 +248,13 @@ end
             check_binary_all_orders(f, x, y, T)
         end
     end
+end
+
+@testset "SpecialFunctions boundary rules" begin
+    res = HyperHessians.hessian_gradient_value(SpecialFunctions.sinint, 0.0)
+    @test res.value == 0.0
+    @test res.gradient == 1.0
+    @test res.hessian == 0.0
 end
 
 @testset "real divided by HyperDual uses inverse rule" begin

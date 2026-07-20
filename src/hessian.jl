@@ -8,9 +8,9 @@ end
 
 function HessianConfig(x::AbstractVector{T}, chunk = Chunk(x)::Chunk) where {T}
     N = chunksize(chunk)
-    N > 0 || throw(ArgumentError(lazy"chunk size must be positive, got $N"))
+    N > 0 || (N == 0 && isempty(x)) || throw(ArgumentError(lazy"chunk size must be positive, got $N"))
     duals = similar(x, HyperDual{N, N, T}) # not Vector
-    seeds = collect(construct_seeds(NTuple{N, T}))
+    seeds = NTuple{N, T}[construct_seeds(NTuple{N, T})...]
     return HessianConfig(duals, seeds)
 end
 HessianConfig(x::AbstractArray{T}, chunk = Chunk(x)::Chunk) where {T} =
@@ -30,24 +30,24 @@ end
 (chunksize(cfg::HVPConfig)::Int) = _chunksize(cfg.seeds)
 
 HVPConfig(x::AbstractVector{T}, chunk::Chunk = Chunk(x)::Chunk) where {T} =
-    _HVPConfig(x, chunk, Val(1))
-HVPConfig(x::AbstractVector{T}, ::AbstractVector, chunk::Chunk = Chunk(x)::Chunk) where {T} =
-    _HVPConfig(x, chunk, Val(1))
-HVPConfig(x::AbstractVector{T}, ::NTuple{N, <:AbstractVector}, chunk::Chunk = Chunk(x)::Chunk) where {T, N} =
-    _HVPConfig(x, chunk, Val(N))
+    _HVPConfig(x, chunk, Val(1), T)
+HVPConfig(x::AbstractVector{T}, v::AbstractVector, chunk::Chunk = Chunk(x)::Chunk) where {T} =
+    _HVPConfig(x, chunk, Val(1), promote_type(T, eltype(v)))
+HVPConfig(x::AbstractVector{T}, v::Tuple{Vararg{AbstractVector, N}}, chunk::Chunk = Chunk(x)::Chunk) where {T, N} =
+    _HVPConfig(x, chunk, Val(N), promote_type(T, ntuple(i -> eltype(v[i]), Val(N))...))
 HVPConfig(x::AbstractArray{T}, chunk::Chunk = Chunk(x)::Chunk) where {T} =
     HVPConfig(vec(x), chunk)
 HVPConfig(x::AbstractArray{T}, v::AbstractVector, chunk::Chunk = Chunk(x)::Chunk) where {T} =
     HVPConfig(vec(x), vec(v), chunk)
-HVPConfig(x::AbstractArray{T}, v::NTuple{N, <:AbstractArray}, chunk::Chunk = Chunk(x)::Chunk) where {T, N} =
+HVPConfig(x::AbstractArray{T}, v::Tuple{Vararg{AbstractArray, N}}, chunk::Chunk = Chunk(x)::Chunk) where {T, N} =
     HVPConfig(vec(x), ntuple(i -> vec(v[i]), Val(N)), chunk)
 
-function _HVPConfig(x::AbstractVector{T}, chunk::Chunk, ::Val{ntangents}) where {T, ntangents}
+function _HVPConfig(x::AbstractVector, chunk::Chunk, ::Val{ntangents}, ::Type{T}) where {T, ntangents}
     N = chunksize(chunk)
-    N > 0 || throw(ArgumentError(lazy"chunk size must be positive, got $N"))
+    N > 0 || (N == 0 && isempty(x)) || throw(ArgumentError(lazy"chunk size must be positive, got $N"))
     ntangents > 0 || throw(ArgumentError(lazy"number of tangents must be positive, got $ntangents"))
     duals = similar(x, HyperDual{N, ntangents, T}) # directional: ε₂ has one lane per tangent
-    seeds = collect(construct_seeds(NTuple{N, T}))
+    seeds = NTuple{N, T}[construct_seeds(NTuple{N, T})...]
     return HVPConfig{typeof(duals), typeof(seeds)}(duals, seeds)
 end
 
@@ -113,15 +113,19 @@ end
 const TangentBundle = Union{
     AbstractVector,
     AbstractArray,
-    NTuple{N, V} where {N, V <: AbstractVector},
-    NTuple{N, V} where {N, V <: AbstractArray},
+    Tuple{Vararg{AbstractVector}},
+    Tuple{Vararg{AbstractArray}},
 }
-const HVBundle = Union{AbstractVector, NTuple{N, V} where {N, V <: AbstractVector}}
+const HVBundle = Union{AbstractVector, Tuple{Vararg{AbstractVector}}}
 
 @inline tangents_count(::AbstractVector) = 1
 @inline tangents_count(::AbstractArray) = 1
-@inline tangents_count(::NTuple{N, <:AbstractVector}) where {N} = N
-@inline tangents_count(::NTuple{N, <:AbstractArray}) where {N} = N
+@inline tangents_count(::Tuple{Vararg{AbstractVector, N}}) where {N} = N
+@inline tangents_count(::Tuple{Vararg{AbstractArray, N}}) where {N} = N
+
+@inline tangent_eltype(v::AbstractArray) = eltype(v)
+@inline tangent_eltype(v::Tuple{Vararg{AbstractArray, N}}) where {N} =
+    promote_type(ntuple(i -> eltype(v[i]), Val(N))...)
 
 @inline ntangents(::Type{<:HyperDual{<:Any, N2, <:Any}}) where {N2} = N2
 @inline ntangents(cfg::HVPConfig) = ntangents(eltype(cfg.duals))
@@ -136,12 +140,12 @@ const HVBundle = Union{AbstractVector, NTuple{N, V} where {N, V <: AbstractVecto
 end
 
 @noinline check_scalar(x) =
-    x isa Number || throw(ErrorException("expected a scalar to be returned from function passed to `hessian`"))
+    x isa Real || throw(ErrorException("expected a real scalar to be returned from function passed to `hessian`"))
 
-@inline _ensure_dual(v::HyperDual, ::AbstractVector{<:HyperDual}) = v
-@inline _ensure_dual(v::HyperDual, ::HyperDual) = v
-@inline _ensure_dual(v::Real, ::AbstractVector{H}) where {H <: HyperDual} = H(v)
-@inline _ensure_dual(v::Real, ::H) where {H <: HyperDual} = H(v)
+@inline _ensure_dual(v::HyperDual{N1, N2}, ::AbstractVector{<:HyperDual{N1, N2}}) where {N1, N2} = v
+@inline _ensure_dual(v::HyperDual{N1, N2}, ::HyperDual{N1, N2}) where {N1, N2} = v
+@inline _ensure_dual(v::Real, ::AbstractVector{<:HyperDual{N1, N2}}) where {N1, N2} = HyperDual{N1, N2}(v)
+@inline _ensure_dual(v::Real, ::HyperDual{N1, N2}) where {N1, N2} = HyperDual{N1, N2}(v)
 
 @inline _vectorize_input(f, x::AbstractVector) = (f, x, nothing)
 @inline function _vectorize_input(f, x::AbstractArray)
@@ -157,12 +161,17 @@ end
     shape === nothing && return (v, nothing)
     return vec(v), shape
 end
-@inline function _vectorize_tangents(v::NTuple{N, <:AbstractArray}, shape) where {N}
+@inline function _vectorize_tangents(v::Tuple{Vararg{AbstractArray, N}}, shape) where {N}
     shape === nothing && return v, nothing
     return ntuple(i -> vec(v[i]), Val(N)), shape
 end
 
 function _check_config_length(cfg::HessianConfig, n::Int)
+    length(cfg.duals) == n || throw(DimensionMismatch(lazy"config size $(length(cfg.duals)) does not match input length $n"))
+    return nothing
+end
+
+function _check_config_length(cfg::HVPConfig, n::Int)
     length(cfg.duals) == n || throw(DimensionMismatch(lazy"config size $(length(cfg.duals)) does not match input length $n"))
     return nothing
 end
@@ -378,9 +387,10 @@ or a tuple of vectors for multiple directions (e.g. `(v1, v2)`); bundled
 tangents are evaluated in one pass. Pass a `HVPConfig` explicitly to control
 chunking or reuse allocations.
 """
-@inline similar_output(x::AbstractVector{T}, _::AbstractVector) where {T} = similar(x, T)
-@inline function similar_output(x::AbstractVector{T}, _::NTuple{N, <:AbstractVector}) where {T, N}
-    return ntuple(_ -> similar(x, T), Val(N))
+@inline similar_output(x::AbstractVector{T}, v::AbstractVector) where {T} = similar(x, promote_type(T, eltype(v)))
+@inline function similar_output(x::AbstractVector{T}, v::Tuple{Vararg{AbstractVector, N}}) where {T, N}
+    output_type = promote_type(T, ntuple(i -> eltype(v[i]), Val(N))...)
+    return ntuple(_ -> similar(x, output_type), Val(N))
 end
 
 function check_grad_dims(g::AbstractVector, n::Int)
@@ -392,7 +402,7 @@ function check_tangent_dims(x::AbstractArray, v::AbstractArray)
     length(v) == length(x) || throw(DimensionMismatch(lazy"tangent must have length $(length(x)), got $(length(v))"))
     return nothing
 end
-function check_tangent_dims(x::AbstractArray, v::NTuple{N, <:AbstractArray}) where {N}
+function check_tangent_dims(x::AbstractArray, v::Tuple{Vararg{AbstractArray, N}}) where {N}
     expected = length(x)
     for (i, tangent) in enumerate(v)
         length(tangent) == expected || throw(DimensionMismatch(lazy"tangent $i must have length $expected, got $(length(tangent))"))
@@ -405,7 +415,7 @@ function check_output_dims(hv::AbstractVector, n::Int, ntan::Int)
     length(hv) == n || throw(DimensionMismatch(lazy"hv must have length $n, got $(length(hv))"))
     return nothing
 end
-function check_output_dims(hv::NTuple{NT, <:AbstractVector}, n::Int, ntan::Int) where {NT}
+function check_output_dims(hv::Tuple{Vararg{AbstractVector, NT}}, n::Int, ntan::Int) where {NT}
     NT == ntan || throw(DimensionMismatch(lazy"hv tuple length $NT does not match number of tangents $ntan"))
     for (i, h) in enumerate(hv)
         length(h) == n || throw(DimensionMismatch(lazy"hv tangent $i must have length $n, got $(length(h))"))
@@ -471,16 +481,27 @@ function vhvp_gradient_value(f::F, x::Number, v::Number) where {F}
     return hessian_gradient_value(t -> f(x + t * v), t0)
 end
 
-@inline directional_ϵ2(v::AbstractArray, idx, ::Val{1}) = (v[idx],)
-@inline function directional_ϵ2(v::NTuple{N, <:AbstractArray}, idx, ::Val{N}) where {N}
-    return ntuple(j -> v[j][idx], Val(N))
+@inline directional_ϵ2(v::AbstractArray, idx, ::Val{1}, ::Type{T}) where {T} = (T(v[idx]),)
+@inline function directional_ϵ2(v::Tuple{Vararg{AbstractArray, N}}, idx, ::Val{N}, ::Type{T}) where {N, T}
+    return ntuple(j -> T(v[j][idx]), Val(N))
+end
+
+
+@inline dual_value_type(::Type{<:HyperDual{N1, N2, T}}) where {N1, N2, T} = T
+
+function check_hvp_config_eltype(cfg::HVPConfig, x, v)
+    cfgT = dual_value_type(eltype(cfg.duals))
+    requiredT = promote_type(eltype(x), tangent_eltype(v))
+    promote_type(cfgT, requiredT) === cfgT ||
+        throw(ArgumentError(lazy"config element type $cfgT cannot represent input and tangent element type $requiredT; construct HVPConfig with the current input and tangents"))
+    return nothing
 end
 
 @inline function store_hvp!(hv::AbstractArray, idx, vals, ::Val{1})
     hv[idx] = vals[1]
     return nothing
 end
-@inline function store_hvp!(hv::NTuple{N, <:AbstractArray}, idx, vals, ::Val{N}) where {N}
+@inline function store_hvp!(hv::Tuple{Vararg{AbstractArray, N}}, idx, vals, ::Val{N}) where {N}
     @inbounds for j in 1:N
         hv[j][idx] = vals[j]
     end
@@ -488,7 +509,7 @@ end
 end
 
 @inline fill_output!(hv::AbstractVector, z) = fill!(hv, z)
-@inline function fill_output!(hv::NTuple{N, <:AbstractVector}, z) where {N}
+@inline function fill_output!(hv::Tuple{Vararg{AbstractVector, N}}, z) where {N}
     for h in hv
         fill!(h, z)
     end
@@ -498,7 +519,7 @@ end
 @inline function _reshape_output(hv::AbstractVector, shape, orig_shape)
     return orig_shape === nothing ? hv : reshape(hv, shape)
 end
-@inline function _reshape_output(hv::NTuple{N, <:AbstractVector}, shape, orig_shape) where {N}
+@inline function _reshape_output(hv::Tuple{Vararg{AbstractVector, N}}, shape, orig_shape) where {N}
     orig_shape === nothing && return hv
     return ntuple(i -> reshape(hv[i], shape), Val(N))
 end
@@ -552,17 +573,19 @@ end
 function hvp!(hv::AbstractArray, f::F, x::AbstractArray, v::TangentBundle, cfg::HVPConfig) where {F}
     return _hvp_common_array!(hv, nothing, f, x, v, cfg)
 end
-function hvp!(hv::NTuple{N, <:AbstractArray}, f::F, x::AbstractArray, v::TangentBundle) where {N, F}
+function hvp!(hv::Tuple{Vararg{AbstractArray, N}}, f::F, x::AbstractArray, v::TangentBundle) where {N, F}
     return _hvp_common_array!(hv, nothing, f, x, v, nothing)
 end
-function hvp!(hv::NTuple{N, <:AbstractArray}, f::F, x::AbstractArray, v::TangentBundle, cfg::HVPConfig) where {N, F}
+function hvp!(hv::Tuple{Vararg{AbstractArray, N}}, f::F, x::AbstractArray, v::TangentBundle, cfg::HVPConfig) where {N, F}
     return _hvp_common_array!(hv, nothing, f, x, v, cfg)
 end
 
 @inline function hvp_dir!(hv::HVBundle, f::F, x::AbstractVector{T}, v::TangentBundle, cfg::HVPConfig) where {T, F}
+    _check_config_length(cfg, length(x))
     n_tangents = tangents_count(v)
     n_tangents == ntangents(cfg) ||
         throw(DimensionMismatch(lazy"config expects $(ntangents(cfg)) tangents, but $(n_tangents) were provided"))
+    check_hvp_config_eltype(cfg, x, v)
     check_tangent_dims(x, v)
     check_output_dims(hv, length(x), n_tangents)
     valN = Val(n_tangents)
@@ -580,7 +603,7 @@ end
 hvp_gradient_value(f::F, x::AbstractVector, v::TangentBundle) where {F} =
     hvp_gradient_value(f, x, v, HVPConfig(x, v))
 function hvp_gradient_value(f::F, x::AbstractVector, v::TangentBundle, cfg::HVPConfig) where {F}
-    g = similar(x, eltype(x))
+    g = similar(x, dual_value_type(eltype(cfg.duals)))
     hv = similar_output(x, v)
     value = hvp_gradient_value!(hv, g, f, x, v, cfg)
     return (; value = value, gradient = g, hvp = hv)
@@ -595,9 +618,11 @@ function hvp_gradient_value!(hv::HVBundle, g::AbstractVector, f::F, x::AbstractV
     return hvp_gradient_value!(hv, g, f, x, v, HVPConfig(x, v))
 end
 function hvp_gradient_value!(hv::HVBundle, g::AbstractVector, f::F, x::AbstractVector{T}, v::TangentBundle, cfg::HVPConfig) where {F, T}
+    _check_config_length(cfg, length(x))
     n_tangents = tangents_count(v)
     n_tangents == ntangents(cfg) ||
         throw(DimensionMismatch(lazy"config expects $(ntangents(cfg)) tangents, but $(n_tangents) were provided"))
+    check_hvp_config_eltype(cfg, x, v)
     check_grad_dims(g, length(x))
     check_tangent_dims(x, v)
     check_output_dims(hv, length(x), n_tangents)
@@ -613,26 +638,27 @@ hvp_gradient_value!(hv::AbstractArray, g::AbstractArray, f::F, x::AbstractArray,
 function hvp_gradient_value!(hv::AbstractArray, g::AbstractArray, f::F, x::AbstractArray, v::TangentBundle, cfg::HVPConfig) where {F}
     return _hvp_common_array!(hv, g, f, x, v, cfg)
 end
-hvp_gradient_value!(hv::NTuple{N, <:AbstractArray}, g::AbstractArray, f::F, x::AbstractArray, v::TangentBundle) where {N, F} =
+hvp_gradient_value!(hv::Tuple{Vararg{AbstractArray, N}}, g::AbstractArray, f::F, x::AbstractArray, v::TangentBundle) where {N, F} =
     _hvp_common_array!(hv, g, f, x, v, nothing)
-function hvp_gradient_value!(hv::NTuple{N, <:AbstractArray}, g::AbstractArray, f::F, x::AbstractArray, v::TangentBundle, cfg::HVPConfig) where {N, F}
+function hvp_gradient_value!(hv::Tuple{Vararg{AbstractArray, N}}, g::AbstractArray, f::F, x::AbstractArray, v::TangentBundle, cfg::HVPConfig) where {N, F}
     return _hvp_common_array!(hv, g, f, x, v, cfg)
 end
 
-@inline hvp_gradient_value_vector_dir!(g::AbstractVector{T}, hv::HVBundle, f, x::AbstractVector{T}, v::TangentBundle, cfg::HVPConfig, valN::Val{N}) where {T, N} =
+@inline hvp_gradient_value_vector_dir!(g::AbstractVector, hv::HVBundle, f, x::AbstractVector, v::TangentBundle, cfg::HVPConfig, valN::Val{N}) where {N} =
     hvp_gradient_value_vector_dir_core!(g, hv, f, x, v, cfg, valN)
 
-@inline function hvp_gradient_value_chunk_dir_core!(g::Union{Nothing, AbstractVector{T}}, hv::HVBundle, f, x::AbstractVector{T}, v::TangentBundle, cfg::HVPConfig, ::Val{N}) where {T, N}
+@inline function hvp_gradient_value_chunk_dir_core!(g::Union{Nothing, AbstractVector}, hv::HVBundle, f, x::AbstractVector{T}, v::TangentBundle, cfg::HVPConfig, ::Val{N}) where {T, N}
     Nchunk = chunksize(cfg)
     fill_output!(hv, zero(T))
     n_chunks = ceil(Int, length(x) / Nchunk)
     ax = axes(x, 1)
     zeroϵ1 = zero_ϵ(cfg.seeds[1])
     value = zero(T)
+    dualT = dual_value_type(eltype(cfg.duals))
 
     # Initialize ε₂ once and keep ε₁ zeroed globally.
     @inbounds for j in eachindex(x)
-        cfg.duals[j] = HyperDual(x[j], zeroϵ1, directional_ϵ2(v, j, Val(N)))
+        cfg.duals[j] = HyperDual(dualT(x[j]), zeroϵ1, directional_ϵ2(v, j, Val(N), dualT))
     end
 
     for i in 1:n_chunks
@@ -666,11 +692,12 @@ function hvp_chunk_dir!(hv::HVBundle, f::F, x::AbstractVector{T}, v::TangentBund
     return hvp_gradient_value_chunk_dir_core!(nothing, hv, f, x, v, cfg, Val(N))
 end
 
-@inline function hvp_gradient_value_vector_dir_core!(g::Union{Nothing, AbstractVector{T}}, hv::HVBundle, f, x::AbstractVector{T}, v::TangentBundle, cfg::HVPConfig, ::Val{N}) where {T, N}
+@inline function hvp_gradient_value_vector_dir_core!(g::Union{Nothing, AbstractVector}, hv::HVBundle, f, x::AbstractVector, v::TangentBundle, cfg::HVPConfig, ::Val{N}) where {N}
     # Seed ε₁ with identity directions and ε₂ with the bundled tangents;
     # the mixed term ε₁ᵀ A ε₂ yields each H * v column in ϵ₁₂.
+    dualT = dual_value_type(eltype(cfg.duals))
     @inbounds for i in eachindex(x)
-        cfg.duals[i] = HyperDual(x[i], cfg.seeds[i], directional_ϵ2(v, i, Val(N)))
+        cfg.duals[i] = HyperDual(dualT(x[i]), cfg.seeds[i], directional_ϵ2(v, i, Val(N), dualT))
     end
     out = f(cfg.duals)
     check_scalar(out)
@@ -684,5 +711,5 @@ end
     return g === nothing ? hv : out.v
 end
 
-hvp_gradient_value_chunk_dir!(g::AbstractVector{T}, hv::HVBundle, f::F, x::AbstractVector{T}, v::TangentBundle, cfg::HVPConfig, valN::Val{N}) where {F, T, N} =
+hvp_gradient_value_chunk_dir!(g::AbstractVector, hv::HVBundle, f::F, x::AbstractVector, v::TangentBundle, cfg::HVPConfig, valN::Val{N}) where {F, N} =
     hvp_gradient_value_chunk_dir_core!(g, hv, f, x, v, cfg, valN)

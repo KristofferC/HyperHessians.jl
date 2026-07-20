@@ -4,7 +4,6 @@ using HyperHessians
 using HyperHessians: changeprecision, chain_rule_dual, rule_cse, HyperDual
 using CommonSubexpressions: cse, binarize
 using NaNMath
-using SpecialFunctions: digamma, trigamma
 
 # NaNMath-specific rule_expr that qualifies function names with NaNMath
 function nanmath_rule_expr(f, f′, f′′)
@@ -42,7 +41,6 @@ const NANMATH_DIFF_RULES = [
     (:log2  , :(inv(x) / log(2))                               , :(-log(2) * f′^2))
     (:log10 , :(inv(x) / log(10))                              , :(-log(10) * f′^2))
     (:log1p , :(inv(x + 1))                                    , :(-f′^2))
-    (:lgamma, :(digamma(x))                                    , :(trigamma(x)))
 ]
 # runic: on
 

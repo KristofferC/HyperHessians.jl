@@ -1,7 +1,7 @@
 module HyperHessiansStaticArraysExt
 
 using HyperHessians
-using HyperHessians: HyperDual, check_scalar, construct_seeds, ϵT
+using HyperHessians: HyperDual, check_scalar, construct_seeds, _ensure_dual, ϵT
 using StaticArrays
 
 @generated function hyperdualize(x::S) where {S <: StaticVector}
@@ -31,30 +31,30 @@ end
     end
 end
 
-@generated function extract_static_hessian(v::HyperDual{N, N, T}, x::StaticVector{N, T}) where {N, T}
+@generated function extract_static_hessian(v::HyperDual{N, N, TD}, x::StaticVector{N, TX}) where {N, TD, TX}
     entries = [:(v.ϵ12[$i][$j]) for i in 1:N for j in 1:N]
     return quote
         $(Expr(:meta, :inline))
-        V = StaticArrays.similar_type(x, $T, Size($N, $N))
+        V = StaticArrays.similar_type(x, $TX, Size($N, $N))
         return V($(Expr(:tuple, entries...)))
     end
 end
 
-@generated function extract_static_gradient(v::HyperDual{N, M, T}, x::StaticVector{N, T}) where {N, M, T}
+@generated function extract_static_gradient(v::HyperDual{N, M, TD}, x::StaticVector{N, TX}) where {N, M, TD, TX}
     entries = [:(v.ϵ1[$i]) for i in 1:N]
     return quote
         $(Expr(:meta, :inline))
-        V = StaticArrays.similar_type(x, $T, Size($N))
+        V = StaticArrays.similar_type(x, $TX, Size($N))
         return V($(Expr(:tuple, entries...)))
     end
 end
 
-@generated function extract_static_hvp(v::HyperDual{N, M, T}, x::StaticVector{N, T}) where {N, M, T}
+@generated function extract_static_hvp(v::HyperDual{N, M, TD}, x::StaticVector{N, TX}) where {N, M, TD, TX}
     vectors = Vector{Any}(undef, M)
     for j in 1:M
         entries = [:(v.ϵ12[$i][$j]) for i in 1:N]
         vectors[j] = quote
-            V = StaticArrays.similar_type(x, $T, Size($N))
+            V = StaticArrays.similar_type(x, $TX, Size($N))
             V($(Expr(:tuple, entries...)))
         end
     end
@@ -68,7 +68,7 @@ end
     duals = hyperdualize(x)
     out = f(duals)
     check_scalar(out)
-    return out
+    return _ensure_dual(out, duals)
 end
 
 function HyperHessians.hessian(f::F, x::StaticVector{N, T}) where {F, N, T}
@@ -89,6 +89,7 @@ function HyperHessians.hvp(f::F, x::StaticVector{N, T}, tangents::NTuple{M, <:St
     duals = hyperdualize_dir(x, tangents)
     out = f(duals)
     check_scalar(out)
+    out = _ensure_dual(out, duals)
     return extract_static_hvp(out, x)
 end
 
@@ -100,6 +101,7 @@ function HyperHessians.hvp_gradient_value(f::F, x::StaticVector{N, T}, tangents:
     duals = hyperdualize_dir(x, tangents)
     out = f(duals)
     check_scalar(out)
+    out = _ensure_dual(out, duals)
     g = extract_static_gradient(out, x)
     hv = extract_static_hvp(out, x)
     return (; value = out.v, gradient = g, hvp = hv)

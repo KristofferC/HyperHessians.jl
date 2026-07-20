@@ -100,6 +100,24 @@ end
     @test res_s.value == 42.0
     @test res_s.gradient == 0.0
     @test res_s.hessian == 0.0
+
+    # The primal value of a constant function must not be coerced to the input type.
+    precise_constant = big"1.0000000000000000000000000000000000001"
+    precise_res = hessian_gradient_value(_ -> precise_constant, x)
+    @test precise_res.value === precise_constant
+    @test iszero(precise_res.gradient)
+    @test iszero(precise_res.hessian)
+end
+
+@testset "empty input" begin
+    f_empty(x) = 3.0
+    x = Float64[]
+    cfg = HessianConfig(x)
+    @test hessian(f_empty, x, cfg) == zeros(0, 0)
+    res = hessian_gradient_value(f_empty, x, cfg)
+    @test res.value == 3.0
+    @test isempty(res.gradient)
+    @test size(res.hessian) == (0, 0)
 end
 
 end # module
