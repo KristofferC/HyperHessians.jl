@@ -406,6 +406,11 @@ end
 # monomial derivatives (the generic rule divides by x and is NaN at x = 0);
 # it also resolves the ambiguity with Base.^(::Number, ::Integer).
 
+# Disambiguate the base-ℯ methods against Base.^(::Irrational{:ℯ}, ::Number) and
+# Base.log(::Irrational{:ℯ}, ::Number).
+@inline Base.:(^)(::Irrational{:ℯ}, h::HyperDual) = exp(h)
+@inline Base.log(::Irrational{:ℯ}, h::HyperDual) = log(h)
+
 
 """
     normalize_cse_vars(expr)
