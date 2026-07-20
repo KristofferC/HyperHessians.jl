@@ -1,7 +1,7 @@
 module HyperHessiansLogExpFunctionsExt
 
 using HyperHessians
-using HyperHessians: changeprecision, rule_expr, rule_cse, chain_rule_dual, HyperDual
+using HyperHessians: changeprecision, rule_expr, rule_cse, chain_rule_dual, HyperDual, chain_rule_jet, Jet
 using CommonSubexpressions: cse, binarize
 using LogExpFunctions
 
@@ -33,6 +33,11 @@ for (f, f′, f′′) in LOGEXPFUNCTIONS_DIFF_RULES
         x = h.v
         $cse_expr
         return chain_rule_dual(h, f, f′, f′′)
+    end
+    @eval @inline function LogExpFunctions.$f(j::Jet{N, M, T}) where {N, M, T}
+        x = j.v
+        $cse_expr
+        return chain_rule_jet(j, f, f′, f′′)
     end
 end
 

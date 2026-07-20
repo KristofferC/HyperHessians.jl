@@ -1,7 +1,7 @@
 module HyperHessiansNaNMathExt
 
 using HyperHessians
-using HyperHessians: changeprecision, chain_rule_dual, rule_cse, HyperDual
+using HyperHessians: changeprecision, chain_rule_dual, rule_cse, HyperDual, chain_rule_jet, Jet
 using CommonSubexpressions: cse, binarize
 using NaNMath
 
@@ -80,6 +80,11 @@ for (f, f′, f′′) in NANMATH_DIFF_RULES
         $cse_expr
         return chain_rule_dual(h, f, f′, f′′)
     end
+    @eval @inline function NaNMath.$f(j::Jet{N, M, T}) where {N, M, T}
+        x = j.v
+        $cse_expr
+        return chain_rule_jet(j, f, f′, f′′)
+    end
 end
 
 for (f, fₓ, fᵧ, fₓₓ, fₓᵧ, fᵧᵧ) in NANMATH_BINARY_DIFF_RULES
@@ -105,6 +110,28 @@ for (f, fₓ, fᵧ, fₓₓ, fₓᵧ, fᵧᵧ) in NANMATH_BINARY_DIFF_RULES
         y = hy.v
         $cse_expr
         return chain_rule_dual(hy, f, fᵧ, fᵧᵧ)
+    end
+
+    @eval @inline function NaNMath.$f(jx::Jet{N, M, T}, jy::Jet{N, M, T}) where {N, M, T}
+        x = jx.v
+        y = jy.v
+        $cse_expr
+        return chain_rule_jet(jx, jy, f, fₓ, fᵧ, fₓₓ, fₓᵧ, fᵧᵧ)
+    end
+    @eval @inline function NaNMath.$f(jx::Jet{N, M, T1}, jy::Jet{N, M, T2}) where {N, M, T1, T2}
+        return NaNMath.$f(promote(jx, jy)...)
+    end
+    @eval @inline function NaNMath.$f(jx::Jet{N, M, T}, y_raw::Real) where {N, M, T}
+        x = jx.v
+        y = T(y_raw)
+        $cse_expr
+        return chain_rule_jet(jx, f, fₓ, fₓₓ)
+    end
+    @eval @inline function NaNMath.$f(x_raw::Real, jy::Jet{N, M, T}) where {N, M, T}
+        x = T(x_raw)
+        y = jy.v
+        $cse_expr
+        return chain_rule_jet(jy, f, fᵧ, fᵧᵧ)
     end
 end
 

@@ -9,6 +9,10 @@ using HyperHessians: HyperHessians, hessian, hessian!, hessian_gradient_value,
     hessian_gradient_value!, HessianConfig, Chunk, Jet
 using DiffTests
 using ForwardDiff
+using NaNMath
+using SpecialFunctions
+using LogExpFunctions
+using StaticArrays
 
 @testset "default config dispatch" begin
     for n in 1:HyperHessians.JET_VECTOR_MAX_N
@@ -84,6 +88,39 @@ end
     H = hessian(f, x, cfg)
     @test eltype(H) == Float32
     @test H ≈ ForwardDiff.hessian(f, x) rtol = 1.0e-4
+end
+
+@testset "extension rules through jets: $(name)" for (name, f) in (
+        (
+            "NaNMath", v -> NaNMath.sqrt(v[1]) + NaNMath.log(v[2]) + NaNMath.pow(v[1], v[2]) +
+                NaNMath.pow(v[2], 2.5) + NaNMath.sin(v[1]) + NaNMath.lgamma(v[2] + 2),
+        ),
+        ("SpecialFunctions", v -> gamma(v[1]) + erf(v[2]) + digamma(v[1] + 2) + besselj0(v[2])),
+        ("LogExpFunctions", v -> logistic(v[1]) + xlogx(v[2]) + log1pexp(v[1]) + logit(v[2] / 2)),
+    )
+    for n in (2, HyperHessians.JET_VECTOR_MAX_N)
+        x = rand(n) .+ 0.2
+        cfg = HessianConfig(x)
+        @test eltype(cfg.duals) <: Jet
+        H_jet = hessian(f, x, cfg)
+        H_hd = hessian(f, x, HessianConfig(x, Chunk{n}()))
+        @test H_jet ≈ H_hd rtol = 1.0e-10
+    end
+end
+
+@testset "StaticArrays through jets" begin
+    f = DiffTests.ackley
+    for n in (2, HyperHessians.JET_VECTOR_MAX_N, HyperHessians.JET_VECTOR_MAX_N + 1, 8)
+        xv = rand(n)
+        xs = SVector{n}(xv)
+        H_static = hessian(f, xs)
+        @test H_static isa SMatrix
+        @test H_static ≈ hessian(f, xv, HessianConfig(xv, Chunk{n}())) rtol = 1.0e-10
+        res = hessian_gradient_value(f, xs)
+        @test res.value ≈ f(xv)
+        @test res.gradient ≈ ForwardDiff.gradient(f, xv)
+        @test res.hessian ≈ H_static
+    end
 end
 
 @testset "jet config errors" begin
