@@ -126,6 +126,42 @@ for (i, rule) in enumerate(BINARY_DIFF_RULES)
     BINARY_DIFF_RULES[i] = (rule[1], prec_fₓ, prec_fᵧ, prec_fₓₓ, prec_fₓᵧ, prec_fᵧᵧ)
 end
 
+# Operations which Julia's `@fastmath` rewrites to `Base.FastMath` calls.
+# Keep this explicit rather than depending on the internal `Base.FastMath.fast_op`
+# dictionary at package load time.
+const FAST_UNARY_OPS = Dict(
+    :sqrt => :sqrt_fast,
+    :cbrt => :cbrt_fast,
+    :abs2 => :abs2_fast,
+    :abs => :abs_fast,
+    :inv => :inv_fast,
+    :log => :log_fast,
+    :log10 => :log10_fast,
+    :log2 => :log2_fast,
+    :log1p => :log1p_fast,
+    :exp => :exp_fast,
+    :exp2 => :exp2_fast,
+    :exp10 => :exp10_fast,
+    :expm1 => :expm1_fast,
+    :tan => :tan_fast,
+    :asin => :asin_fast,
+    :acos => :acos_fast,
+    :atan => :atan_fast,
+    :sinh => :sinh_fast,
+    :cosh => :cosh_fast,
+    :tanh => :tanh_fast,
+    :asinh => :asinh_fast,
+    :acosh => :acosh_fast,
+    :atanh => :atanh_fast,
+)
+
+const FAST_BINARY_OPS = Dict(
+    :^ => :pow_fast,
+    :atan => :atan_fast,
+    :hypot => :hypot_fast,
+    :log => :log_fast,
+)
+
 function rule_expr(f, f′, f′′)
     ex = quote
         # Verify that the cse still works properly when changing this.
@@ -179,9 +215,19 @@ end
 Apply chain rule to HyperDual `h` given primal `f`, first derivative `f′`, and second derivative `f′′`.
 Returns a new HyperDual with properly propagated derivatives.
 """
-@inline function chain_rule_dual(h::HyperDual{N1, N2}, f, f′, f′′) where {N1, N2}
-    x23 = (f′′ ⊙ h.ϵ1) ⊗ h.ϵ2
-    return HyperDual(f, h.ϵ1 ⊙ f′, h.ϵ2 ⊙ f′, ntuple(i -> _muladd(f′, h.ϵ12[i], x23[i]), Val(N1)))
+@inline chain_rule_dual(h::HyperDual, f, f′, f′′) =
+    chain_rule_dual(IEEE_MODE, h, f, f′, f′′)
+
+@inline function chain_rule_dual(
+        mode::ArithmeticMode,
+        h::HyperDual{N1, N2},
+        f,
+        f′,
+        f′′,
+    ) where {N1, N2}
+    x23 = _outer(mode, _mul(mode, f′′, h.ϵ1), h.ϵ2)
+    ϵ12 = ntuple(i -> _muladd(mode, f′, h.ϵ12[i], x23[i]), Val(N1))
+    return HyperDual(f, _mul(mode, h.ϵ1, f′), _mul(mode, h.ϵ2, f′), ϵ12)
 end
 
 """
@@ -190,7 +236,11 @@ end
 Apply chain rule to a scalar function of two HyperDual inputs given first and
 second partial derivatives.
 """
+@inline chain_rule_dual(hx::HyperDual, hy::HyperDual, f, fₓ, fᵧ, fₓₓ, fₓᵧ, fᵧᵧ) =
+    chain_rule_dual(IEEE_MODE, hx, hy, f, fₓ, fᵧ, fₓₓ, fₓᵧ, fᵧᵧ)
+
 @inline function chain_rule_dual(
+        mode::ArithmeticMode,
         hx::HyperDual{N1, N2},
         hy::HyperDual{N1, N2},
         f,
@@ -200,12 +250,14 @@ second partial derivatives.
         fₓᵧ,
         fᵧᵧ,
     ) where {N1, N2}
-    ϵ1 = _muladd(fₓ, hx.ϵ1, hy.ϵ1 ⊙ fᵧ)
-    ϵ2 = _muladd(fₓ, hx.ϵ2, hy.ϵ2 ⊙ fᵧ)
+    ϵ1 = _muladd(mode, fₓ, hx.ϵ1, _mul(mode, hy.ϵ1, fᵧ))
+    ϵ2 = _muladd(mode, fₓ, hx.ϵ2, _mul(mode, hy.ϵ2, fᵧ))
     @inline g(i) = begin
-        acc = _muladd(fₓ, hx.ϵ12[i], hy.ϵ12[i] ⊙ fᵧ)
-        acc = _muladd(hx.ϵ1[i] * fₓₓ + hy.ϵ1[i] * fₓᵧ, hx.ϵ2, acc)
-        acc = _muladd(hx.ϵ1[i] * fₓᵧ + hy.ϵ1[i] * fᵧᵧ, hy.ϵ2, acc)
+        acc = _muladd(mode, fₓ, hx.ϵ12[i], _mul(mode, hy.ϵ12[i], fᵧ))
+        xterm = _add(mode, _mul(mode, hx.ϵ1[i], fₓₓ), _mul(mode, hy.ϵ1[i], fₓᵧ))
+        yterm = _add(mode, _mul(mode, hx.ϵ1[i], fₓᵧ), _mul(mode, hy.ϵ1[i], fᵧᵧ))
+        acc = _muladd(mode, xterm, hx.ϵ2, acc)
+        acc = _muladd(mode, yterm, hy.ϵ2, acc)
         acc
     end
     return HyperDual(f, ϵ1, ϵ2, ntuple(g, Val(N1)))
@@ -219,6 +271,37 @@ end
 @inline function Base.cos(h::HyperDual{N1, N2}) where {N1, N2}
     s, c = sincos(h.v)
     return chain_rule_dual(h, c, -s, -c)
+end
+
+@inline function Base.FastMath.sin_fast(h::HyperDual)
+    s = Base.FastMath.sin_fast(h.v)
+    c = Base.FastMath.cos_fast(h.v)
+    return chain_rule_dual(FAST_MODE, h, s, c, _neg(FAST_MODE, s))
+end
+
+@inline function Base.FastMath.cos_fast(h::HyperDual)
+    s = Base.FastMath.sin_fast(h.v)
+    c = Base.FastMath.cos_fast(h.v)
+    return chain_rule_dual(
+        FAST_MODE,
+        h,
+        c,
+        _neg(FAST_MODE, s),
+        _neg(FAST_MODE, c),
+    )
+end
+
+@inline function Base.FastMath.sincos_fast(h::HyperDual)
+    s, c = Base.FastMath.sincos_fast(h.v)
+    hs = chain_rule_dual(FAST_MODE, h, s, c, _neg(FAST_MODE, s))
+    hc = chain_rule_dual(
+        FAST_MODE,
+        h,
+        c,
+        _neg(FAST_MODE, s),
+        _neg(FAST_MODE, c),
+    )
+    return hs, hc
 end
 
 @inline function Base.sinpi(h::HyperDual{N1, N2}) where {N1, N2}
@@ -238,6 +321,20 @@ for (f, f′, f′′) in DIFF_RULES
         x = h.v
         $cse_expr
         return chain_rule_dual(h, f, f′, f′′)
+    end
+
+    fast_sym = get(FAST_UNARY_OPS, f, nothing)
+    fast_sym === nothing && continue
+    fast_expr = rule_expr(:(Base.FastMath.$fast_sym), f′, f′′)
+    fast_cse_expr = rule_cse(fast_expr; warn = false)
+    @eval @inline function Base.FastMath.$fast_sym(
+            h::HyperDual{N1, N2, T}
+        ) where {N1, N2, T}
+        x = h.v
+        @fastmath begin
+            $fast_cse_expr
+            return chain_rule_dual(FAST_MODE, h, f, f′, f′′)
+        end
     end
 end
 
@@ -264,6 +361,45 @@ for (f, fₓ, fᵧ, fₓₓ, fₓᵧ, fᵧᵧ) in BINARY_DIFF_RULES
         y = hy.v
         $cse_expr
         return chain_rule_dual(hy, f, fᵧ, fᵧᵧ)
+    end
+
+    fast_sym = FAST_BINARY_OPS[f]
+    fast_expr = binary_rule_expr(:(Base.FastMath.$fast_sym), fₓ, fᵧ, fₓₓ, fₓᵧ, fᵧᵧ)
+    fast_cse_expr = rule_cse(fast_expr; warn = false)
+    @eval @inline function Base.FastMath.$fast_sym(
+            hx::HyperDual{N1, N2, T}, hy::HyperDual{N1, N2, T}
+        ) where {N1, N2, T}
+        x = hx.v
+        y = hy.v
+        @fastmath begin
+            $fast_cse_expr
+            return chain_rule_dual(FAST_MODE, hx, hy, f, fₓ, fᵧ, fₓₓ, fₓᵧ, fᵧᵧ)
+        end
+    end
+    @eval @inline function Base.FastMath.$fast_sym(
+            hx::HyperDual{N1, N2, T1}, hy::HyperDual{N1, N2, T2}
+        ) where {N1, N2, T1, T2}
+        return Base.FastMath.$fast_sym(promote(hx, hy)...)
+    end
+    @eval @inline function Base.FastMath.$fast_sym(
+            hx::HyperDual{N1, N2, T}, y_raw::Real
+        ) where {N1, N2, T}
+        x = hx.v
+        y = y_raw
+        @fastmath begin
+            $fast_cse_expr
+            return chain_rule_dual(FAST_MODE, hx, f, fₓ, fₓₓ)
+        end
+    end
+    @eval @inline function Base.FastMath.$fast_sym(
+            x_raw::Real, hy::HyperDual{N1, N2, T}
+        ) where {N1, N2, T}
+        x = x_raw
+        y = hy.v
+        @fastmath begin
+            $fast_cse_expr
+            return chain_rule_dual(FAST_MODE, hy, f, fᵧ, fᵧᵧ)
+        end
     end
 end
 # NOTE: `^(::HyperDual, ::Integer)` is defined in hyperdual.jl with dedicated

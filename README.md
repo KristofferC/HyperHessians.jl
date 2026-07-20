@@ -60,6 +60,21 @@ julia> HyperHessians.hessian(f, 2.0)
 82.55705026089272
 ```
 
+### Fast math
+
+HyperHessians preserves `@fastmath` in the function being differentiated,
+including the arithmetic used to propagate its derivatives:
+
+```julia
+f(x) = @fastmath sin(x[1]) + x[1] * x[2] + x[2]^4
+HyperHessians.hessian(f, [0.4, 1.3])
+```
+
+The annotation must be part of `f`; wrapping `@fastmath` around the call to
+`hessian` does not change `f` or the differentiation machinery. As with any
+use of `@fastmath`, this opts into non-IEEE transformations and their usual
+accuracy and special-value tradeoffs.
+
 When the input is a vector, the basic usage will, however, not give the best performance.
 
 ### Advanced
