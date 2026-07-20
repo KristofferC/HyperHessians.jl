@@ -307,6 +307,45 @@ Both packages get identical settings: chunk size 8, so both dual types hold exac
 
 ---
 @eyebrow Performance
+# Case study: why is sin 2× slower for nested duals?
+
+::: cols
+:: col
+```ForwardDiff | the rule runs in dual arithmetic
+function Base.sin(d::Dual)
+    s, c = sincos(value(d))
+    return Dual(s, c * partials(d))
+end
+
+# for a nested dual, value(d) is an inner Dual:
+[-] #  sincos(::Dual) builds TWO inner duals
+[-] #    (sin v, cos v · p), (cos v, −sin v · p)
+[-] #  then c * partials(d): eight 9-wide
+[-] #  dual multiplies — no FMA, shuffles
+```
+:: col
+```HyperHessians | the rule is two scalars
+function Base.sin(h::HyperDual)
+    s, c = sincos(h.v)
+    return chain_rule(h, s, c, -s)
+end
+
+# h.v is a plain Float64. one chain rule:
+[+] #  ϵ₁  ← c·ϵ₁      ϵ₂ ← c·ϵ₂
+[+] #  ϵ₁₂ ← c·ϵ₁₂ − s·ϵ₁⊗ϵ₂
+[+] #  all 8-wide fused multiply-adds
+```
+:::
+
+| ns per element, Zen 4 | Float64 | Dual{F,8} | nested Dual 8×8 | HyperDual{8,8} |
+|---|---|---|---|---|
+| sin | 4.1 | 6.4 | 41.7 | *22.6* |
+| exp | 2.7 | 4.1 | 25.5 | *21.7* |
+
+> The sine itself is 4 ns — the other ~38 ns is derivative bookkeeping. sin is the worst case because its derivative is a different function (cos), which must itself be built as an inner dual before propagation starts. exp gets off lightly: its derivative is the value it just computed.
+
+---
+@eyebrow Performance
 # 8 doubles fill registers. 9 don't.
 
 ::: panel HyperDual{8,8} — every lane is 8 doubles: exactly one AVX-512 register
