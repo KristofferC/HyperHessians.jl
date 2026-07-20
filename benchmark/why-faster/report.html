@@ -360,14 +360,15 @@
   <p class="eyebrow">Performance forensics · HyperHessians.jl vs ForwardDiff.jl</p>
   <h1>Anatomy of a speedup</h1>
   <p class="dek">Against released ForwardDiff, HyperHessians computes dense Hessians
-  <strong>3.2–6.5× faster</strong> at identical settings. But most of the arithmetic half of that gap turned
-  out to be a <strong>ForwardDiff performance bug</strong> — a missing <code>@inline</code> found by reading
-  the generated code, fixed here with a two-line patch. This report benchmarks against the <em>patched</em>
-  ForwardDiff: <strong>2.2–3.7×</strong> remains, and every remaining factor is structural — Hessian
-  symmetry, an FMA-friendly memory layout, and a zero-allocation driver.</p>
+  <strong>3.3–7.9× faster</strong> at identical settings. But much of that gap turned out to be a
+  <strong>ForwardDiff performance bug</strong> — a missing <code>@inline</code> found by reading the
+  generated code, fixed here with a two-line patch. This report benchmarks against the <em>patched</em>
+  ForwardDiff on two architectures: <strong>2.2–4.4×</strong> remains, and every remaining factor is
+  structural — Hessian symmetry, a SIMD-lane-exact memory layout (decisive on AVX-512), and a
+  zero-allocation driver.</p>
 
   <div class="meta-row sans">
-    <span class="chip">Apple Silicon · darwin</span>
+    <span class="chip">Apple M4 (NEON) · AMD Zen 4 (AVX-512)</span>
     <span class="chip">Julia 1.12.6</span>
     <span class="chip">ForwardDiff master + inline patch</span>
     <span class="chip">DiffTests ackley / rosenbrock_1</span>
@@ -376,7 +377,7 @@
 
   <p class="eq-caption sans">Chunk size pinned to 8 for both packages — same block shape, same 81-float dual
   payload — and ForwardDiff patched. The measured speedup factors as a product of three independent effects
-  (n = 256, this machine; the range in factor 2 is ackley → rosenbrock):</p>
+  (n = 256; ranges span function and architecture):</p>
   <div class="equation sans">
     <div class="tile">
       <div class="t-label">1 · Symmetry</div>
@@ -386,20 +387,20 @@
     <div class="op">×</div>
     <div class="tile">
       <div class="t-label">2 · Arithmetic / eval</div>
-      <div class="t-value">1.0–1.7×</div>
-      <div class="t-note">muladd-fused SIMD lanes vs unfused ragged lanes, equal payload (1.4–3.0× before the FD patch)</div>
+      <div class="t-value">1.0–1.8×</div>
+      <div class="t-note">FMA-fused zmm-exact lanes vs unfused ragged lanes — near parity on NEON, 1.7–1.8× on AVX-512</div>
     </div>
     <div class="op">×</div>
     <div class="tile">
       <div class="t-label">3 · Fixed overhead</div>
-      <div class="t-value">~1.1×</div>
-      <div class="t-note">0 B allocated vs 657 KB + full-array reseeding per Hessian</div>
+      <div class="t-value">1.1–1.3×</div>
+      <div class="t-note">0 B allocated vs ~600 KB + full-array reseeding per Hessian</div>
     </div>
     <div class="op">≈</div>
     <div class="tile result">
       <div class="t-label">Measured total</div>
-      <div class="t-value">2.2–3.7×</div>
-      <div class="t-note">ackley 2.23× · rosenbrock 3.67× vs patched FD — the factors multiply to 2.2 / 3.7</div>
+      <div class="t-value">2.2–4.4×</div>
+      <div class="t-note">vs patched FD — M4: 2.23× / 3.67× · Zen 4: 4.39× / 3.64× (ackley / rosenbrock)</div>
     </div>
   </div>
 </header>
@@ -450,7 +451,7 @@
     <span class="factor-num">FACTOR 2</span>
     <h2>Cheaper arithmetic per Hessian entry</h2>
   </div>
-  <p class="kicker">1.0× (ackley) to 1.7× (rosenbrock) after patching ForwardDiff · this is where the number types differ</p>
+  <p class="kicker">1.0–1.8× after patching ForwardDiff, depending on function and architecture · this is where the number types differ</p>
 
   <div class="prose">
     <p>With the chunk size pinned, the payload is fixed: <code>HyperDual{8,8}</code> (1+8+8+64 floats)
@@ -467,20 +468,22 @@
       <span><i class="sw fd8"></i>nested Dual 8×8 — patched FD, same 81-float payload</span>
     </div>
     <div id="opchart"></div>
-    <p class="fig-caption">Time per element, lower is better, ForwardDiff patched. After the fix the two
-    representations are close on transcendental-dominated ops — <code>exp</code> even favors ForwardDiff —
-    and the remaining gap concentrates in multiply/divide, the ops dominated by lane arithmetic (§2b).</p>
+    <p class="fig-caption">Time per element on the <strong>Apple M4</strong>, lower is better, ForwardDiff
+    patched. After the fix the two representations are close on NEON — <code>exp</code> even favors
+    ForwardDiff. This near-parity is <em>architecture-specific</em>: on AVX-512 the multiply gap stays at
+    3.1× even patched (§2b). Note these streamed micro-benchmarks store a 648-byte result per element, a
+    memory cost both sides share that compresses the ratios; register-resident code shows larger gaps.</p>
     <details>
-      <summary>Data table, including stock (unpatched) ForwardDiff</summary>
+      <summary>Data table — both machines, patched and stock ForwardDiff</summary>
       <div class="table-scroll">
       <table>
-        <thead><tr><th>op</th><th>HyperDual{8,8}</th><th>nested 8×8, patched</th><th>nested 8×8, stock</th></tr></thead>
+        <thead><tr><th>op</th><th>HD · M4</th><th>nested patched · M4</th><th>nested stock · M4</th><th>HD · Zen 4</th><th>nested patched · Zen 4</th><th>nested stock · Zen 4</th></tr></thead>
         <tbody>
-          <tr><td>*</td><td>17.7 ns</td><td>22.7 ns</td><td>65.4 ns</td></tr>
-          <tr><td>/</td><td>22.7 ns</td><td>25.8 ns</td><td>63.8 ns</td></tr>
-          <tr><td>exp</td><td>26.5 ns</td><td>24.3 ns</td><td>35.6 ns</td></tr>
-          <tr><td>sqrt</td><td>13.8 ns</td><td>14.7 ns</td><td>34.0 ns</td></tr>
-          <tr><td>sin</td><td>29.5 ns</td><td>31.7 ns</td><td>40.9 ns</td></tr>
+          <tr><td>*</td><td>17.7 ns</td><td>22.7 ns</td><td>65.4 ns</td><td>17.4 ns</td><td>53.5 ns</td><td>127.6 ns</td></tr>
+          <tr><td>/</td><td>22.7 ns</td><td>25.8 ns</td><td>63.8 ns</td><td>18.6 ns</td><td>22.8 ns</td><td>122.3 ns</td></tr>
+          <tr><td>exp</td><td>26.5 ns</td><td>24.3 ns</td><td>35.6 ns</td><td>21.0 ns</td><td>26.0 ns</td><td>78.5 ns</td></tr>
+          <tr><td>sqrt</td><td>13.8 ns</td><td>14.7 ns</td><td>34.0 ns</td><td>12.2 ns</td><td>13.0 ns</td><td>81.1 ns</td></tr>
+          <tr><td>sin</td><td>29.5 ns</td><td>31.7 ns</td><td>40.9 ns</td><td>22.1 ns</td><td>42.8 ns</td><td>70.2 ns</td></tr>
         </tbody>
       </table>
       </div>
@@ -488,10 +491,11 @@
   </div>
 
   <div class="prose">
-    <p>Whole-function evaluation against the patched ForwardDiff: <code>ackley</code> is now a dead heat —
-    16.0 vs 16.4 µs per call — while <code>rosenbrock_1</code>, which is multiply-dominated, keeps a
-    <strong>1.74×</strong> gap (11.2 vs 19.5 µs). Multiplied by factor 1 (1.94×) and the overhead factor,
-    these reproduce the measured totals exactly.</p>
+    <p>Whole-function evaluation against the patched ForwardDiff: on the M4, <code>ackley</code> is a dead
+    heat — 16.0 vs 16.4 µs per call — while <code>rosenbrock_1</code> keeps <strong>1.74×</strong>
+    (11.2 vs 19.5 µs; §2c explains why). On Zen 4 both functions keep the gap: ackley 10.7 vs 18.9 µs
+    (<strong>1.77×</strong>), rosenbrock 17.0 vs 28.6 µs (<strong>1.68×</strong>). Multiplied by factor 1
+    (1.94×) and the overhead factor, these reproduce every measured total.</p>
   </div>
 
   <h3>2a — The big per-op gap was a ForwardDiff bug: a missing <code>@inline</code></h3>
@@ -682,11 +686,73 @@
       </div>
     </div>
     <p class="fig-caption">Each cell is one <code>Float64</code>; each bracket-group is one derivative lane the
-    compiler must process as a unit. 8 doubles fill 2×AVX2 or 4×NEON registers exactly. 9 doubles are 4 full
-    vectors plus a scalar straggler — every single lane, every single op.</p>
+    compiler must process as a unit. 8 doubles fill 2×AVX2 or 4×NEON registers exactly — and on AVX-512,
+    <strong>exactly one zmm register</strong>. 9 doubles are always a full-vector set plus a straggler —
+    every single lane, every single op.</p>
   </div>
 
-  <h3>2c — Scalar (f, f′, f″) rules: mostly a wash once FD inlines</h3>
+  <div class="prose">
+    <p>On NEON (2-wide vectors) the straggler costs little, which is why the M4 per-op chart above shows
+    near parity. On <strong>AVX-512 the lane shape is decisive</strong>: measured on an AMD Zen 4 (EPYC
+    9354), the patched nested multiply is still <strong>3.1× slower</strong> (53.5 vs 17.4 ns). The
+    instruction mix explains it — HyperDual's multiply is 25 eight-wide FMAs plus broadcasts, while the
+    nested multiply spends more instructions <em>rearranging data</em> than computing:</p>
+  </div>
+
+  <div class="codecols">
+    <div class="codecard">
+      <div class="cc-head">
+        <span class="cc-title">HyperDual{8,8} <code>*</code> on Zen 4 — instruction histogram</span>
+        <span class="cc-sub">code_native · 186 instructions total</span>
+      </div>
+      <pre><code><span class="ln good">  21× vfmadd231pd zmm   <span class="cm">; 8-wide fused mul-add</span></span>
+<span class="ln good">   4× vfmadd213pd zmm</span>
+<span class="ln">  15× vbroadcastsd zmm</span>
+<span class="ln">  14× vmovupd / 8× vmovapd</span>
+<span class="ln good">  11× vmulpd zmm</span>
+<span class="ln">   6× vpermpd · 6× vpermi2pd</span>
+<span class="ln">   2× vgatherdpd</span></code></pre>
+      <div class="cc-verdict">
+        <span class="v-pill good">25 zmm FMAs</span>
+        <span class="v-pill good">each lane = one zmm</span>
+        <span class="v-pill good">12 shuffle/gather</span>
+      </div>
+    </div>
+    <div class="codecard">
+      <div class="cc-head">
+        <span class="cc-title">nested Dual 8×8 <code>*</code> on Zen 4, patched — instruction histogram</span>
+        <span class="cc-sub">code_native · 418 instructions total</span>
+      </div>
+      <pre><code><span class="ln bad">  49× vpermt2pd         <span class="cm">; cross-register shuffles</span></span>
+<span class="ln bad">  18× vgatherdpd        <span class="cm">; gathers for 9-wide lanes</span></span>
+<span class="ln">  43× vmovupd / 40× vmovapd</span>
+<span class="ln">  34× vmulpd + 25× vaddpd  <span class="cm">; separate mul, add…</span></span>
+<span class="ln bad">   0× vfmadd            <span class="cm">; …never fused</span></span>
+<span class="ln">  17× vmulsd + 8× vaddsd  <span class="cm">; scalar stragglers</span></span>
+<span class="ln">  18× vxorpd · 4× vpermi2pd</span></code></pre>
+      <div class="cc-verdict">
+        <span class="v-pill bad">0 FMAs</span>
+        <span class="v-pill bad">71 shuffle/gather</span>
+        <span class="v-pill bad">25 scalar straggler ops</span>
+      </div>
+    </div>
+  </div>
+
+  <h3>2c — Why rosenbrock keeps ~1.7× even where single ops are at parity</h3>
+  <div class="prose">
+    <p>A fair question: if the patched per-op numbers are close on the M4, why does whole
+    <code>rosenbrock_1</code> stay 1.74× there? Not chained multiplies — a hand-written rosenbrock body
+    using literal constants (<code>(1 - x[i])^2 + 100*(…)^2</code>) runs at <strong>parity</strong> (33.6
+    vs 35.0 ns/element, accumulator in registers). The culprit is that <code>DiffTests.rosenbrock_1</code>
+    writes <code>a = one(eltype(x)); b = 100a</code> — the constants are themselves <em>duals</em>, with
+    all-zero derivative lanes. Every loop iteration then does dual−dual and dual×dual ops against operands
+    whose ϵ-parts are known zeros. Through HyperDual's flat, fully-inlined code LLVM constant-folds those
+    zero lanes away, collapsing the ops to near real×dual cost; through the nested representation the
+    folding largely fails, and the dead lanes are computed. Same algebra, same zeros — the flat layout is
+    simply easier for the compiler to see through.</p>
+  </div>
+
+  <h3>2d — Scalar (f, f′, f″) rules: mostly a wash once FD inlines</h3>
   <div class="prose">
     <p>HyperHessians evaluates each derivative rule as scalar expressions —
     <code>sqrt</code>: <code>f′ = 1/2/f</code>, <code>f′′ = -2f′³</code> — and applies one fused chain rule,
@@ -778,10 +844,14 @@
     <table>
       <thead><tr><th>function · n=256</th><th>machine · config</th><th>ForwardDiff</th><th>HyperHessians</th><th>speedup</th></tr></thead>
       <tbody>
-        <tr><td>ackley</td><td>Apple Silicon · chunk 8 · patched FD</td><td>20.4 ms</td><td>9.1 ms</td><td>2.23×</td></tr>
-        <tr><td>rosenbrock_1</td><td>Apple Silicon · chunk 8 · patched FD</td><td>23.9 ms</td><td>6.5 ms</td><td>3.67×</td></tr>
-        <tr><td>ackley</td><td>Apple Silicon · chunk 8 · stock FD</td><td>28.3 ms</td><td>8.9 ms</td><td>3.19×</td></tr>
-        <tr><td>rosenbrock_1</td><td>Apple Silicon · chunk 8 · stock FD</td><td>41.2 ms</td><td>6.3 ms</td><td>6.54×</td></tr>
+        <tr><td>ackley</td><td>Apple M4 · chunk 8 · patched FD</td><td>20.4 ms</td><td>9.1 ms</td><td>2.23×</td></tr>
+        <tr><td>rosenbrock_1</td><td>Apple M4 · chunk 8 · patched FD</td><td>23.9 ms</td><td>6.5 ms</td><td>3.67×</td></tr>
+        <tr><td>ackley</td><td>AMD Zen 4 · chunk 8 · patched FD</td><td>25.7 ms</td><td>5.9 ms</td><td>4.39×</td></tr>
+        <tr><td>rosenbrock_1</td><td>AMD Zen 4 · chunk 8 · patched FD</td><td>34.0 ms</td><td>9.4 ms</td><td>3.64×</td></tr>
+        <tr><td>ackley</td><td>Apple M4 · chunk 8 · stock FD</td><td>28.3 ms</td><td>8.9 ms</td><td>3.19×</td></tr>
+        <tr><td>rosenbrock_1</td><td>Apple M4 · chunk 8 · stock FD</td><td>41.2 ms</td><td>6.3 ms</td><td>6.54×</td></tr>
+        <tr><td>ackley</td><td>AMD Zen 4 · chunk 8 · stock FD</td><td>46.3 ms</td><td>5.8 ms</td><td>7.92×</td></tr>
+        <tr><td>rosenbrock_1</td><td>AMD Zen 4 · chunk 8 · stock FD</td><td>56.7 ms</td><td>11.9 ms</td><td>4.77×</td></tr>
         <tr><td>ackley</td><td>arrowlake-s · package defaults · stock FD</td><td>16.2 ms</td><td>2.6 ms</td><td>6.30×</td></tr>
         <tr><td>rosenbrock_1</td><td>arrowlake-s · package defaults · stock FD</td><td>25.9 ms</td><td>3.1 ms</td><td>8.45×</td></tr>
         <tr><td>self_weighted_logit</td><td>arrowlake-s · package defaults · stock FD</td><td>16.7 ms</td><td>4.2 ms</td><td>3.99×</td></tr>
@@ -789,10 +859,10 @@
       </tbody>
     </table>
     </div>
-    <p class="fig-caption">Sanity check on this machine (chunk 8 both, patched FD): evals × per-eval cost
-    predicts the totals — FD 1024 × 16.4 µs = 16.8 of 20.4 ms; HH 528 × 16.0 µs = 8.5 of 9.1 ms. The
-    residuals are factor 3, and the three factors multiply to 2.2 (ackley) and 3.7 (rosenbrock) against
-    measured 2.23× and 3.67×.</p>
+    <p class="fig-caption">Sanity check (chunk 8 both, patched FD): evals × per-eval cost predicts every
+    total. M4 ackley: FD 1024 × 16.4 µs = 16.8 of 20.4 ms, HH 528 × 16.0 µs = 8.5 of 9.1 ms; factors
+    1.94 × 1.02 × 1.12 = 2.2 vs measured 2.23×. Zen 4 ackley: FD 1024 × 18.9 µs = 19.4 of 25.7 ms,
+    HH 528 × 10.7 µs = 5.6 of 5.9 ms; factors 1.94 × 1.77 × 1.29 = 4.4 vs measured 4.39×.</p>
   </div>
 
   <div class="prose">
@@ -800,9 +870,11 @@
     <code>@inline</code> on <code>dual_definition_retval</code> costs stock ForwardDiff 1.4–1.7× on every
     nested-dual Hessian (confirmed on v1.3.0 and master v1.4.1). Users today experience the stock rows in
     the table above; the patch should go upstream, at which point the honest gap is the patched rows.</p>
-    <p><strong>Machine dependence.</strong> The committed arrowlake-s numbers were taken with stock
-    ForwardDiff and package-default chunks; the x86/AVX2 codegen gap should also narrow with the patch,
-    but re-running that machine's sweep is the way to know.</p>
+    <p><strong>Machine dependence, measured.</strong> The two architectures split cleanly: on NEON the
+    patched per-op arithmetic is near parity and symmetry dominates (2.2–3.7× total); on AVX-512 the
+    lane-shape/FMA advantage adds a solid 1.7–1.8× on top (3.6–4.4× total). The committed arrowlake-s
+    numbers were taken with stock ForwardDiff and package-default chunks; expect them to land between
+    those regimes once patched.</p>
     <p><strong>HVP wins for a structural reason.</strong> <code>HyperDual{N1,N2}</code> supports
     asymmetric lanes, so <code>hvp</code> seeds ϵ₂ with the tangent directly (<code>HyperDual{8,1}</code>)
     and chunks only ϵ₁ — 1.8–3.6× over DI/ForwardDiff's pushforward-of-chunked-gradient nesting
@@ -811,14 +883,16 @@
 </section>
 
 <footer class="sans">
-  <p><strong>Methodology.</strong> All measurements: Julia 1.12.6, HyperHessians at <code>e5b8b4c</code>,
-  ForwardDiff master (<code>090ddbb</code>, v1.4.1) with the two-line <code>@inline</code> patch applied and
+  <p><strong>Methodology.</strong> Machines: Apple M4 (macOS, NEON) and AMD EPYC 9354 "Zen 4" (Linux,
+  AVX-512), both Julia 1.12.6, HyperHessians at <code>e5b8b4c</code>, ForwardDiff master
+  (<code>090ddbb</code>, v1.4.1) with the two-line <code>@inline</code> patch applied and
   <code>Pkg.develop</code>ed into the benchmark environment ("stock" rows: unpatched). BenchmarkTools
   minimum times, single thread, <code>DiffTests</code> inputs with fixed seed, chunk size pinned to 8 for
   both packages (<code>ForwardDiff.Chunk{8}()</code> / HyperHessians default) so both use the same 81-float
   dual payload. Evaluation counts via counting closure; codegen via
-  <code>code_native</code>/<code>code_llvm</code> (assembly shown is ARM64/NEON, lightly trimmed of debug
-  directives, symbol suffixes shortened). Experiment scripts and the patch:
+  <code>code_native</code>/<code>code_llvm</code> (the full multiply assembly panel is ARM64/NEON, lightly
+  trimmed; the Zen 4 histograms summarize the x86 listings). Experiment scripts, the patch, and raw
+  per-machine dumps (<code>collect.jl</code>, <code>results/&lt;cpu&gt;-&lt;variant&gt;.txt</code>):
   <code>benchmark/why-faster/</code> in the repository. Committed reference numbers from
   <code>benchmark/results/summary.md</code> (arrowlake-s, 24 threads, serial configs, package-default
   chunks, stock ForwardDiff).</p>

@@ -1,0 +1,303 @@
+=== SECTION: info ===
+cpu: znver4
+arch: x86_64
+julia: 1.12.6
+threads: 1
+ForwardDiff: v1.4.1 at /home/kristofferc/.julia/packages/ForwardDiff/4J2wz
+variant: stock
+HyperDual type: HyperHessians.HyperDual{8, 8, Float64} (648 bytes)
+nested Dual type: ForwardDiff.Dual{Nothing, ForwardDiff.Dual{Nothing, Float64, 8}, 8} (648 bytes)
+
+=== SECTION: per-op ns/element (n=256 vectors) ===
+HyperDual{8,8}     mul=17.0ns div=18.3ns exp=21.1ns sqrt=11.8ns sin=21.8ns
+nested Dual 8x8    mul=127.6ns div=122.3ns exp=78.5ns sqrt=81.1ns sin=70.2ns
+
+=== SECTION: one f eval (n=256) ===
+ackley        HyperDual{8,8}    10.72 µs
+ackley        nested Dual 8x8   32.41 µs
+rosenbrock_1  HyperDual{8,8}    16.96 µs
+rosenbrock_1  nested Dual 8x8   51.8 µs
+
+=== SECTION: hessian! totals (n=256, chunk 8 both) ===
+ackley        FD evals=1024 t=46.27ms alloc=592176B | HH t=5.84ms | speedup=7.92x
+rosenbrock_1  FD evals=1024 t=56.65ms alloc=592176B | HH t=11.87ms | speedup=4.77x
+
+=== SECTION: native mul stats ===
+HyperDual{8,8}     instrs=186 fma=25 calls=0 xmm=16 ymm=7 zmm=80
+nested Dual 8x8    instrs=59 fma=0 calls=3 xmm=3 ymm=0 zmm=0
+
+=== SECTION: asm mul HyperDual{8,8} ===
+	.text
+	.file	"*"
+	.section	.rodata.cst16,"aM",@progbits,16
+	.p2align	4, 0x0                          # -- Begin function julia_*_3292
+.LCPI0_0:
+	.long	16                              # 0x10
+	.long	32                              # 0x20
+	.long	40                              # 0x28
+	.long	48                              # 0x30
+.LCPI0_1:
+	.long	0                               # 0x0
+	.long	16                              # 0x10
+	.long	32                              # 0x20
+	.long	40                              # 0x28
+	.section	.rodata,"a",@progbits
+	.p2align	6, 0x0
+.LCPI0_2:
+	.quad	8                               # 0x8
+	.quad	0                               # 0x0
+	.zero	8
+	.quad	1                               # 0x1
+	.quad	2                               # 0x2
+	.quad	3                               # 0x3
+	.zero	8
+	.zero	8
+.LCPI0_3:
+	.quad	0                               # 0x0
+	.quad	1                               # 0x1
+	.quad	0                               # 0x0
+	.quad	3                               # 0x3
+	.quad	4                               # 0x4
+	.quad	5                               # 0x5
+	.quad	8                               # 0x8
+	.quad	9                               # 0x9
+.LCPI0_6:
+	.quad	0                               # 0x0
+	.quad	1                               # 0x1
+	.zero	8
+	.quad	2                               # 0x2
+	.quad	3                               # 0x3
+	.quad	8                               # 0x8
+	.quad	9                               # 0x9
+	.zero	8
+.LCPI0_7:
+	.quad	0                               # 0x0
+	.quad	1                               # 0x1
+	.quad	0                               # 0x0
+	.quad	3                               # 0x3
+	.quad	4                               # 0x4
+	.quad	5                               # 0x5
+	.quad	6                               # 0x6
+	.quad	15                              # 0xf
+	.section	.rodata.cst32,"aM",@progbits,32
+	.p2align	5, 0x0
+.LCPI0_4:
+	.quad	8                               # 0x8
+	.quad	0                               # 0x0
+	.quad	10                              # 0xa
+	.quad	0                               # 0x0
+.LCPI0_5:
+	.quad	1                               # 0x1
+	.quad	0                               # 0x0
+	.quad	10                              # 0xa
+	.quad	0                               # 0x0
+	.section	.rodata.cst8,"aM",@progbits,8
+	.p2align	3, 0x0
+.LCPI0_8:
+	.quad	1                               # 0x1
+.LCPI0_9:
+	.quad	3                               # 0x3
+	.section	.ltext,"axl",@progbits
+	.globl	"julia_*_3292"
+	.p2align	4, 0x90
+	.type	"julia_*_3292",@function
+"julia_*_3292":                         # @"julia_*_3292"
+; Function Signature: *(HyperHessians.HyperDual{8, 8, Float64}, HyperHessians.HyperDual{8, 8, Float64})
+# %bb.0:                                # %top
+	#DEBUG_VALUE: *:h1 <- [$rsi+0]
+	#DEBUG_VALUE: *:h2 <- [$rdx+0]
+	push	rbp
+	movabs	rcx, offset .LCPI0_0
+	kxnorw	k2, k0, k0
+	vxorpd	xmm0, xmm0, xmm0
+	vmovupd	xmm7, xmmword ptr [rsi]
+	kxnorw	k1, k0, k0
+	vxorpd	xmm2, xmm2, xmm2
+	vmovupd	zmm8, zmmword ptr [rdx + 8]
+	vbroadcastsd	zmm11, qword ptr [rdx + 8]
+	vbroadcastsd	zmm12, qword ptr [rsi + 8]
+	vbroadcastsd	zmm13, qword ptr [rdx + 24]
+	vbroadcastsd	zmm14, qword ptr [rsi + 24]
+	vbroadcastsd	zmm5, qword ptr [rsi + 56]
+	vpermpd	ymm6, ymmword ptr [rdx + 40], 233 # ymm6 = mem[1,2,2,3]
+	mov	rbp, rsp
+	mov	rax, rdi
+	vmovapd	xmm1, xmmword ptr [rcx]
+	movabs	rcx, offset .LCPI0_1
+	vmovapd	xmm4, xmmword ptr [rcx]
+	movabs	rcx, offset .LCPI0_2
+	vmovapd	zmm3, zmmword ptr [rcx]
+	movabs	rcx, offset .LCPI0_3
+	vmovapd	zmm9, zmmword ptr [rcx]
+	movabs	rcx, offset .LCPI0_4
+	vgatherdpd	ymm0 {k2}, ymmword ptr [rsi + xmm1]
+	vbroadcastsd	zmm1, qword ptr [rsi]
+	vgatherdpd	ymm2 {k1}, ymmword ptr [rdx + xmm4]
+	vbroadcastsd	zmm4, qword ptr [rsi + 64]
+	vpermi2pd	zmm3, zmm0, zmmword ptr [rsi]
+	vextractf32x4	xmm16, ymm0, 1
+	vmulsd	xmm10, xmm7, xmm2
+	vbroadcastsd	zmm16, xmm16
+	vpermi2pd	zmm9, zmm3, zmmword ptr [rsi + 56]
+	vbroadcastsd	zmm3, qword ptr [rdx + 64]
+	vmovsd	qword ptr [rdi], xmm10
+	vmovapd	ymm10, ymmword ptr [rcx]
+	movabs	rcx, offset .LCPI0_5
+	vpermi2pd	zmm10, zmm2, zmm8
+	vmulpd	zmm9, zmm9, zmm10
+	vmovapd	ymm10, ymmword ptr [rcx]
+	movabs	rcx, offset .LCPI0_6
+	vmovapd	zmm17, zmmword ptr [rcx]
+	movabs	rcx, offset .LCPI0_7
+	vmovapd	zmm15, zmmword ptr [rcx]
+	movabs	rcx, offset .LCPI0_8
+	vbroadcastsd	zmm21, qword ptr [rcx]
+	movabs	rcx, offset .LCPI0_9
+	vbroadcastsd	zmm18, qword ptr [rcx]
+	vpermi2pd	zmm10, zmm7, zmm14
+	vpermi2pd	zmm17, zmm2, zmm6
+	vpermpd	zmm19, zmm21, zmm0
+	vpermi2pd	zmm15, zmm17, zmm8
+	vbroadcastsd	zmm17, xmm6
+	vpermpd	zmm6, zmm21, zmm6
+	vmulpd	zmm7, zmm10, zmm15
+	vbroadcastsd	zmm15, xmm0
+	vpermpd	zmm0, zmm18, zmm0
+	vaddpd	zmm7, zmm9, zmm7
+	vmovupd	zmmword ptr [rdi + 8], zmm7
+	vbroadcastsd	zmm7, xmm2
+	vmovupd	zmm8, zmmword ptr [rsi + 72]
+	vmovupd	zmm10, zmmword ptr [rdx + 72]
+	vmulpd	zmm22, zmm11, zmm8
+	vmulpd	zmm20, zmm13, zmm8
+	vextractf128	xmm13, ymm2, 1
+	vmulpd	zmm9, zmm7, zmm8
+	vmulpd	zmm3, zmm3, zmm8
+	vbroadcastsd	zmm13, xmm13
+	vfmadd231pd	zmm22, zmm10, zmm12     # zmm22 = (zmm10 * zmm12) + zmm22
+	vpermpd	zmm12, zmm21, zmm2
+	vpermpd	zmm2, zmm18, zmm2
+	vfmadd231pd	zmm9, zmm1, zmm10       # zmm9 = (zmm1 * zmm10) + zmm9
+	vfmadd231pd	zmm20, zmm10, zmm14     # zmm20 = (zmm10 * zmm14) + zmm20
+	vfmadd231pd	zmm3, zmm10, zmm4       # zmm3 = (zmm10 * zmm4) + zmm3
+	vmulpd	zmm13, zmm13, zmm8
+	vmovupd	zmmword ptr [rdi + 72], zmm9
+	vfmadd213pd	zmm19, zmm10, zmm13     # zmm19 = (zmm10 * zmm19) + zmm13
+	vmulpd	zmm2, zmm2, zmm8
+	vmulpd	zmm12, zmm12, zmm8
+	vfmadd231pd	zmm22, zmm7, zmmword ptr [rsi + 136] # zmm22 = (zmm7 * mem) + zmm22
+	vfmadd231pd	zmm20, zmm7, zmmword ptr [rsi + 264] # zmm20 = (zmm7 * mem) + zmm20
+	vfmadd231pd	zmm19, zmm7, zmmword ptr [rsi + 328] # zmm19 = (zmm7 * mem) + zmm19
+	vfmadd231pd	zmm3, zmm7, zmmword ptr [rsi + 584] # zmm3 = (zmm7 * mem) + zmm3
+	vfmadd213pd	zmm16, zmm10, zmm2      # zmm16 = (zmm10 * zmm16) + zmm2
+	vmulpd	zmm2, zmm17, zmm8
+	vfmadd213pd	zmm15, zmm10, zmm12     # zmm15 = (zmm10 * zmm15) + zmm12
+	vfmadd231pd	zmm15, zmm7, zmmword ptr [rsi + 200] # zmm15 = (zmm7 * mem) + zmm15
+	vfmadd231pd	zmm16, zmm7, zmmword ptr [rsi + 392] # zmm16 = (zmm7 * mem) + zmm16
+	vfmadd231pd	zmm22, zmm1, zmmword ptr [rdx + 136] # zmm22 = (zmm1 * mem) + zmm22
+	vfmadd231pd	zmm20, zmm1, zmmword ptr [rdx + 264] # zmm20 = (zmm1 * mem) + zmm20
+	vfmadd231pd	zmm19, zmm1, zmmword ptr [rdx + 328] # zmm19 = (zmm1 * mem) + zmm19
+	vfmadd231pd	zmm3, zmm1, zmmword ptr [rdx + 584] # zmm3 = (zmm1 * mem) + zmm3
+	vfmadd213pd	zmm0, zmm10, zmm2       # zmm0 = (zmm10 * zmm0) + zmm2
+	vmulpd	zmm2, zmm6, zmm8
+	vfmadd231pd	zmm0, zmm7, zmmword ptr [rsi + 456] # zmm0 = (zmm7 * mem) + zmm0
+	vfmadd231pd	zmm15, zmm1, zmmword ptr [rdx + 200] # zmm15 = (zmm1 * mem) + zmm15
+	vfmadd231pd	zmm16, zmm1, zmmword ptr [rdx + 392] # zmm16 = (zmm1 * mem) + zmm16
+	vfmadd231pd	zmm2, zmm10, zmm5       # zmm2 = (zmm10 * zmm5) + zmm2
+	vfmadd231pd	zmm2, zmm7, zmmword ptr [rsi + 520] # zmm2 = (zmm7 * mem) + zmm2
+	vfmadd231pd	zmm0, zmm1, zmmword ptr [rdx + 456] # zmm0 = (zmm1 * mem) + zmm0
+	vfmadd231pd	zmm2, zmm1, zmmword ptr [rdx + 520] # zmm2 = (zmm1 * mem) + zmm2
+	vmovupd	zmmword ptr [rdi + 136], zmm22
+	vmovupd	zmmword ptr [rdi + 200], zmm15
+	vmovupd	zmmword ptr [rdi + 264], zmm20
+	vmovupd	zmmword ptr [rdi + 328], zmm19
+	vmovupd	zmmword ptr [rdi + 392], zmm16
+	vmovupd	zmmword ptr [rdi + 456], zmm0
+	vmovupd	zmmword ptr [rdi + 520], zmm2
+	vmovupd	zmmword ptr [rdi + 584], zmm3
+	pop	rbp
+	vzeroupper
+	ret
+.Lfunc_end0:
+	.size	"julia_*_3292", .Lfunc_end0-"julia_*_3292"
+                                        # -- End function
+	.type	".L+HyperHessians.HyperDual#3294",@object # @"+HyperHessians.HyperDual#3294"
+	.section	.lrodata,"al",@progbits
+	.p2align	3, 0x0
+".L+HyperHessians.HyperDual#3294":
+	.quad	".L+HyperHessians.HyperDual#3294.jit"
+	.size	".L+HyperHessians.HyperDual#3294", 8
+
+.set ".L+HyperHessians.HyperDual#3294.jit", 127242496265296
+	.size	".L+HyperHessians.HyperDual#3294.jit", 8
+	.section	".note.GNU-stack","",@progbits
+
+
+=== SECTION: asm mul nested Dual 8x8 ===
+	.text
+	.file	"*"
+	.section	.ltext,"axl",@progbits
+	.globl	"julia_*_3295"                  # -- Begin function julia_*_3295
+	.p2align	4, 0x90
+	.type	"julia_*_3295",@function
+"julia_*_3295":                         # @"julia_*_3295"
+; Function Signature: *(ForwardDiff.Dual{Nothing, ForwardDiff.Dual{Nothing, Float64, 8}, 8}, ForwardDiff.Dual{Nothing, ForwardDiff.Dual{Nothing, Float64, 8}, 8})
+# %bb.0:                                # %top
+	#DEBUG_VALUE: *:x <- [$rsi+0]
+	#DEBUG_VALUE: *:y <- [$rdx+0]
+	push	rbp
+	mov	rbp, rsp
+	push	r15
+	push	r14
+	push	r13
+	push	r12
+	push	rbx
+	sub	rsp, 728
+	vmovsd	xmm2, qword ptr [rsi]           # xmm2 = mem[0],zero
+	vmovsd	xmm1, qword ptr [rdx]           # xmm1 = mem[0],zero
+	mov	r14, rdx
+	mov	r15, rsi
+	add	rsi, 8
+	add	rdx, 8
+	movabs	rax, offset j_dual_definition_retval_3298
+	lea	r12, [rbp - 112]
+	mov	rbx, rdi
+	mov	rdi, r12
+	vmulsd	xmm0, xmm2, xmm1
+	call	rax
+	lea	r13, [rbp - 760]
+	lea	rcx, [r15 + 72]
+	lea	r9, [r14 + 72]
+	movabs	rax, offset j_dual_definition_retval_3299
+	mov	rsi, r12
+	mov	rdx, r14
+	mov	r8, r15
+	mov	rdi, r13
+	call	rax
+	movabs	rax, offset memcpy
+	mov	edx, 648
+	mov	rdi, rbx
+	mov	rsi, r13
+	call	rax
+	mov	rax, rbx
+	add	rsp, 728
+	pop	rbx
+	pop	r12
+	pop	r13
+	pop	r14
+	pop	r15
+	pop	rbp
+	ret
+.Lfunc_end0:
+	.size	"julia_*_3295", .Lfunc_end0-"julia_*_3295"
+                                        # -- End function
+	.type	".L+ForwardDiff.Dual#3297",@object # @"+ForwardDiff.Dual#3297"
+	.section	.lrodata,"al",@progbits
+	.p2align	3, 0x0
+".L+ForwardDiff.Dual#3297":
+	.quad	".L+ForwardDiff.Dual#3297.jit"
+	.size	".L+ForwardDiff.Dual#3297", 8
+
+.set ".L+ForwardDiff.Dual#3297.jit", 127242496266000
+	.size	".L+ForwardDiff.Dual#3297.jit", 8
+	.section	".note.GNU-stack","",@progbits
