@@ -346,17 +346,19 @@ end
 
 ---
 @eyebrow Performance
-# 8 doubles fill registers. 9 don't.
+# Same four groups of data — stored together, or interleaved
 
-::: panel HyperDual{8,8} — every lane is 8 doubles: exactly one AVX-512 register
+{{lane-legend}}
+
+::: panel HyperDual{8,8} — each group contiguous: an 8-wide group is one AVX-512 register
 {{lane-hh}}
 :::
 
-::: panel nested Dual 8×8 — same 81 floats, sliced into nine 9-double lanes
+::: panel nested Dual 8×8 — same 81 floats, but one gradient float interleaved into every Hessian row
 {{lane-fd}}
 :::
 
-> Both hold exactly the same data: 1 value (gray) + 16 gradient floats (light) + 64 Hessian floats (solid). HyperDual groups them by role into 8-wide runs — 4 NEON / 2 AVX2 / 1 AVX-512 register each. The nested layout instead glues one gradient float onto each Hessian row, so every lane is 9 doubles: full registers plus a straggler, on every op. HyperHessians also writes each accumulation as `muladd`, which compiles to fused multiply-adds; the nested layout's separate mul and add never fuse.
+> Both hold exactly the same data, and the arithmetic works on the *groups* — the Hessian update multiplies gradient chunk 2 against every Hessian row. Top: that chunk is one register load. Bottom: the same 8 floats sit 72 bytes apart, so every operation gathers them and scatters results back (the shuffle/gather instructions on the next slide), and the lone value float rides along in every lane. On top of that the nested code writes mul-then-add, which never fuses; HyperHessians writes `muladd` → FMA. Same flops, very different instructions.
 
 ---
 @eyebrow Performance
@@ -669,12 +671,12 @@ HyperDual{8, 1, Float64}
   .cellgroup { display: flex; gap: 1px; }
   .cell { width: 0.52em; height: 0.9em; border-radius: 2px; }
   .cell.v { background: var(--faint); }
-  .cell.e1 { background: var(--s-hh); opacity: 0.55; }
-  .cell.e2 { background: var(--s-hh); opacity: 0.8; }
+  .cell.e1 { background: var(--s-hh); opacity: 0.4; }
+  .cell.e2 { background: var(--s-hh); opacity: 0.7; }
   .cell.e12 { background: var(--s-hh); }
-  .cell.iv { background: var(--faint); }
-  .cell.fdg { background: var(--s-fd); opacity: 0.45; }
-  .cell.fdh { background: var(--s-fd); }
+  .cell.f1 { background: var(--s-fd); opacity: 0.4; }
+  .cell.f2 { background: var(--s-fd); opacity: 0.7; }
+  .cell.f3 { background: var(--s-fd); }
 
   .codecard { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; }
   .cc-head { display: flex; justify-content: space-between; gap: 0.8em; align-items: baseline; padding: 0.55em 1em 0.5em; border-bottom: 1px solid var(--line); }
@@ -955,11 +957,32 @@ HyperDual{8, 1, Float64}
         group(Array(8).fill("e2"));
         for (let r = 0; r < 8; r++) group(Array(8).fill("e12"));
       } else {
-        // lane 0: true value + gradient chunk; lanes 1-8: gradient entry + Hessian row
-        group(["v"].concat(Array(8).fill("fdg")));
-        for (let r = 0; r < 8; r++) group(["fdg"].concat(Array(8).fill("fdh")));
+        // lane 0: true value + gradient chunk 1; lanes 1-8: gradient-2 entry + Hessian row
+        group(["v"].concat(Array(8).fill("f1")));
+        for (let r = 0; r < 8; r++) group(["f2"].concat(Array(8).fill("f3")));
       }
       return strip;
+    }
+    if (name === "lane-legend") {
+      const leg = el("div", "legend sans");
+      const items = [
+        ["value", "v", "v"],
+        ["gradient chunk 1 (8)", "e1", "f1"],
+        ["gradient chunk 2 (8)", "e2", "f2"],
+        ["Hessian block (8×8)", "e12", "f3"],
+      ];
+      for (const [label, chh, cfd] of items) {
+        const sp = el("span");
+        for (const c of [chh, cfd]) {
+          const sw = el("i", "cell " + c);
+          sw.style.width = "0.7em"; sw.style.height = "0.7em";
+          sw.style.display = "inline-block"; sw.style.borderRadius = "2px";
+          sp.appendChild(sw);
+        }
+        sp.appendChild(document.createTextNode(" " + label));
+        leg.appendChild(sp);
+      }
+      return leg;
     }
     if (name === "opchart" || name === "opchart-zen4") {
       // per-op ns/element, [HyperDual, nested Dual], patched ForwardDiff
