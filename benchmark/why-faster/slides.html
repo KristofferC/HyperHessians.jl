@@ -62,6 +62,179 @@
 | rosenbrock_1 | AMD Zen 4 | 34.0 ms | *9.4 ms* | 3.64× |
 
 ---
+@eyebrow Background · forward mode
+# Dual numbers: differentiation becomes algebra
+@footer no symbolic engine, no finite-difference step size — exact to machine precision
+
+::: cols
+:: col
+```The one rule | an infinitesimal that squares to zero
+ε² = 0,   ε ≠ 0
+
+f(x + ε) = f(x) + f′(x)·ε
+
+# the Taylor series truncates itself:
+# every higher term carries an ε²
+```
+:: col
+```The product rule falls out | no calculus required
+(a + a′ε) · (b + b′ε)
+    = ab + (a′b + ab′)ε + a′b′·ε²
+    = ab + (a′b + ab′)ε
+```
+:::
+
+> Carry (value, derivative) pairs through the program and let the algebra update both. Every arithmetic operation has a matching rule — and the rules are just this expansion, worked out once per operation.
+
+---
+@eyebrow Background · forward mode
+# A complete forward mode in a dozen lines
+@footer Julia dispatch does the rest — the differentiated function never changes
+
+::: cols
+:: col 1.3
+```mini ForwardDiff | scalar derivatives, complete & runnable
+struct Dual{T} <: Number
+    x::T   # value
+    ẋ::T   # derivative
+end
+
+Base.:+(a::Dual, b::Dual) = Dual(a.x + b.x, a.ẋ + b.ẋ)
+Base.:-(a::Dual, b::Dual) = Dual(a.x - b.x, a.ẋ - b.ẋ)
+Base.:*(a::Dual, b::Dual) = Dual(a.x*b.x, a.ẋ*b.x + a.x*b.ẋ)
+Base.sin(d::Dual) = Dual(sin(d.x),  cos(d.x) * d.ẋ)
+Base.cos(d::Dual) = Dual(cos(d.x), -sin(d.x) * d.ẋ)
+Base.exp(d::Dual) = Dual(exp(d.x),  exp(d.x) * d.ẋ)
+
+[+] derivative(f, x) = f(Dual(x, one(x))).ẋ   # seed ẋ = 1
+```
+:: col
+```julia> | seed, run, read off
+julia> derivative(x -> x^2 + sin(x), 1.0)
+2.5403023058681398
+
+julia> 2 + cos(1.0)        # by hand
+2.5403023058681398
+```
+
+- `Dual <: Number` + operator overloading: the user's `f` is untouched — loops, branches, `^`, all just work.
+- The derivative is **exact**, not a finite-difference approximation.
+- This is genuinely how ForwardDiff.jl works — plus rules for every Base function, promotion, and tags.
+:::
+
+---
+@eyebrow Background · forward mode
+# From derivative to gradient: a lane per input
+@footer this tuple is ForwardDiff's Partials — and its width is the chunk size
+
+::: cols
+:: col 1.3
+```the whole diff | one field, broadcast the rules
+struct Dual{N,T} <: Number
+    x::T
+[-]     ẋ::T                # one derivative…
+[+]     ∂::NTuple{N,T}      # …becomes N partials: SIMD lanes
+end
+
+[-] Base.:*(a, b) = Dual(a.x*b.x, a.ẋ*b.x + a.x*b.ẋ)
+[+] Base.:*(a, b) = Dual(a.x*b.x, b.x .* a.∂ .+ a.x .* b.∂)
+
+function gradient(f, x::Vector{T}) where T
+    N = length(x)
+[+]     seed(i) = ntuple(j -> T(i == j), N)   # basis vectors
+    f([Dual(x[i], seed(i)) for i in 1:N]).∂
+end
+```
+:: col
+```julia> | all partials in one evaluation
+julia> gradient(v -> v[1]*v[2] + sin(v[1]),
+                [1.0, 2.0])
+(2.5403023058681398, 1.0)
+#  ∂f/∂x = y + cos(x)   ∂f/∂y = x
+```
+
+- Seed input i with basis vector eᵢ; every partial rides along in the same pass through `f`.
+- A Jacobian is this per output; for n inputs at width N, take ⌈n/N⌉ passes.
+:::
+
+---
+@eyebrow Background · second order
+# Second derivatives: differentiate the differentiator
+@footer this is exactly ForwardDiff's Hessian: jacobian(x -> gradient(f, x))
+
+::: cols
+:: col
+```Two independent infinitesimals | ε₁² = ε₂² = 0, but ε₁ε₂ ≠ 0
+f(x + ε₁ + ε₂)
+  = f + f′·(ε₁ + ε₂) + ½ f″·(ε₁ + ε₂)²
+  = f + f′ε₁ + f′ε₂ + f″·ε₁ε₂
+
+# the cross term IS the second derivative
+```
+
+- Works because `Dual` arithmetic is itself built from `+`, `*`, `sin`, … — so it differentiates too.
+- But notice the redundancy: `f′` is computed and stored **twice**, and second order lives two fields deep in `Dual{Dual}`.
+:: col
+```Dual of Dual | no new code — one extra method
+second_derivative(f, x) =
+    derivative(y -> derivative(f, y), x)
+
+[+] Base.one(d::Dual) = Dual(one(d.x), zero(d.x))
+# ↑ the seed of the outer pass must be a Dual
+```
+
+```julia> | nested duals
+julia> second_derivative(x -> x^2 + sin(x), 1.0)
+1.1585290151921035        # 2 - sin(1) ✓
+
+julia> Dual(Dual(1.0, 1.0), Dual(1.0, 0.0))
+# what the input actually looks like inside
+```
+:::
+
+---
+@eyebrow Background · second order, flattened
+# HyperDual numbers: the same algebra, one level
+@footer seed ϵ₁ and ϵ₂ with different basis vectors → any Hessian entry (i, j)
+
+::: cols
+:: col
+```Nested Dual | cross term implicit
+Dual(Dual(x, 1), Dual(1, 0))
+
+f ↦ Dual(Dual(f, f′), Dual(f′, f″))
+
+# f′ computed and stored twice
+# f″ buried two levels deep
+# lanes of width N+1: never a SIMD width
+```
+:: col 1.25
+```HyperDual | cross term explicit — h = v + aϵ₁ + bϵ₂ + Aϵ₁ϵ₂
+struct HyperDual{T} <: Number
+    v::T; ϵ₁::T; ϵ₂::T; ϵ₁₂::T
+end
+
+Base.:*(a, b) = HyperDual(a.v*b.v,
+    a.v*b.ϵ₁ + a.ϵ₁*b.v,
+    a.v*b.ϵ₂ + a.ϵ₂*b.v,
+[+]     a.v*b.ϵ₁₂ + a.ϵ₁₂*b.v + a.ϵ₁*b.ϵ₂ + a.ϵ₂*b.ϵ₁)
+
+chain(h, f, f′, f′′) = HyperDual(f, f′*h.ϵ₁, f′*h.ϵ₂,
+    f′*h.ϵ₁₂ + f′′*h.ϵ₁*h.ϵ₂)
+Base.sin(h) = chain(h, sin(h.v), cos(h.v), -sin(h.v))
+
+second_derivative(f, x) =
+    f(HyperDual(x, one(x), one(x), zero(x))).ϵ₁₂
+```
+:::
+
+```julia> | one evaluation carries value, gradient twice — and the second derivative
+julia> (x -> x^2 + sin(x))(HyperDual(1.0, 1.0, 1.0, 0.0))
+HyperDual{Float64}(1.8414709848078965, 2.5403023058681398, 2.5403023058681398, 1.1585290151921035)
+#                  f                   f′                  f′                  f″
+```
+
+---
 @eyebrow Setup
 # Two ways to carry second derivatives
 @footer HyperDual multiplication: ϵ₁₂[i] ← v₁A₂[i] + A₁[i]v₂ + a₁[i]b₂ + a₂[i]b₁
