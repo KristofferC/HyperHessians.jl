@@ -19,6 +19,11 @@ end
     cfg = HVPConfig(x)
     @test_throws DimensionMismatch hvp!(zeros(3), f, x, zeros(2), cfg)
     @test_throws DimensionMismatch hvp!(zeros(2), f, x, zeros(3), cfg)
+
+    cfg_short = HVPConfig(zeros(2))
+    cfg_long = HVPConfig(zeros(4))
+    @test_throws DimensionMismatch hvp(f, x, zeros(3), cfg_short)
+    @test_throws DimensionMismatch hvp(f, x, zeros(3), cfg_long)
 end
 
 @testset "Hessian-vector products" begin
@@ -55,6 +60,37 @@ end
     hv32 = hvp(ackley_stable, x32, v32)
     @test hv32 isa Vector{Float32}
     @test hv32 ≈ ForwardDiff.hessian(ackley_stable, x32) * v32
+end
+
+@testset "mixed-precision tangents and outputs" begin
+    f(x) = sum(abs2, x)
+    x = Float32[1, 2]
+    v = Float64[1.0e-50, 3]
+
+    hv = hvp(f, x, v)
+    @test hv isa Vector{Float64}
+    @test hv ≈ 2 .* v
+
+    v32 = Float32[2, 4]
+    bundled = hvp(f, x, (v32, v))
+    @test bundled isa NTuple{2, Vector{Float64}}
+    @test bundled[1] ≈ 2 .* v32
+    @test bundled[2] ≈ 2 .* v
+
+    cfg = HVPConfig(x, v)
+    hv_out = zeros(Float64, 2)
+    g_out = zeros(Float64, 2)
+    value = hvp_gradient_value!(hv_out, g_out, f, x, v, cfg)
+    @test value ≈ f(x)
+    @test g_out ≈ 2 .* x
+    @test hv_out ≈ 2 .* v
+
+    res = hvp_gradient_value(f, x, v, cfg)
+    @test res.gradient isa Vector{Float64}
+    @test res.hvp isa Vector{Float64}
+
+    narrow_cfg = HVPConfig(x)
+    @test_throws ArgumentError hvp(f, x, v, narrow_cfg)
 end
 
 @testset "Bundled tangents" begin
@@ -233,6 +269,22 @@ end
 
     # vhvp
     @test vhvp(f_const, x, v) == 0.0
+
+    precise_constant = big"42.000000000000000000000000000000000001"
+    precise_res = hvp_gradient_value(_ -> precise_constant, x, v)
+    @test precise_res.value === precise_constant
+end
+
+@testset "empty input" begin
+    f_empty(x) = 3.0
+    x = Float64[]
+    v = Float64[]
+    cfg = HVPConfig(x, v)
+    @test isempty(hvp(f_empty, x, v, cfg))
+    res = hvp_gradient_value(f_empty, x, v, cfg)
+    @test res.value == 3.0
+    @test isempty(res.gradient)
+    @test isempty(res.hvp)
 end
 
 end # module

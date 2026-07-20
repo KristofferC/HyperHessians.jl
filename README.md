@@ -174,7 +174,7 @@ julia> HyperHessians.hessian(f, x) * v
   0.1676492989193555
 ```
 
-You can pass a single tangent as a vector, or multiple tangents as a tuple of vectors. HyperHessians will evaluate bundled tangents in one pass and return the matching vector or tuple of Hessian–vector products. You can supply a `HVPConfig` to reuse storage and tune chunk size, e.g. `cfg = HyperHessians.HVPConfig(x, v, HyperHessians.Chunk{8}()); hvp(f, x, v, cfg)` (for a single tangent this is equivalent to `HVPConfig(x, HyperHessians.Chunk{8}())`, passing `v` only matters when you have multiple tangents). For non-allocating use, call `hvp!(hvs, f, x, tangents[, cfg])` with a preallocated output container (a vector for a single tangent, or a tuple of vectors for multiple) and a reused config.
+You can pass a single tangent as a vector, or multiple tangents as a tuple of vectors. HyperHessians will evaluate bundled tangents in one pass and return the matching vector or tuple of Hessian–vector products. You can supply a `HVPConfig` to reuse storage and tune chunk size, e.g. `cfg = HyperHessians.HVPConfig(x, v, HyperHessians.Chunk{8}()); hvp(f, x, v, cfg)`. Pass the tangents when constructing the config whenever there are multiple tangents or their element type differs from the input, so the config allocates the right number and type of directional lanes. For non-allocating use, call `hvp!(hvs, f, x, tangents[, cfg])` with a preallocated output container (a vector for a single tangent, or a tuple of vectors for multiple) and a reused config.
 
 To get the value, gradient, and Hessian–vector product(s) together, use `hvp_gradient_value`/`hvp_gradient_value!`; this reuses the same directional seeding so the value and gradient come "for free" alongside the bundled `H*v` results.
 

@@ -14,8 +14,8 @@ function do_benchmark(n)
     v_bundle = (rand(n), rand(n), rand(n))
 
     cfg = HyperHessians.HessianConfig(x) # for full Hessian benchmark
-    cfg_dir = HyperHessians.DirectionalHVPConfig(x)
-    cfg_bundle = HyperHessians.DirectionalHVPConfig(x, v_bundle)
+    cfg_dir = HyperHessians.HVPConfig(x)
+    cfg_bundle = HyperHessians.HVPConfig(x, v_bundle)
     hv = similar(x)
     hv_dir = similar(x)
     hv_bundle = (similar(x), similar(x), similar(x))

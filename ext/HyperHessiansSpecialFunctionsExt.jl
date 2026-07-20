@@ -35,7 +35,7 @@ const SPECIALFUNCTIONS_DIFF_RULES = [
     (:expint      , :(-exp(-x) / x)                                            , :(exp(-x) / x + exp(-x) / x^2))
     (:expintx     , :(f - inv(x))                                              , :(f′ + inv(x^2)))
     (:expinti     , :(exp(x) / x)                                              , :(f′ * (1 - inv(x))))
-    (:sinint      , :(sin(x) / x)                                              , :((x * cos(x) - sin(x)) / x^2))
+    (:sinint      , :(iszero(x) ? one(x) : sin(x) / x)                        , :(iszero(x) ? zero(x) : (x * cos(x) - sin(x)) / x^2))
     (:cosint      , :(cos(x) / x)                                              , :(-(x * sin(x) + cos(x)) / x^2))
 ]
 # runic: on

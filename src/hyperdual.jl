@@ -66,8 +66,9 @@ struct HyperDual{N1, N2, T} <: Real
     ϵ12::NTuple{N1, ϵT{N2, T}}
 end
 HyperDual(v::T, ϵ1::ϵT{N1, T}, ϵ2::ϵT{N2, T}) where {N1, N2, T} =
-    HyperDual(v, ϵ1, ϵ2, ntuple(_ -> zero_ϵ(ϵT{N2, T}), Val(N1)))
-HyperDual{N1, N2}(v::T) where {N1, N2, T} = HyperDual(v, zero_ϵ(ϵT{N1, T}), zero_ϵ(ϵT{N2, T}))
+    HyperDual(v, ϵ1, ϵ2, ntuple(_ -> ntuple(_ -> zero(T), Val(N2)), Val(N1)))
+HyperDual{N1, N2}(v::T) where {N1, N2, T} =
+    HyperDual(v, ntuple(_ -> zero(T), Val(N1)), ntuple(_ -> zero(T), Val(N2)))
 HyperDual{N1, N2, T}(v) where {N1, N2, T} = HyperDual{N1, N2}(T(v))
 HyperDual{N1, N2, T}(v::HyperDual{N1, N2, T}) where {N1, N2, T} = v
 HyperDual{N1, N2, T}(v::HyperDual{N1, N2}) where {N1, N2, T} = convert(HyperDual{N1, N2, T}, v)
