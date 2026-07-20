@@ -274,6 +274,32 @@ v    :: T
 :::
 
 ---
+@eyebrow The package
+# Tiny inputs: store the symmetric half once
+
+::: cols
+:: col
+::: panel HyperDual{4,4} — 25 floats: the gradient twice, the block twice
+{{lane-hh4}}
+:::
+
+::: panel Jet{4} — 15 floats: gradient once, upper triangle only
+{{lane-jet4}}
+:::
+:: col
+- With one evaluation for the whole Hessian, ϵ₁ and ϵ₂ carry the *same* seeds — so they stay equal everywhere, and the block is symmetric. Half the number is duplicates.
+- A `Jet` drops them: value + gradient + upper triangle, with the same rules generated from the same tables.
+- Measured 1.1–1.8× for n ≤ 4 (Apple M4 and Zen 4). Above that the ragged triangle stops vectorizing, so `HessianConfig` switches back to HyperDuals.
+
+```automatic | pass a Chunk to opt out
+julia> HessianConfig(x)   # n ≤ 4 → Jet, else HyperDual
+```
+:::
+
+> Works for `Vector` and `SVector` inputs, and through all the rule extensions.
+
+
+---
 @eyebrow Performance
 # Compared with ForwardDiff
 
@@ -943,6 +969,25 @@ HyperDual{8, 1, Float64}
           g.appendChild(d);
         }
       return g;
+    }
+    if (name === "lane-hh4" || name === "lane-jet4") {
+      const strip = el("div", "lane-strip");
+      const group = cells => {
+        const g = el("div", "cellgroup");
+        for (const c of cells) g.appendChild(el("div", "cell " + c));
+        strip.appendChild(g);
+      };
+      if (name === "lane-hh4") {
+        group(["v"]);
+        group(Array(4).fill("e1"));
+        group(Array(4).fill("e2"));
+        for (let r = 0; r < 4; r++) group(Array(4).fill("e12"));
+      } else {
+        group(["v"]);
+        group(Array(4).fill("e1"));
+        for (let r = 0; r < 4; r++) group(Array(4 - r).fill("e12"));
+      }
+      return strip;
     }
     if (name === "lane-hh" || name === "lane-fd") {
       const strip = el("div", "lane-strip");
