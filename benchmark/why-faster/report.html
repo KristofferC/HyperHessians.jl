@@ -1,0 +1,914 @@
+<title>Anatomy of a speedup — HyperHessians vs ForwardDiff</title>
+<style>
+  :root {
+    color-scheme: light;
+    --paper: #f7f8fa;
+    --panel: #ffffff;
+    --ink: #1a2230;
+    --muted: #5a6577;
+    --faint: #8b95a5;
+    --line: #dde2ea;
+    --accent: #2a78d6;
+    --accent-ink: #1d5aa6;
+    --s-hh: #2a78d6;
+    --s-fd8: #eb6834;
+    --s-fd12: #4a3aa7;
+    --code-bg: #eef1f6;
+    --code-ink: #303a4c;
+    --code-cm: #7c8698;
+    --bad-bg: rgba(227, 73, 72, 0.13);
+    --bad-edge: #cf3d3c;
+    --good-bg: rgba(42, 120, 214, 0.11);
+    --good-edge: #2a78d6;
+    --chip-bg: #eceff4;
+    --grid-empty: #e4e8ee;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) {
+      color-scheme: dark;
+      --paper: #14181e;
+      --panel: #1b212b;
+      --ink: #e8ecf2;
+      --muted: #9aa4b4;
+      --faint: #6d7889;
+      --line: #2b3442;
+      --accent: #3987e5;
+      --accent-ink: #6aa7ee;
+      --s-hh: #3987e5;
+      --s-fd8: #d95926;
+      --s-fd12: #9085e9;
+      --code-bg: #10151d;
+      --code-ink: #c4cdda;
+      --code-cm: #6b7688;
+      --bad-bg: rgba(230, 103, 103, 0.14);
+      --bad-edge: #e66767;
+      --good-bg: rgba(57, 135, 229, 0.15);
+      --good-edge: #3987e5;
+      --chip-bg: #232b37;
+      --grid-empty: #242c38;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --paper: #14181e;
+    --panel: #1b212b;
+    --ink: #e8ecf2;
+    --muted: #9aa4b4;
+    --faint: #6d7889;
+    --line: #2b3442;
+    --accent: #3987e5;
+    --accent-ink: #6aa7ee;
+    --s-hh: #3987e5;
+    --s-fd8: #d95926;
+    --s-fd12: #9085e9;
+    --code-bg: #10151d;
+    --code-ink: #c4cdda;
+    --code-cm: #6b7688;
+    --bad-bg: rgba(230, 103, 103, 0.14);
+    --bad-edge: #e66767;
+    --good-bg: rgba(57, 135, 229, 0.15);
+    --good-edge: #3987e5;
+    --chip-bg: #232b37;
+    --grid-empty: #242c38;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: Charter, "Bitstream Charter", "Sitka Text", Cambria, Georgia, serif;
+    font-size: 17px;
+    line-height: 1.68;
+    -webkit-font-smoothing: antialiased;
+  }
+  .sans { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, Roboto, sans-serif; }
+  code, pre, .mono {
+    font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    font-variant-numeric: tabular-nums;
+  }
+  code {
+    font-size: 0.84em;
+    background: var(--chip-bg);
+    padding: 0.1em 0.35em;
+    border-radius: 4px;
+  }
+  pre code { background: none; padding: 0; border-radius: 0; font-size: inherit; }
+
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+  .prose { max-width: 70ch; }
+  .prose p { margin: 0 0 1.1em; }
+  a { color: var(--accent-ink); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+
+  /* ------- header ------- */
+  header { padding: 56px 0 8px; }
+  .eyebrow {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    font-size: 12px;
+    font-weight: 650;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent-ink);
+    margin: 0 0 14px;
+  }
+  h1 {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    font-size: clamp(30px, 5vw, 46px);
+    font-weight: 800;
+    letter-spacing: -0.022em;
+    line-height: 1.08;
+    margin: 0 0 18px;
+    text-wrap: balance;
+  }
+  .dek { font-size: 19px; color: var(--muted); max-width: 62ch; margin: 0 0 30px; }
+  .dek strong { color: var(--ink); }
+
+  .meta-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 36px; }
+  .chip {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 12px;
+    color: var(--muted);
+    background: var(--chip-bg);
+    border-radius: 999px;
+    padding: 4px 12px;
+    white-space: nowrap;
+  }
+
+  /* ------- factor equation tiles ------- */
+  .equation {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: stretch;
+    gap: 10px;
+    margin: 0 0 14px;
+  }
+  .tile {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 16px 18px 14px;
+    flex: 1 1 180px;
+    min-width: 170px;
+  }
+  .tile .t-label {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    font-size: 11px;
+    font-weight: 650;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+  .tile .t-value {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 27px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    line-height: 1.1;
+  }
+  .tile .t-note { font-size: 13px; color: var(--muted); margin-top: 6px; line-height: 1.45; }
+  .tile.result { border-color: var(--accent); background: var(--good-bg); }
+  .tile.result .t-value { color: var(--accent-ink); }
+  .op {
+    align-self: center;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 22px;
+    color: var(--faint);
+    padding: 0 2px;
+  }
+  .eq-caption { font-size: 13.5px; color: var(--muted); margin: 0 0 8px; max-width: 78ch; }
+
+  /* ------- sections ------- */
+  section { padding: 26px 0 6px; }
+  .factor-head {
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+    border-top: 1px solid var(--line);
+    padding-top: 26px;
+    margin-bottom: 6px;
+  }
+  .factor-num {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--accent-ink);
+    letter-spacing: 0.08em;
+    white-space: nowrap;
+  }
+  h2 {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    font-size: 26px;
+    font-weight: 750;
+    letter-spacing: -0.015em;
+    margin: 0 0 4px;
+    text-wrap: balance;
+  }
+  h3 {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    margin: 26px 0 8px;
+  }
+  .kicker { font-size: 15px; color: var(--muted); margin: 0 0 16px; }
+
+  /* ------- panels / figures ------- */
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 20px 22px;
+    margin: 20px 0;
+  }
+  .fig-caption { font-size: 13.5px; color: var(--muted); margin-top: 12px; line-height: 1.5; }
+  .fig-caption strong { color: var(--ink); }
+
+  /* ------- block-matrix diagrams ------- */
+  .blocks-row { display: flex; flex-wrap: wrap; gap: 28px; align-items: flex-start; }
+  .blocks-fig { flex: 1 1 280px; min-width: 250px; }
+  .blocks-title {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    font-size: 13px; font-weight: 650; margin-bottom: 8px;
+  }
+  .blocks-grid { display: grid; gap: 1px; width: fit-content; }
+  .blocks-grid div { width: 8px; height: 8px; border-radius: 1.5px; background: var(--grid-empty); }
+  .blocks-grid div.on-fd { background: var(--s-fd12); }
+  .blocks-grid div.on-hh { background: var(--s-hh); }
+  .blocks-stat { font-size: 13px; color: var(--muted); margin-top: 10px; line-height: 1.55; }
+  .blocks-stat b { color: var(--ink); font-family: ui-monospace, "SF Mono", Menlo, monospace; font-weight: 600; font-size: 12.5px; }
+
+  /* ------- bar charts ------- */
+  .legend { display: flex; flex-wrap: wrap; gap: 18px; margin-bottom: 14px; }
+  .legend span { display: inline-flex; align-items: center; gap: 7px; font-family: -apple-system, system-ui, sans-serif; font-size: 13px; color: var(--muted); }
+  .sw { width: 11px; height: 11px; border-radius: 3px; display: inline-block; }
+  .sw.hh { background: var(--s-hh); } .sw.fd8 { background: var(--s-fd8); } .sw.fd12 { background: var(--s-fd12); }
+
+  .bargroup { margin-bottom: 16px; }
+  .bargroup .g-label {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 13px; font-weight: 600; margin-bottom: 5px;
+  }
+  .bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 3px; }
+  .bar-track { flex: 1 1 auto; position: relative; height: 14px; }
+  .bar {
+    position: absolute; left: 0; top: 1px; height: 12px;
+    border-radius: 0 4px 4px 0;
+    min-width: 3px;
+  }
+  .bar.hh { background: var(--s-hh); } .bar.fd8 { background: var(--s-fd8); } .bar.fd12 { background: var(--s-fd12); }
+  .bar-val {
+    flex: 0 0 92px; text-align: right;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 12.5px; color: var(--muted);
+  }
+  .bar-row:hover .bar-val { color: var(--ink); }
+  .bar-row:hover .bar { filter: brightness(1.12); }
+
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th, td { text-align: right; padding: 7px 12px; border-bottom: 1px solid var(--line); }
+  th:first-child, td:first-child { text-align: left; }
+  th {
+    font-family: -apple-system, system-ui, sans-serif; font-size: 12px; font-weight: 650;
+    text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted);
+  }
+  td { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 13px; }
+  td:first-child { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .table-scroll { overflow-x: auto; }
+
+  /* ------- code panels ------- */
+  .codecols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 20px 0; }
+  @media (max-width: 880px) { .codecols { grid-template-columns: 1fr; } }
+  .codecard { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  .codecard .cc-head {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+    padding: 12px 16px 10px; border-bottom: 1px solid var(--line);
+  }
+  .cc-title { font-family: -apple-system, system-ui, sans-serif; font-size: 13.5px; font-weight: 700; }
+  .cc-sub { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px; color: var(--faint); }
+  .codecard pre {
+    margin: 0; padding: 14px 0 16px;
+    background: var(--code-bg); color: var(--code-ink);
+    font-size: 12.2px; line-height: 1.55;
+    overflow-x: auto;
+  }
+  .codecard pre .ln { display: block; padding: 0 16px; white-space: pre; }
+  .codecard pre .cm { color: var(--code-cm); }
+  .codecard pre .bad { background: var(--bad-bg); box-shadow: inset 3px 0 0 var(--bad-edge); }
+  .codecard pre .good { background: var(--good-bg); box-shadow: inset 3px 0 0 var(--good-edge); }
+  .cc-verdict {
+    display: flex; gap: 8px; flex-wrap: wrap;
+    padding: 10px 16px; border-top: 1px solid var(--line);
+    font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px;
+  }
+  .v-pill { border-radius: 999px; padding: 2px 10px; background: var(--chip-bg); color: var(--muted); }
+  .v-pill.bad { background: var(--bad-bg); color: var(--bad-edge); }
+  .v-pill.good { background: var(--good-bg); color: var(--good-edge); }
+
+  /* ------- memory lane diagram ------- */
+  .lanes { display: flex; flex-direction: column; gap: 26px; }
+  .lane .lane-title { font-family: -apple-system, system-ui, sans-serif; font-size: 13px; font-weight: 650; margin-bottom: 8px; }
+  .lane-strip { display: flex; flex-wrap: wrap; gap: 3px; row-gap: 6px; }
+  .cellgroup { display: flex; gap: 1px; }
+  .cell { width: 11px; height: 18px; border-radius: 2px; }
+  .cell.v { background: var(--faint); }
+  .cell.e1 { background: var(--s-hh); opacity: 0.55; }
+  .cell.e2 { background: var(--s-hh); opacity: 0.8; }
+  .cell.e12 { background: var(--s-hh); }
+  .cell.iv { background: var(--faint); }
+  .cell.ip { background: var(--s-fd8); }
+  .cell.straggler { background: var(--s-fd8); opacity: 0.45; }
+  .lane-note { font-size: 13px; color: var(--muted); margin-top: 8px; line-height: 1.55; }
+  .lane-key { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 4px; font-family: -apple-system, system-ui, sans-serif; font-size: 12px; color: var(--muted); }
+  .lane-key span { display: inline-flex; gap: 6px; align-items: center; }
+  .lane-key i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+
+  /* ------- checklist ------- */
+  .xchecks { display: grid; gap: 10px; margin: 18px 0; }
+  .xcheck {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    padding: 13px 16px; display: flex; gap: 12px; align-items: baseline;
+  }
+  .xcheck .xmark {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11px; font-weight: 700;
+    color: var(--faint); border: 1px solid var(--line); border-radius: 5px;
+    padding: 2px 7px; white-space: nowrap;
+  }
+  .xcheck p { margin: 0; font-size: 14.5px; }
+  .xcheck p b { font-family: -apple-system, system-ui, sans-serif; font-size: 14px; }
+
+  details { margin: 14px 0; }
+  summary {
+    cursor: pointer;
+    font-family: -apple-system, system-ui, sans-serif;
+    font-size: 13.5px; font-weight: 650; color: var(--accent-ink);
+  }
+  summary:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+
+  footer {
+    border-top: 1px solid var(--line);
+    margin-top: 44px; padding: 26px 0 56px;
+    font-size: 13.5px; color: var(--muted);
+  }
+  footer code { font-size: 12px; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+
+<header>
+  <p class="eyebrow">Performance forensics · HyperHessians.jl vs ForwardDiff.jl</p>
+  <h1>Anatomy of a speedup</h1>
+  <p class="dek">Against released ForwardDiff, HyperHessians computes dense Hessians
+  <strong>3.2–6.5× faster</strong> at identical settings. But most of the arithmetic half of that gap turned
+  out to be a <strong>ForwardDiff performance bug</strong> — a missing <code>@inline</code> found by reading
+  the generated code, fixed here with a two-line patch. This report benchmarks against the <em>patched</em>
+  ForwardDiff: <strong>2.2–3.7×</strong> remains, and every remaining factor is structural — Hessian
+  symmetry, an FMA-friendly memory layout, and a zero-allocation driver.</p>
+
+  <div class="meta-row sans">
+    <span class="chip">Apple Silicon · darwin</span>
+    <span class="chip">Julia 1.12.6</span>
+    <span class="chip">ForwardDiff master + inline patch</span>
+    <span class="chip">DiffTests ackley / rosenbrock_1</span>
+    <span class="chip">n = 256 · chunk 8 for both packages</span>
+  </div>
+
+  <p class="eq-caption sans">Chunk size pinned to 8 for both packages — same block shape, same 81-float dual
+  payload — and ForwardDiff patched. The measured speedup factors as a product of three independent effects
+  (n = 256, this machine; the range in factor 2 is ackley → rosenbrock):</p>
+  <div class="equation sans">
+    <div class="tile">
+      <div class="t-label">1 · Symmetry</div>
+      <div class="t-value">1.94×</div>
+      <div class="t-note">1024 vs 528 evaluations — only upper-triangular block pairs</div>
+    </div>
+    <div class="op">×</div>
+    <div class="tile">
+      <div class="t-label">2 · Arithmetic / eval</div>
+      <div class="t-value">1.0–1.7×</div>
+      <div class="t-note">muladd-fused SIMD lanes vs unfused ragged lanes, equal payload (1.4–3.0× before the FD patch)</div>
+    </div>
+    <div class="op">×</div>
+    <div class="tile">
+      <div class="t-label">3 · Fixed overhead</div>
+      <div class="t-value">~1.1×</div>
+      <div class="t-note">0 B allocated vs 657 KB + full-array reseeding per Hessian</div>
+    </div>
+    <div class="op">≈</div>
+    <div class="tile result">
+      <div class="t-label">Measured total</div>
+      <div class="t-value">2.2–3.7×</div>
+      <div class="t-note">ackley 2.23× · rosenbrock 3.67× vs patched FD — the factors multiply to 2.2 / 3.7</div>
+    </div>
+  </div>
+</header>
+
+<!-- ================= FACTOR 1 ================= -->
+<section id="symmetry">
+  <div class="factor-head">
+    <span class="factor-num">FACTOR 1</span>
+    <h2>Symmetry: evaluate only the upper-triangular block pairs</h2>
+  </div>
+  <p class="kicker">1.94× · pure algorithm, independent of number types</p>
+
+  <div class="prose">
+    <p>ForwardDiff computes <code>H = J(∇f)</code>: an outer chunked Jacobian wrapped around an inner chunked
+    gradient. At chunk 8 that is ⌈256/8⌉² = <strong>1024 evaluations of f</strong>, each producing an 8×8
+    block of the <em>full square</em> matrix. The symmetry of the Hessian is never used.</p>
+    <p>HyperHessians runs one <code>HyperDual{8,8}</code> pass per block pair (i, j ≥ i)
+    (<code>hessian_chunk_core!</code>, <code>src/hessian.jl:332</code>): k(k+1)/2 = <strong>528 evaluations</strong>
+    for k = 32, each filling an 8×8 block of the upper triangle, then mirrors with <code>symmetrize!</code>.
+    1024 / 528 = <strong>1.94×</strong>. Both eval counts were verified with a counting closure.</p>
+  </div>
+
+  <div class="panel">
+    <div class="blocks-row">
+      <div class="blocks-fig">
+        <div class="blocks-title sans">ForwardDiff — every 8×8 block of the full square</div>
+        <div class="blocks-grid" id="grid-fd" role="img" aria-label="32 by 32 grid, all 1024 blocks filled"></div>
+        <div class="blocks-stat sans"><b>1024 evals × 64 entries = 65,536</b> Hessian entries computed</div>
+      </div>
+      <div class="blocks-fig">
+        <div class="blocks-title sans">HyperHessians — upper-triangular 8×8 block pairs</div>
+        <div class="blocks-grid" id="grid-hh" role="img" aria-label="32 by 32 grid, upper triangle of 528 blocks filled"></div>
+        <div class="blocks-stat sans"><b>528 evals × 64 entries = 33,792</b> entries computed,
+        lower triangle mirrored — <b>1.94×</b> fewer evaluations</div>
+      </div>
+    </div>
+    <p class="fig-caption">Both grids depict the same 256×256 Hessian split into 8×8 blocks; each square is
+    one evaluation of <code>f</code> on a vector of dual numbers. Both approaches redundantly recompute the
+    primal and first-order parts on every pass; neither has an edge there. HyperHessians additionally reuses
+    the ϵ₁ seed across the whole inner j-loop, touching only 16 array entries per eval, where ForwardDiff
+    re-seeds the entire 162 KB dual array once per outer chunk.</p>
+  </div>
+</section>
+
+<!-- ================= FACTOR 2 ================= -->
+<section id="arithmetic">
+  <div class="factor-head">
+    <span class="factor-num">FACTOR 2</span>
+    <h2>Cheaper arithmetic per Hessian entry</h2>
+  </div>
+  <p class="kicker">1.0× (ackley) to 1.7× (rosenbrock) after patching ForwardDiff · this is where the number types differ</p>
+
+  <div class="prose">
+    <p>With the chunk size pinned, the payload is fixed: <code>HyperDual{8,8}</code> (1+8+8+64 floats)
+    against a nested <code>Dual{Dual{Float64,8},8}</code> ((1+8)² floats) — <em>identical</em> 81-float,
+    648-byte structs computing identical derivative terms. Any timing difference is pure code generation.
+    Investigating it turned up a genuine ForwardDiff bug (§2a, patched before all headline measurements) and
+    one structural difference that survives the fix (§2b). Per-element cost of single operations on
+    256-element vectors, <strong>with the patch applied</strong>:</p>
+  </div>
+
+  <div class="panel">
+    <div class="legend sans">
+      <span><i class="sw hh"></i>HyperDual{8,8}</span>
+      <span><i class="sw fd8"></i>nested Dual 8×8 — patched FD, same 81-float payload</span>
+    </div>
+    <div id="opchart"></div>
+    <p class="fig-caption">Time per element, lower is better, ForwardDiff patched. After the fix the two
+    representations are close on transcendental-dominated ops — <code>exp</code> even favors ForwardDiff —
+    and the remaining gap concentrates in multiply/divide, the ops dominated by lane arithmetic (§2b).</p>
+    <details>
+      <summary>Data table, including stock (unpatched) ForwardDiff</summary>
+      <div class="table-scroll">
+      <table>
+        <thead><tr><th>op</th><th>HyperDual{8,8}</th><th>nested 8×8, patched</th><th>nested 8×8, stock</th></tr></thead>
+        <tbody>
+          <tr><td>*</td><td>17.7 ns</td><td>22.7 ns</td><td>65.4 ns</td></tr>
+          <tr><td>/</td><td>22.7 ns</td><td>25.8 ns</td><td>63.8 ns</td></tr>
+          <tr><td>exp</td><td>26.5 ns</td><td>24.3 ns</td><td>35.6 ns</td></tr>
+          <tr><td>sqrt</td><td>13.8 ns</td><td>14.7 ns</td><td>34.0 ns</td></tr>
+          <tr><td>sin</td><td>29.5 ns</td><td>31.7 ns</td><td>40.9 ns</td></tr>
+        </tbody>
+      </table>
+      </div>
+    </details>
+  </div>
+
+  <div class="prose">
+    <p>Whole-function evaluation against the patched ForwardDiff: <code>ackley</code> is now a dead heat —
+    16.0 vs 16.4 µs per call — while <code>rosenbrock_1</code>, which is multiply-dominated, keeps a
+    <strong>1.74×</strong> gap (11.2 vs 19.5 µs). Multiplied by factor 1 (1.94×) and the overhead factor,
+    these reproduce the measured totals exactly.</p>
+  </div>
+
+  <h3>2a — The big per-op gap was a ForwardDiff bug: a missing <code>@inline</code></h3>
+  <div class="prose">
+    <p>Every DiffRules-generated <code>Dual</code> method funnels its result through
+    <code>dual_definition_retval</code> (<code>ForwardDiff/src/dual.jl:213</code>). It carries no
+    <code>@inline</code> annotation, and for fat nested duals Julia 1.12's inliner declines it — confirmed
+    on both the released v1.3.0 and current master (v1.4.1). The entire body of a stock nested-dual multiply
+    becomes two out-of-line calls plus a 648-byte <code>memcpy</code>. This is the actual, complete native
+    code — the only arithmetic instruction is one scalar <code>fmul</code>:</p>
+  </div>
+
+  <div class="codecols">
+    <div class="codecard">
+      <div class="cc-head">
+        <span class="cc-title">ForwardDiff (stock) — <code>*</code> on nested Dual 8×8</span>
+        <span class="cc-sub">code_native · complete listing</span>
+      </div>
+      <pre><code><span class="ln cm">; *(Dual{Dual{Float64,8},8}, Dual{Dual{Float64,8},8})</span>
+<span class="ln">  stp   x24, x23, [sp, #-64]!</span>
+<span class="ln">  stp   x22, x21, [sp, #16]</span>
+<span class="ln">  stp   x20, x19, [sp, #32]</span>
+<span class="ln">  stp   x29, x30, [sp, #48]</span>
+<span class="ln bad">  sub   sp, sp, #720          <span class="cm">; 720-byte stack frame</span></span>
+<span class="ln">  mov   x19, x1</span>
+<span class="ln">  mov   x20, x0</span>
+<span class="ln">  mov   x21, x8</span>
+<span class="ln">  mov   x22, x0</span>
+<span class="ln">  ldr   d2, [x22], #72</span>
+<span class="ln">  mov   x23, x1</span>
+<span class="ln">  ldr   d1, [x23], #72</span>
+<span class="ln">  fmul  d0, d2, d1            <span class="cm">; v1*v2 — the only math here</span></span>
+<span class="ln">  add   x8, sp, #648</span>
+<span class="ln">  add   x0, x0, #8</span>
+<span class="ln">  add   x1, x1, #8</span>
+<span class="ln bad">  bl    _j_dual_definition_retval   <span class="cm">; out-of-line call #1</span></span>
+<span class="ln">  mov   x8, sp</span>
+<span class="ln">  add   x0, sp, #648</span>
+<span class="ln">  mov   x1, x19</span>
+<span class="ln">  mov   x2, x22</span>
+<span class="ln">  mov   x3, x20</span>
+<span class="ln">  mov   x4, x23</span>
+<span class="ln bad">  bl    _j_dual_definition_retval   <span class="cm">; out-of-line call #2</span></span>
+<span class="ln">  mov   x1, sp</span>
+<span class="ln">  mov   x0, x21</span>
+<span class="ln">  mov   w2, #648</span>
+<span class="ln bad">  bl    _memcpy               <span class="cm">; copy 648-byte result struct</span></span>
+<span class="ln">  add   sp, sp, #720</span>
+<span class="ln">  ldp   x29, x30, [sp, #48]</span>
+<span class="ln">  ldp   x20, x19, [sp, #32]</span>
+<span class="ln">  ldp   x22, x21, [sp, #16]</span>
+<span class="ln">  ldp   x24, x23, [sp], #64</span>
+<span class="ln">  ret</span></code></pre>
+      <div class="cc-verdict">
+        <span class="v-pill bad">2 calls / multiply</span>
+        <span class="v-pill bad">648 B memcpy</span>
+        <span class="v-pill bad">720 B stack traffic</span>
+      </div>
+    </div>
+
+    <div class="codecard">
+      <div class="cc-head">
+        <span class="cc-title">HyperHessians — <code>*</code> on HyperDual{8,8}</span>
+        <span class="cc-sub">code_native · excerpt of 276 instrs</span>
+      </div>
+      <pre><code><span class="ln cm">; *(HyperDual{8,8,Float64}, HyperDual{8,8,Float64})</span>
+<span class="ln">  ldr   d7,  [x1]             <span class="cm">; h2.v</span></span>
+<span class="ln">  ldur  q12, [x0, #40]        <span class="cm">; h1.ϵ2 lanes</span></span>
+<span class="ln good">  fmul.2d  v18, v12, v7[0]</span>
+<span class="ln">  ldur  q2,  [x0, #56]</span>
+<span class="ln good">  fmul.2d  v0, v2, v7[0]</span>
+<span class="ln">  ldr   d3,  [x0]             <span class="cm">; h1.v</span></span>
+<span class="ln">  ldur  q4,  [x1, #56]</span>
+<span class="ln good">  fmla.2d  v0, v4, v3[0]      <span class="cm">; fused multiply-add</span></span>
+<span class="ln">  ldur  q28, [x0, #72]        <span class="cm">; h1.ϵ12 rows…</span></span>
+<span class="ln good">  fmul.2d  v0, v28, v4[0]</span>
+<span class="ln">  ldur  q23, [x0, #88]</span>
+<span class="ln good">  fmul.2d  v1, v23, v4[0]</span>
+<span class="ln">  ldur  q21, [x0, #104]</span>
+<span class="ln good">  fmul.2d  v6, v21, v4[0]</span>
+<span class="ln">  ldur  q20, [x0, #120]</span>
+<span class="ln good">  fmul.2d  v16, v20, v4[0]</span>
+<span class="ln">  ldur  q29, [x1, #72]</span>
+<span class="ln good">  fmla.2d  v0, v29, v2[0]</span>
+<span class="ln cm">  …</span>
+<span class="ln good">  fmla.2d  v8,  v29, v12[1]</span>
+<span class="ln good">  fmla.2d  v9,  v27, v12[1]</span>
+<span class="ln good">  fmla.2d  v10, v24, v12[1]</span>
+<span class="ln good">  fmla.2d  v11, v22, v12[1]</span>
+<span class="ln good">  fmla.2d  v8,  v16, v7[0]</span>
+<span class="ln good">  fmla.2d  v9,  v17, v7[0]</span>
+<span class="ln cm">  … (straight-line to ret)</span></code></pre>
+      <div class="cc-verdict">
+        <span class="v-pill good">0 calls</span>
+        <span class="v-pill good">0 memcpy</span>
+        <span class="v-pill good">104 packed fmla.2d</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="prose">
+    <p>In whole functions this multiplies out: stock <code>rosenbrock_1</code> on nested 8×8 duals carries
+    <strong>28 out-of-line call sites</strong> in its loop body; on <code>HyperDual{8,8}</code> it carries
+    <strong>zero</strong>. The fix is two characters short of trivial:</p>
+  </div>
+
+  <div class="codecard" style="margin: 20px 0">
+    <div class="cc-head">
+      <span class="cc-title">The patch — <code>ForwardDiff/src/dual.jl</code></span>
+      <span class="cc-sub">applied to master (090ddbb) before all headline measurements</span>
+    </div>
+    <pre><code><span class="ln bad">-function dual_definition_retval(::Val{T}, val::Real, deriv::Real, partial::Partials) where {T}</span>
+<span class="ln good">+@inline function dual_definition_retval(::Val{T}, val::Real, deriv::Real, partial::Partials) where {T}</span>
+<span class="ln">     return Dual{T}(val, deriv * partial)</span>
+<span class="ln"> end</span>
+<span class="ln bad">-function dual_definition_retval(::Val{T}, val::Real, deriv1::Real, partial1::Partials, deriv2::Real, partial2::Partials) where {T}</span>
+<span class="ln good">+@inline function dual_definition_retval(::Val{T}, val::Real, deriv1::Real, partial1::Partials, deriv2::Real, partial2::Partials) where {T}</span>
+<span class="ln">     return Dual{T}(val, _mul_partials(partial1, partial2, deriv1, deriv2))</span>
+<span class="ln"> end</span></code></pre>
+    <div class="cc-verdict">
+      <span class="v-pill good">mul: 65.4 → 22.7 ns</span>
+      <span class="v-pill good">sqrt: 34.0 → 14.7 ns</span>
+      <span class="v-pill good">ackley Hessian: 28.3 → 20.4 ms</span>
+      <span class="v-pill good">rosenbrock Hessian: 41.2 → 23.9 ms</span>
+    </div>
+  </div>
+
+  <div class="prose">
+    <p>With the patch, the nested-dual multiply inlines into 493 straight-line instructions with zero calls
+    and zero memcpy — and ForwardDiff's Hessians get 1.4–1.7× faster across the board. This deserves an
+    upstream PR. Everything else in this report compares against the patched ForwardDiff.</p>
+  </div>
+
+  <details>
+    <summary>LLVM IR of the stock rosenbrock loop body — the call sites</summary>
+    <div class="codecard" style="margin-top:10px">
+      <div class="cc-head">
+        <span class="cc-title">rosenbrock_1 on nested Dual 8×8, stock FD — one unrolled step</span>
+        <span class="cc-sub">code_llvm · 8 calls per multiply group</span>
+      </div>
+      <pre><code><span class="ln bad">  call void @j_dual_definition_retval(ptr sret(648) %sret_box,  double %202, …)</span>
+<span class="ln bad">  call void @j_dual_definition_retval(ptr sret(648) %sret_box180, double %203, …)</span>
+<span class="ln bad">  call void @j_dual_definition_retval(ptr sret(648) %sret_box181, double %204, …)</span>
+<span class="ln bad">  call void @j_dual_definition_retval(ptr sret(648) %sret_box182, double %205, …)</span>
+<span class="ln bad">  call void @j_dual_definition_retval(ptr sret(648) %sret_box183, double %206, …)</span>
+<span class="ln bad">  call void @j_dual_definition_retval(ptr sret(648) %sret_box184, double %207, …)</span>
+<span class="ln bad">  call void @j_dual_definition_retval(ptr sret(648) %sret_box185, double %208, …)</span>
+<span class="ln bad">  call void @j_dual_definition_retval(ptr sret(648) %sret_box186, double %209, …)</span>
+<span class="ln">  …</span>
+<span class="ln bad">  call void @llvm.memcpy.p0.p0.i64(ptr align 8 %0, ptr align 8 %memoryref_data212, i64 648, i1 false)</span></code></pre>
+    </div>
+  </details>
+
+  <h3>2b — What survives the fix: lane shape and FMA fusion</h3>
+  <div class="prose">
+    <p>Even patched, a nested-dual multiply compiles to <strong>493 instructions with zero FMA</strong>,
+    against <strong>276 instructions with 104 packed <code>fmla.2d</code></strong> for HyperDual — a 1.8×
+    instruction-count ratio that matches the remaining 1.74× on multiply-dominated rosenbrock. Two causes.
+    First, ForwardDiff's partials arithmetic is written as separate multiplies and adds, while every
+    HyperDual accumulation goes through explicit <code>muladd</code>, which LLVM turns into fused
+    multiply-adds. Second, the lane shape: both structs below are the same 648 bytes, but a nested
+    <code>Dual{T, Dual{T, V, 8}, 8}</code> slices them into nine 9-float lanes — odd, straddling vector
+    registers and cache lines at a different offset each time — where <code>HyperDual{8,8}</code> groups
+    everything in 8-wide tuples: each lane exactly 64 bytes, one cache line, whole SIMD registers, and the
+    ϵ₁₂ update a clean 8×8 outer-product-accumulate.</p>
+  </div>
+
+  <div class="panel">
+    <div class="lanes">
+      <div class="lane">
+        <div class="lane-title sans">HyperDual{8,8} — 648 B, every lane is 8 doubles = whole vector registers</div>
+        <div class="lane-strip" id="lane-hh"></div>
+        <div class="lane-key sans">
+          <span><i style="background:var(--faint)"></i>value</span>
+          <span><i style="background:var(--s-hh);opacity:.55"></i>ϵ₁ (8)</span>
+          <span><i style="background:var(--s-hh);opacity:.8"></i>ϵ₂ (8)</span>
+          <span><i style="background:var(--s-hh)"></i>ϵ₁₂ rows (8×8)</span>
+        </div>
+      </div>
+      <div class="lane">
+        <div class="lane-title sans">nested Dual 8×8 — same 648 B, but nine 9-double lanes with a ragged tail in every one</div>
+        <div class="lane-strip" id="lane-fd"></div>
+        <div class="lane-key sans">
+          <span><i style="background:var(--faint)"></i>inner value</span>
+          <span><i style="background:var(--s-fd8)"></i>8 inner partials</span>
+          <span><i style="background:var(--s-fd8);opacity:.45"></i>vector-width straggler</span>
+        </div>
+      </div>
+    </div>
+    <p class="fig-caption">Each cell is one <code>Float64</code>; each bracket-group is one derivative lane the
+    compiler must process as a unit. 8 doubles fill 2×AVX2 or 4×NEON registers exactly. 9 doubles are 4 full
+    vectors plus a scalar straggler — every single lane, every single op.</p>
+  </div>
+
+  <h3>2c — Scalar (f, f′, f″) rules: mostly a wash once FD inlines</h3>
+  <div class="prose">
+    <p>HyperHessians evaluates each derivative rule as scalar expressions —
+    <code>sqrt</code>: <code>f′ = 1/2/f</code>, <code>f′′ = -2f′³</code> — and applies one fused chain rule,
+    where ForwardDiff runs its first-order rule recursively in inner-dual arithmetic. Before the patch this
+    looked like a 2.5× win on <code>sqrt</code>; after it, LLVM optimizes the recursive form nearly as well
+    (14.7 vs 13.8 ns, and <code>exp</code> even favors ForwardDiff). What remains from the rule engineering
+    is modest: the dedicated two-dual division rule and <code>muladd</code>-based chain rule keep
+    <code>/</code> at 25.8 vs 22.7 ns, plus NaN-free monomial rules for integer powers as a correctness
+    (not speed) difference.</p>
+  </div>
+</section>
+
+<!-- ================= FACTOR 3 ================= -->
+<section id="overhead">
+  <div class="factor-head">
+    <span class="factor-num">FACTOR 3</span>
+    <h2>Fixed overhead: allocation, seeding, extraction</h2>
+  </div>
+  <p class="kicker">≈ 1.1× · everything around the actual evaluations, per <code>hessian!</code> call at n = 256, chunk 8, patched FD</p>
+
+  <div class="panel">
+    <div class="table-scroll">
+    <table>
+      <thead><tr><th>per hessian! call</th><th>ForwardDiff</th><th>HyperHessians</th></tr></thead>
+      <tbody>
+        <tr><td>heap allocated</td><td>657,456 B</td><td>0 B</td></tr>
+        <tr><td>gradient vectors allocated</td><td>32 × 18.4 KB (one per outer chunk)</td><td>—</td></tr>
+        <tr><td>full-array reseeding</td><td>32 × 162 KB</td><td>1 × 162 KB</td></tr>
+        <tr><td>seed writes per eval</td><td>full inner chunk machinery</td><td>16 array entries</td></tr>
+        <tr><td>result extraction</td><td>dual-typed gradient → copy to H columns</td><td>ϵ₁₂ block → H directly</td></tr>
+        <tr><td>time not explained by evals</td><td>3.6 ms (18% of 20.4)</td><td>0.6 ms (7% of 9.1)</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p class="fig-caption"><code>ForwardDiff.hessian!(H, f, x, cfg)</code> closes over
+    <code>gradient(f, y, …)</code>, which <strong>returns a fresh vector</strong> — one 18.4 KB
+    <code>Vector{Dual}</code> allocation per outer chunk, 32 times per Hessian, plus GC pressure. Extraction
+    is two-stage: the inner gradient extracts into that dual-typed vector, then the Jacobian layer copies
+    partials out into <code>H</code>. HyperHessians fills its config buffer once and writes each 8×8
+    <code>ϵ₁₂</code> block straight into <code>H</code>.</p>
+  </div>
+</section>
+
+<!-- ================= CROSS-CHECKS ================= -->
+<section id="crosschecks">
+  <div class="factor-head">
+    <span class="factor-num">RULED OUT</span>
+    <h2>What does <em>not</em> explain the gap</h2>
+  </div>
+  <p class="kicker">each hypothesis checked and rejected</p>
+
+  <div class="xchecks">
+    <div class="xcheck"><span class="xmark">CHECKED</span>
+      <p><b>Chunk size.</b> Everything in this report pins both packages to chunk 8, so chunk choice is out
+      of the equation by construction. It also isn't hiding anything: letting ForwardDiff use its own default
+      heuristic changes its ackley total by under 10%. HH's own sweep puts 8 at the optimum for HyperDuals
+      because <code>HyperDual{16,16}</code> (2.3 KB) spills registers — hence <code>maxchunksize = 8</code>.</p>
+    </div>
+    <div class="xcheck"><span class="xmark">CHECKED</span>
+      <p><b>Algebraic redundancy in nested duals.</b> None for <code>*</code>/<code>+</code>: expanding the
+      nested product gives outer partial i = v₂A₁[i,:] + a₁[i]b₂ + v₁A₂[i,:] + a₂[i]b₁ — exactly the
+      HyperDual ϵ₁₂ row, same flop count. The redundancy that does exist is 2c: rule evaluation in dual
+      arithmetic.</p>
+    </div>
+    <div class="xcheck"><span class="xmark">CHECKED</span>
+      <p><b>Extra transcendental calls.</b> Identical counts in both (one <code>exp</code>, one
+      <code>sincos</code> per element in ackley). The win is in everything around them.</p>
+    </div>
+    <div class="xcheck"><span class="xmark">CHECKED</span>
+      <p><b>Tag checking.</b> Compile-time only; no runtime cost.</p>
+    </div>
+    <div class="xcheck"><span class="xmark">CHECKED</span>
+      <p><b><code>@fastmath</code> rule specialization.</b> Present in HyperHessians but unused by these
+      benchmarks — the DiffTests functions don't use <code>@fastmath</code>, so it contributes nothing to the
+      committed numbers.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ================= RESULTS + NOTES ================= -->
+<section id="results">
+  <div class="factor-head">
+    <span class="factor-num">CONTEXT</span>
+    <h2>Measured totals & caveats</h2>
+  </div>
+
+  <div class="panel">
+    <div class="table-scroll">
+    <table>
+      <thead><tr><th>function · n=256</th><th>machine · config</th><th>ForwardDiff</th><th>HyperHessians</th><th>speedup</th></tr></thead>
+      <tbody>
+        <tr><td>ackley</td><td>Apple Silicon · chunk 8 · patched FD</td><td>20.4 ms</td><td>9.1 ms</td><td>2.23×</td></tr>
+        <tr><td>rosenbrock_1</td><td>Apple Silicon · chunk 8 · patched FD</td><td>23.9 ms</td><td>6.5 ms</td><td>3.67×</td></tr>
+        <tr><td>ackley</td><td>Apple Silicon · chunk 8 · stock FD</td><td>28.3 ms</td><td>8.9 ms</td><td>3.19×</td></tr>
+        <tr><td>rosenbrock_1</td><td>Apple Silicon · chunk 8 · stock FD</td><td>41.2 ms</td><td>6.3 ms</td><td>6.54×</td></tr>
+        <tr><td>ackley</td><td>arrowlake-s · package defaults · stock FD</td><td>16.2 ms</td><td>2.6 ms</td><td>6.30×</td></tr>
+        <tr><td>rosenbrock_1</td><td>arrowlake-s · package defaults · stock FD</td><td>25.9 ms</td><td>3.1 ms</td><td>8.45×</td></tr>
+        <tr><td>self_weighted_logit</td><td>arrowlake-s · package defaults · stock FD</td><td>16.7 ms</td><td>4.2 ms</td><td>3.99×</td></tr>
+        <tr><td>vec2num_3 (n=128)</td><td>arrowlake-s · package defaults · stock FD</td><td>871.7 ms</td><td>184.2 ms</td><td>4.73×</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p class="fig-caption">Sanity check on this machine (chunk 8 both, patched FD): evals × per-eval cost
+    predicts the totals — FD 1024 × 16.4 µs = 16.8 of 20.4 ms; HH 528 × 16.0 µs = 8.5 of 9.1 ms. The
+    residuals are factor 3, and the three factors multiply to 2.2 (ackley) and 3.7 (rosenbrock) against
+    measured 2.23× and 3.67×.</p>
+  </div>
+
+  <div class="prose">
+    <p><strong>The largest single finding is ForwardDiff's, not HyperHessians'.</strong> The missing
+    <code>@inline</code> on <code>dual_definition_retval</code> costs stock ForwardDiff 1.4–1.7× on every
+    nested-dual Hessian (confirmed on v1.3.0 and master v1.4.1). Users today experience the stock rows in
+    the table above; the patch should go upstream, at which point the honest gap is the patched rows.</p>
+    <p><strong>Machine dependence.</strong> The committed arrowlake-s numbers were taken with stock
+    ForwardDiff and package-default chunks; the x86/AVX2 codegen gap should also narrow with the patch,
+    but re-running that machine's sweep is the way to know.</p>
+    <p><strong>HVP wins for a structural reason.</strong> <code>HyperDual{N1,N2}</code> supports
+    asymmetric lanes, so <code>hvp</code> seeds ϵ₂ with the tangent directly (<code>HyperDual{8,1}</code>)
+    and chunks only ϵ₁ — 1.8–3.6× over DI/ForwardDiff's pushforward-of-chunked-gradient nesting
+    (measured against stock ForwardDiff).</p>
+  </div>
+</section>
+
+<footer class="sans">
+  <p><strong>Methodology.</strong> All measurements: Julia 1.12.6, HyperHessians at <code>e5b8b4c</code>,
+  ForwardDiff master (<code>090ddbb</code>, v1.4.1) with the two-line <code>@inline</code> patch applied and
+  <code>Pkg.develop</code>ed into the benchmark environment ("stock" rows: unpatched). BenchmarkTools
+  minimum times, single thread, <code>DiffTests</code> inputs with fixed seed, chunk size pinned to 8 for
+  both packages (<code>ForwardDiff.Chunk{8}()</code> / HyperHessians default) so both use the same 81-float
+  dual payload. Evaluation counts via counting closure; codegen via
+  <code>code_native</code>/<code>code_llvm</code> (assembly shown is ARM64/NEON, lightly trimmed of debug
+  directives, symbol suffixes shortened). Experiment scripts and the patch:
+  <code>benchmark/why-faster/</code> in the repository. Committed reference numbers from
+  <code>benchmark/results/summary.md</code> (arrowlake-s, 24 threads, serial configs, package-default
+  chunks, stock ForwardDiff).</p>
+</footer>
+
+</div>
+
+<script>
+  // Factor-1 block grids
+  (function () {
+    const fd = document.getElementById("grid-fd");
+    fd.style.gridTemplateColumns = "repeat(32, 8px)";
+    for (let i = 0; i < 32; i++)
+      for (let j = 0; j < 32; j++) {
+        const d = document.createElement("div");
+        d.className = "on-fd";
+        fd.appendChild(d);
+      }
+    const hh = document.getElementById("grid-hh");
+    hh.style.gridTemplateColumns = "repeat(32, 8px)";
+    for (let i = 0; i < 32; i++)
+      for (let j = 0; j < 32; j++) {
+        const d = document.createElement("div");
+        if (j >= i) d.className = "on-hh";
+        hh.appendChild(d);
+      }
+  })();
+
+  // Factor-2 grouped bar chart
+  (function () {
+    const data = [
+      { op: "*   (multiply)", vals: [17.7, 22.7] },
+      { op: "/   (divide)", vals: [22.7, 25.8] },
+      { op: "exp", vals: [26.5, 24.3] },
+      { op: "sqrt", vals: [13.8, 14.7] },
+      { op: "sin", vals: [29.5, 31.7] },
+    ];
+    const cls = ["hh", "fd8"];
+    const names = ["HyperDual{8,8}", "nested Dual 8×8 (patched FD)"];
+    const max = 31.7;
+    const root = document.getElementById("opchart");
+    for (const g of data) {
+      const grp = document.createElement("div");
+      grp.className = "bargroup";
+      const lab = document.createElement("div");
+      lab.className = "g-label";
+      lab.textContent = g.op;
+      grp.appendChild(lab);
+      g.vals.forEach(function (v, k) {
+        const row = document.createElement("div");
+        row.className = "bar-row";
+        row.title = names[k] + " · " + g.op.trim() + ": " + v.toFixed(1) + " ns/element";
+        const track = document.createElement("div");
+        track.className = "bar-track";
+        const bar = document.createElement("div");
+        bar.className = "bar " + cls[k];
+        bar.style.width = (v / max * 100).toFixed(1) + "%";
+        track.appendChild(bar);
+        const val = document.createElement("div");
+        val.className = "bar-val";
+        val.textContent = v.toFixed(1) + " ns";
+        row.appendChild(track);
+        row.appendChild(val);
+        grp.appendChild(row);
+      });
+      root.appendChild(grp);
+    }
+  })();
+
+  // Factor-2b memory-lane diagrams
+  (function () {
+    function group(parent, cells) {
+      const g = document.createElement("div");
+      g.className = "cellgroup";
+      for (const c of cells) {
+        const d = document.createElement("div");
+        d.className = "cell " + c;
+        g.appendChild(d);
+      }
+      parent.appendChild(g);
+    }
+    const hh = document.getElementById("lane-hh");
+    group(hh, ["v"]);
+    group(hh, Array(8).fill("e1"));
+    group(hh, Array(8).fill("e2"));
+    for (let r = 0; r < 8; r++) group(hh, Array(8).fill("e12"));
+
+    const fd = document.getElementById("lane-fd");
+    for (let r = 0; r < 9; r++) {
+      group(fd, ["iv"].concat(Array(7).fill("ip"), ["straggler"]));
+    }
+  })();
+</script>
