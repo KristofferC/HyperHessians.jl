@@ -1,4 +1,289 @@
 <title>HyperHessians — Anatomy of a speedup (slides)</title>
+
+<!-- ======================================================================
+  EDIT YOUR SLIDES HERE — everything between the <script id="deck-src"> tags
+  is the deck source, in Markdown-ish syntax. The renderer below turns it
+  into slides. You should not need to touch anything past the closing tag.
+
+  Syntax cheat-sheet:
+    ---                      new slide
+    @layout title            big title-slide layout (h1 + lede)
+    @eyebrow TEXT            small caps label above the heading
+    # Heading                slide heading
+    ~ text                   lede paragraph (title slide)
+    @chips a | b | c         chip row
+    @footer text             bottom-left footer note
+    plain line               paragraph
+    - item                   bullet list
+    > text                   small gray caption
+    | a | b |                markdown table (auto-wrapped in a panel)
+    {{grid-fd}} {{grid-hh}} {{lane-hh}} {{lane-fd}} {{opchart}}
+                             generated figures (see renderer)
+    ::: cols                 start columns   (:: col starts each column,
+    :: col 1.3                optional flex weight; ::: ends the block)
+    ::: panel Title          start a titled panel box, ::: ends it
+    ::: tiles                equation tiles: "label | value | note" lines,
+                              lone × / ≈ lines are operators, prefix ! for
+                              the highlighted result tile; ::: ends it
+    ```Title | subtitle      code card (title bar optional)
+    [+] line   [-] line      highlighted good / bad code lines
+    ```                      end code card
+    @pills good:a | bad:b | c   verdict pills under the previous code card
+====================================================================== -->
+
+<script type="text/template" id="deck-src">
+@layout title
+@eyebrow HyperHessians.jl · performance forensics
+# Anatomy of a speedup
+~ Why computing a dense Hessian with **hyper-dual numbers** is 2.2–4.4× faster than **nested forward-mode duals** — measured, decomposed, and verified down to the instruction level.
+@chips Apple M4 (NEON) · AMD Zen 4 (AVX-512) | Julia 1.12.6 | vs ForwardDiff, inlining fix applied | n = 256 · chunk 8 both
+@footer HyperHessians.jl · → / ← / click to navigate · p to print
+
+---
+@eyebrow The result
+# One number is a benchmark. A product of factors is an explanation.
+@footer chunk size pinned to 8 for both · BenchmarkTools minimum times · single thread
+
+::: tiles
+1 · Symmetry | 1.94× | evaluate only upper-triangular block pairs
+×
+2 · Arithmetic / eval | 1.0–1.8× | FMA-fused, register-exact SIMD lanes
+×
+3 · Overhead | 1.1–1.3× | zero allocation, minimal seeding & extraction
+≈
+! Measured | 2.2–4.4× | every total reproduced by its factors
+:::
+
+| hessian! · n = 256 | machine | ForwardDiff | HyperHessians | speedup |
+|---|---|---|---|---|
+| ackley | Apple M4 | 20.4 ms | *9.1 ms* | 2.23× |
+| rosenbrock_1 | Apple M4 | 23.9 ms | *6.5 ms* | 3.67× |
+| ackley | AMD Zen 4 | 25.7 ms | *5.9 ms* | 4.39× |
+| rosenbrock_1 | AMD Zen 4 | 34.0 ms | *9.4 ms* | 3.64× |
+
+---
+@eyebrow Setup
+# Two ways to carry second derivatives
+@footer HyperDual multiplication: ϵ₁₂[i] ← v₁A₂[i] + A₁[i]v₂ + a₁[i]b₂ + a₂[i]b₁
+
+::: cols
+:: col
+```ForwardDiff — nested duals | Hessian = J(∇f)
+Dual{T, Dual{T, Float64, 8}, 8}
+
+# 9 inner duals of 9 floats each:
+value    :: Dual{T,Float64,8}   # 1+8
+partials :: 8 × Dual{T,Float64,8}
+
+# (1+8)² = 81 floats, 648 bytes
+# second derivatives live in the
+# partials-of-partials cross terms
+```
+@pills outer chunked Jacobian ∘ inner chunked gradient
+:: col
+```HyperHessians — hyper-duals | h = v + ϵ₁ᵀa + ϵ₂ᵀb + ϵ₁ᵀAϵ₂
+HyperDual{8, 8, Float64}
+
+[+] v   :: Float64             # value
+[+] ϵ1  :: NTuple{8, Float64}  # ∇ lanes
+[+] ϵ2  :: NTuple{8, Float64}  # ∇ lanes
+[+] ϵ12 :: 8 × NTuple{8, Float64}  # H block
+
+# 1+8+8+64 = 81 floats, 648 bytes
+# the 8×8 Hessian block is explicit
+```
+@pills good:one evaluation per 8×8 block pair
+:::
+
+> Identical payload — 81 floats, 648 bytes — and expanding the nested product gives term-for-term the hyper-dual cross-term formula. Same algebra, same flop count. Everything that follows is structure, not math.
+
+---
+@eyebrow Factor 1 · 1.94×
+# A Hessian is symmetric. Compute half of it.
+@footer same 256×256 Hessian, same 8×8 blocks, in both grids
+
+::: cols
+:: col
+**ForwardDiff — every 8×8 block of the full square**
+
+{{grid-fd}}
+
+> **32² = 1024** evaluations of f
+:: col
+**HyperHessians — upper-triangular block pairs, then mirror**
+
+{{grid-hh}}
+
+> **32·33/2 = 528** evaluations of f → **1.94×** fewer
+:: col 1.1
+- Jacobian-of-gradient has no place to exploit symmetry: each outer chunk needs the *full* gradient.
+- Independent ϵ₁ / ϵ₂ seeds address blocks (i, j) directly — evaluate only j ≥ i.
+- Eval counts verified with a counting closure; block pairs are embarrassingly parallel (7.1× on 8 cores).
+:::
+
+---
+@eyebrow Factor 2 · 1.0–1.8×
+# Same 81 floats per number — so why is one faster?
+@footer three mechanisms follow →
+
+::: cols
+:: col 1.3
+::: panel
+{{opchart}}
+> ns per element, streamed over 256-element vectors, Apple M4. Isolated ops are close on NEON — the interesting differences appear in registers and on wider SIMD.
+:::
+:: col
+| one f eval | ForwardDiff | HyperHessians | ratio |
+|---|---|---|---|
+| ackley · M4 | 16.4 µs | *16.0 µs* | 1.02× |
+| rosenbrock · M4 | 19.5 µs | *11.2 µs* | 1.74× |
+| ackley · Zen 4 | 18.9 µs | *10.7 µs* | 1.77× |
+| rosenbrock · Zen 4 | 28.6 µs | *17.0 µs* | 1.68× |
+
+> Whole functions tell a sharper story than single ops: transcendental-bound code converges, register-resident arithmetic doesn't.
+:::
+
+---
+@eyebrow Factor 2 · mechanism A
+# Lane shape: 8 is a SIMD width. 9 is not.
+@footer on 2-wide NEON the straggler is cheap — on 8-wide AVX-512 it is not →
+
+::: panel HyperDual{8,8} — every derivative lane is 8 doubles = whole registers (one zmm)
+{{lane-hh}}
+:::
+
+::: panel nested Dual 8×8 — same 648 bytes sliced into nine 9-double lanes, a straggler in every one
+{{lane-fd}}
+:::
+
+> Each cell is one `Float64`; each group is a lane the compiler processes as a unit. 8 doubles = 4×NEON, 2×AVX2, or exactly **1×AVX-512 register**. 9 doubles = a full vector set *plus a scalar straggler* — on every lane, in every operation. HyperHessians also fuses every accumulation through `muladd`; the nested layout's mul-then-add never fuses.
+
+---
+@eyebrow Factor 2 · mechanism A, measured on Zen 4
+# On AVX-512, one multiply: 25 FMAs vs 71 shuffles
+@footer code_native, AMD EPYC 9354 · full listings in benchmark/why-faster/results/
+
+::: cols
+:: col
+```HyperDual{8,8} * | 186 instructions
+[+]   21× vfmadd231pd zmm  ; 8-wide fused
+[+]    4× vfmadd213pd zmm
+[+]   11× vmulpd zmm
+  15× vbroadcastsd
+  22× vmov (loads/stores)
+  12× shuffle/gather
+```
+@pills good:25 zmm FMAs | good:each lane = one register
+:: col
+```nested Dual 8×8 * | 418 instructions
+[-]   49× vpermt2pd        ; shuffles
+[-]   18× vgatherdpd       ; gathers
+  34× vmulpd + 25× vaddpd
+[-]    0× vfmadd           ; never fused
+  17× vmulsd + 8× vaddsd   ; stragglers
+  83× vmov (loads/stores)
+```
+@pills bad:0 FMAs | bad:71 shuffle/gather | bad:25 scalar ops
+:: col 0.9
+- More instructions *rearranging data* than doing arithmetic.
+- Result: multiply is **3.1× slower** (53.5 vs 17.4 ns/element) at identical payload.
+- 2.25× the instruction count → the whole-function 1.7–1.8× gap on Zen 4.
+:::
+
+---
+@eyebrow Factor 2 · mechanism B
+# Flat layouts let LLVM delete dead derivative lanes
+@footer same zeros, same algebra — transparency to the compiler differs
+
+::: cols
+:: col 1.2
+```DiffTests.rosenbrock_1 | the constants are duals
+function rosenbrock_1(x)
+[-]     a = one(eltype(x))     # a dual! ϵ ≡ 0
+[-]     b = 100 * a            # a dual! ϵ ≡ 0
+    result = zero(eltype(x))
+    for i in 1:length(x)-1
+        result += (a - x[i])^2 +
+[-]               b * (x[i+1] - x[i]^2)^2
+    end
+    result
+end
+```
+:: col
+- Every iteration multiplies by a dual whose 80 derivative floats are **known zeros**.
+- Through the flat, fully-inlined `HyperDual` code, LLVM constant-folds the dead lanes away — the op collapses to near real×dual cost.
+- Through the nested representation the folding largely fails: the zeros are computed.
+- Evidence: rewrite with literal `1` and `100` and the two types run at **parity** (33.6 vs 35.0 ns/element); with dual constants the gap is 1.74×.
+:::
+
+---
+@eyebrow Factor 3 · 1.1–1.3×
+# Everything around the evaluations
+@footer measured with @allocated after warmup
+
+| per hessian! call · n = 256 | ForwardDiff | HyperHessians |
+|---|---|---|
+| heap allocated | ~600 KB | *0 B* |
+| gradient vectors allocated | 32 × 18.4 KB, one per outer chunk | *—* |
+| full dual-array reseeding | 32 × 162 KB | *1 × 162 KB* |
+| seed writes per evaluation | full inner chunk machinery | *16 array entries* |
+| result extraction | dual gradient → copy into H columns | *ϵ₁₂ block → H directly* |
+| time outside f evals (M4 ackley) | 3.6 ms — 18% | *0.6 ms — 7%* |
+
+> The Jacobian-of-gradient driver allocates a fresh dual-typed gradient vector on every outer chunk and re-seeds the whole input array; the hyper-dual driver fills one buffer per Hessian, seeds 16 entries per pass, reuses the ϵ₁ seed across the inner loop, and writes each 8×8 block straight into H.
+
+---
+@eyebrow Verification
+# The accounting closes
+@footer evals × per-eval cost + residual = total, on both machines
+
+| case | symmetry | arithmetic | overhead | product | measured |
+|---|---|---|---|---|---|
+| ackley · M4 | 1.94× | 1.02× | 1.12× | 2.2× | *2.23×* |
+| rosenbrock · M4 | 1.94× | 1.74× | 1.09× | 3.7× | *3.67×* |
+| ackley · Zen 4 | 1.94× | 1.77× | 1.29× | 4.4× | *4.39×* |
+| rosenbrock · Zen 4 | 1.94× | 1.68× | 1.10× | 3.6× | *3.64×* |
+
+> Each factor measured independently: eval counts by counting closure, arithmetic by timing single evaluations of f on each dual type, overhead as the residual — and their product matches every end-to-end total. No unexplained speedup, no benchmark magic.
+
+---
+@eyebrow Beyond one Hessian
+# The same structure keeps paying
+@footer hvp / hvp! / vhvp and ThreadedHessianConfig in the package API
+
+::: cols
+:: col
+::: panel Hessian-vector products: asymmetric lanes
+```
+HyperDual{8, 1, Float64}
+  ϵ1 ← identity chunks   (8 lanes)
+  ϵ2 ← the tangent v      (1 lane)
+  ϵ12 = H·v columns, directly
+```
+> No nesting, no second pass — the mixed term *is* the answer. Bundle multiple tangents as `HyperDual{8, k}`.
+:::
+:: col
+::: panel Threading: block pairs are independent
+| tasks | 1 | 2 | 4 | 8 |
+|---|---|---|---|---|
+| speedup (n=512) | 1.0× | 1.9× | 3.8× | *7.1×* |
+
+> The k(k+1)/2 evaluations share nothing but reads — `ThreadedHessianConfig` scales near-linearly across performance cores.
+:::
+:::
+
+---
+@eyebrow Takeaways
+# Speed came from structure the compiler can see
+@footer github.com/KristofferC/HyperHessians.jl · analysis & scripts: benchmark/why-faster/
+
+- **Exploit the math:** symmetry alone halves the work — 1.94× before any code tricks.
+- **Shape data for the machine:** 8-wide flat lanes are register-exact and FMA-fusable; nested 9-wide lanes cost shuffles, gathers, and stragglers on every op.
+- **Stay transparent to LLVM:** flat + fully inlined means dead derivative lanes fold away and intermediates never touch memory.
+- **Keep the driver silent:** zero allocations, 16 seed writes per pass, blocks written straight into H.
+- **Decompose your benchmarks:** a speedup you can't factor is a speedup you don't understand.
+</script>
+
 <style>
   :root {
     color-scheme: light;
@@ -99,58 +384,35 @@
 
   .eyebrow {
     font-family: -apple-system, system-ui, sans-serif;
-    font-size: 0.62em;
-    font-weight: 650;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--accent-ink);
-    margin: 0 0 0.7em;
+    font-size: 0.62em; font-weight: 650;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--accent-ink); margin: 0 0 0.7em;
   }
-  h1 {
+  h1, h2 {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-    font-weight: 800;
-    letter-spacing: -0.022em;
-    line-height: 1.06;
-    margin: 0 0 0.4em;
-    font-size: 2.6em;
-    text-wrap: balance;
+    letter-spacing: -0.02em; line-height: 1.08; margin: 0 0 0.5em; text-wrap: balance;
   }
-  h2 {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-    font-weight: 780;
-    letter-spacing: -0.018em;
-    line-height: 1.1;
-    margin: 0 0 0.55em;
-    font-size: 1.9em;
-    text-wrap: balance;
-  }
+  h1 { font-weight: 800; font-size: 2.6em; }
+  h2 { font-weight: 780; font-size: 1.9em; }
   .lede { font-size: 1.05em; color: var(--muted); max-width: 34em; margin: 0 0 1.1em; }
-  .lede strong, .body strong { color: var(--ink); }
-  .body { max-width: 38em; margin: 0 0 0.8em; }
+  .lede strong, p strong, li strong { color: var(--ink); }
+  p { max-width: 40em; margin: 0 0 0.8em; }
 
-  .grow { flex: 1 1 auto; display: flex; flex-direction: column; justify-content: center; }
-  .cols { display: flex; gap: 2.5vw; align-items: stretch; flex-wrap: wrap; }
+  .grow { flex: 1 1 auto; display: flex; flex-direction: column; justify-content: center; gap: 1em; }
+  .cols { display: flex; gap: 2.5vw; align-items: center; flex-wrap: wrap; }
   .col { flex: 1 1 300px; min-width: 280px; }
 
   .chips { display: flex; flex-wrap: wrap; gap: 0.5em; margin-top: 1.6em; }
   .chip {
     font-family: ui-monospace, "SF Mono", Menlo, monospace;
-    font-size: 0.6em;
-    color: var(--muted);
-    background: var(--chip-bg);
-    border-radius: 999px;
-    padding: 0.35em 1em;
+    font-size: 0.6em; color: var(--muted);
+    background: var(--chip-bg); border-radius: 999px; padding: 0.35em 1em;
   }
 
-  .panel {
-    background: var(--panel);
-    border: 1px solid var(--line);
-    border-radius: 12px;
-    padding: 1.1em 1.3em;
-  }
-  .caption { font-size: 0.68em; color: var(--muted); margin-top: 0.9em; line-height: 1.5; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 1.1em 1.3em; }
+  .panel-title { font-family: -apple-system, system-ui, sans-serif; font-size: 0.7em; font-weight: 650; margin-bottom: 0.6em; }
+  .caption { font-size: 0.68em; color: var(--muted); margin-top: 0.6em; line-height: 1.5; max-width: none; }
 
-  /* equation tiles */
   .equation { display: flex; flex-wrap: wrap; align-items: stretch; gap: 0.6em; }
   .tile {
     background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
@@ -160,7 +422,7 @@
     font-family: -apple-system, system-ui, sans-serif; font-size: 0.55em; font-weight: 650;
     letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin-bottom: 0.5em;
   }
-  .tile .t-value { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 1.5em; font-weight: 700; line-height: 1.05; }
+  .tile .t-value { font-family: ui-monospace, monospace; font-size: 1.5em; font-weight: 700; line-height: 1.05; }
   .tile .t-note { font-size: 0.6em; color: var(--muted); margin-top: 0.5em; line-height: 1.4; }
   .tile.result { border-color: var(--accent); background: var(--good-bg); }
   .tile.result .t-value { color: var(--accent-ink); }
@@ -173,19 +435,14 @@
     font-family: -apple-system, system-ui, sans-serif; font-size: 0.58em; font-weight: 650;
     text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted);
   }
-  td { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.68em; }
-  td.hh { color: var(--accent-ink); font-weight: 700; }
+  td { font-family: ui-monospace, monospace; font-size: 0.68em; }
+  td em { font-style: normal; color: var(--accent-ink); font-weight: 700; }
 
-  /* block grids */
-  .blocks-grid { display: grid; gap: 1px; width: fit-content; }
+  .blocks-grid { display: grid; gap: 1px; width: fit-content; grid-template-columns: repeat(32, 0.55em); }
   .blocks-grid div { width: 0.55em; height: 0.55em; border-radius: 2px; background: var(--grid-empty); }
   .blocks-grid div.on-fd { background: var(--s-fd); }
   .blocks-grid div.on-hh { background: var(--s-hh); }
-  .g-title { font-family: -apple-system, system-ui, sans-serif; font-size: 0.7em; font-weight: 650; margin-bottom: 0.6em; }
-  .g-stat { font-size: 0.65em; color: var(--muted); margin-top: 0.7em; line-height: 1.5; }
-  .g-stat b { color: var(--ink); font-family: ui-monospace, monospace; font-weight: 600; }
 
-  /* bar chart */
   .legend { display: flex; gap: 1.4em; margin-bottom: 0.9em; }
   .legend span { display: inline-flex; align-items: center; gap: 0.45em; font-family: -apple-system, system-ui, sans-serif; font-size: 0.65em; color: var(--muted); }
   .sw { width: 0.8em; height: 0.8em; border-radius: 3px; display: inline-block; }
@@ -198,8 +455,6 @@
   .bar.hh { background: var(--s-hh); } .bar.fd { background: var(--s-fd); }
   .bar-val { flex: 0 0 5.2em; text-align: right; font-family: ui-monospace, monospace; font-size: 0.62em; color: var(--muted); }
 
-  /* memory lanes */
-  .lane-title { font-family: -apple-system, system-ui, sans-serif; font-size: 0.68em; font-weight: 650; margin-bottom: 0.5em; }
   .lane-strip { display: flex; flex-wrap: wrap; gap: 3px; row-gap: 5px; }
   .cellgroup { display: flex; gap: 1px; }
   .cell { width: 0.55em; height: 0.95em; border-radius: 2px; }
@@ -211,8 +466,7 @@
   .cell.ip { background: var(--s-fd); }
   .cell.strag { background: var(--s-fd); opacity: 0.45; }
 
-  /* code cards */
-  .codecard { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; height: 100%; display: flex; flex-direction: column; }
+  .codecard { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; }
   .cc-head { display: flex; justify-content: space-between; gap: 0.8em; align-items: baseline; padding: 0.7em 1em 0.6em; border-bottom: 1px solid var(--line); }
   .cc-title { font-family: -apple-system, system-ui, sans-serif; font-size: 0.7em; font-weight: 700; }
   .cc-sub { font-family: ui-monospace, monospace; font-size: 0.55em; color: var(--faint); }
@@ -232,485 +486,361 @@
     font-family: -apple-system, system-ui, sans-serif;
     font-size: 0.58em; color: var(--faint);
   }
-  .kbd-hint { display: none; }
-  .slide:first-child .kbd-hint { display: inline; }
 
-  ul.tight { margin: 0; padding-left: 1.1em; }
-  ul.tight li { margin-bottom: 0.55em; max-width: 36em; }
+  ul { margin: 0; padding-left: 1.1em; }
+  ul li { margin-bottom: 0.55em; max-width: 36em; }
 
   @media (prefers-reduced-motion: no-preference) {
     .slide.active { animation: fadein 0.18s ease-out; }
     @keyframes fadein { from { opacity: 0.3; } to { opacity: 1; } }
   }
-
   @media print {
     .slide { display: flex !important; min-height: auto; height: 100vh; page-break-after: always; }
     .footer-note .counter { display: none; }
   }
 </style>
 
-<!-- ============ 1 · TITLE ============ -->
-<section class="slide active">
-  <div class="grow">
-    <p class="eyebrow">HyperHessians.jl · performance forensics</p>
-    <h1>Anatomy of a speedup</h1>
-    <p class="lede">Why computing a dense Hessian with <strong>hyper-dual numbers</strong> is
-    2.2–4.4× faster than <strong>nested forward-mode duals</strong> — measured, decomposed, and verified
-    down to the instruction level.</p>
-    <div class="chips sans">
-      <span class="chip">Apple M4 (NEON) · AMD Zen 4 (AVX-512)</span>
-      <span class="chip">Julia 1.12.6</span>
-      <span class="chip">vs ForwardDiff, inlining fix applied</span>
-      <span class="chip">n = 256 · chunk 8 both</span>
-    </div>
-  </div>
-  <div class="footer-note"><span>HyperHessians.jl</span><span class="kbd-hint">→ / ← / click to navigate · p to print</span><span class="counter"></span></div>
-</section>
-
-<!-- ============ 2 · THE RESULT ============ -->
-<section class="slide">
-  <p class="eyebrow">The result</p>
-  <h2>One number is a benchmark. A product of factors is an explanation.</h2>
-  <div class="grow">
-    <div class="equation sans" style="margin-bottom:1.4em">
-      <div class="tile">
-        <div class="t-label">1 · Symmetry</div>
-        <div class="t-value">1.94×</div>
-        <div class="t-note">evaluate only upper-triangular block pairs</div>
-      </div>
-      <div class="op">×</div>
-      <div class="tile">
-        <div class="t-label">2 · Arithmetic / eval</div>
-        <div class="t-value">1.0–1.8×</div>
-        <div class="t-note">FMA-fused, register-exact SIMD lanes</div>
-      </div>
-      <div class="op">×</div>
-      <div class="tile">
-        <div class="t-label">3 · Overhead</div>
-        <div class="t-value">1.1–1.3×</div>
-        <div class="t-note">zero allocation, minimal seeding &amp; extraction</div>
-      </div>
-      <div class="op">≈</div>
-      <div class="tile result">
-        <div class="t-label">Measured</div>
-        <div class="t-value">2.2–4.4×</div>
-        <div class="t-note">every total reproduced by its factors</div>
-      </div>
-    </div>
-    <div class="panel">
-      <table>
-        <thead><tr><th>hessian! · n = 256</th><th>machine</th><th>ForwardDiff</th><th>HyperHessians</th><th>speedup</th></tr></thead>
-        <tbody>
-          <tr><td>ackley</td><td>Apple M4</td><td>20.4 ms</td><td class="hh">9.1 ms</td><td>2.23×</td></tr>
-          <tr><td>rosenbrock_1</td><td>Apple M4</td><td>23.9 ms</td><td class="hh">6.5 ms</td><td>3.67×</td></tr>
-          <tr><td>ackley</td><td>AMD Zen 4</td><td>25.7 ms</td><td class="hh">5.9 ms</td><td>4.39×</td></tr>
-          <tr><td>rosenbrock_1</td><td>AMD Zen 4</td><td>34.0 ms</td><td class="hh">9.4 ms</td><td>3.64×</td></tr>
-        </tbody>
-      </table>
-    </div>
-  </div>
-  <div class="footer-note"><span>chunk size pinned to 8 for both · BenchmarkTools minimum times · single thread</span><span class="counter"></span></div>
-</section>
-
-<!-- ============ 3 · TWO REPRESENTATIONS ============ -->
-<section class="slide">
-  <p class="eyebrow">Setup</p>
-  <h2>Two ways to carry second derivatives</h2>
-  <div class="grow cols">
-    <div class="col">
-      <div class="codecard">
-        <div class="cc-head"><span class="cc-title">ForwardDiff — nested duals</span><span class="cc-sub">Hessian = J(∇f)</span></div>
-        <pre><code><span class="ln">Dual{T, Dual{T, Float64, 8}, 8}</span>
-<span class="ln"></span>
-<span class="ln cm"># 9 inner duals of 9 floats each:</span>
-<span class="ln">value    :: Dual{T,Float64,8}   <span class="cm"># 1+8</span></span>
-<span class="ln">partials :: 8 × Dual{T,Float64,8}</span>
-<span class="ln"></span>
-<span class="ln cm"># (1+8)² = 81 floats, 648 bytes</span>
-<span class="ln cm"># second derivatives live in the</span>
-<span class="ln cm"># partials-of-partials cross terms</span></code></pre>
-        <div class="cc-verdict"><span class="v-pill">outer chunked Jacobian ∘ inner chunked gradient</span></div>
-      </div>
-    </div>
-    <div class="col">
-      <div class="codecard">
-        <div class="cc-head"><span class="cc-title">HyperHessians — hyper-duals</span><span class="cc-sub">h = v + ϵ₁ᵀa + ϵ₂ᵀb + ϵ₁ᵀAϵ₂</span></div>
-        <pre><code><span class="ln">HyperDual{8, 8, Float64}</span>
-<span class="ln"></span>
-<span class="ln good">v   :: Float64            <span class="cm"># value</span></span>
-<span class="ln good">ϵ1  :: NTuple{8, Float64}  <span class="cm"># ∇ lanes</span></span>
-<span class="ln good">ϵ2  :: NTuple{8, Float64}  <span class="cm"># ∇ lanes</span></span>
-<span class="ln good">ϵ12 :: 8 × NTuple{8, Float64}  <span class="cm"># H block</span></span>
-<span class="ln"></span>
-<span class="ln cm"># 1+8+8+64 = 81 floats, 648 bytes</span>
-<span class="ln cm"># the 8×8 Hessian block is explicit</span></code></pre>
-        <div class="cc-verdict"><span class="v-pill good">one evaluation per 8×8 block pair</span></div>
-      </div>
-    </div>
-  </div>
-  <p class="caption">Identical payload — 81 floats, 648 bytes — and expanding the nested product gives
-  term-for-term the hyper-dual cross-term formula. Same algebra, same flop count. Everything that follows
-  is structure, not math.</p>
-  <div class="footer-note"><span>HyperDual multiplication: ϵ₁₂[i] ← v₁A₂[i] + A₁[i]v₂ + a₁[i]b₂ + a₂[i]b₁</span><span class="counter"></span></div>
-</section>
-
-<!-- ============ 4 · SYMMETRY ============ -->
-<section class="slide">
-  <p class="eyebrow">Factor 1 · 1.94×</p>
-  <h2>A Hessian is symmetric. Compute half of it.</h2>
-  <div class="grow cols" style="align-items:center">
-    <div class="col">
-      <div class="g-title sans">ForwardDiff — every 8×8 block of the full square</div>
-      <div class="blocks-grid" id="grid-fd"></div>
-      <div class="g-stat sans"><b>32² = 1024</b> evaluations of f</div>
-    </div>
-    <div class="col">
-      <div class="g-title sans">HyperHessians — upper-triangular block pairs, then mirror</div>
-      <div class="blocks-grid" id="grid-hh"></div>
-      <div class="g-stat sans"><b>32·33/2 = 528</b> evaluations of f &nbsp;→&nbsp; <b>1.94×</b> fewer</div>
-    </div>
-    <div class="col" style="flex:1.1 1 320px">
-      <ul class="tight">
-        <li>Jacobian-of-gradient has no place to exploit symmetry: each outer chunk needs the <em>full</em> gradient.</li>
-        <li>Independent ϵ₁ / ϵ₂ seeds address blocks (i, j) directly — evaluate only j ≥ i.</li>
-        <li>Eval counts verified with a counting closure; block pairs are embarrassingly parallel (7.1× on 8 cores).</li>
-      </ul>
-    </div>
-  </div>
-  <div class="footer-note"><span>same 256×256 Hessian, same 8×8 blocks, in both grids</span><span class="counter"></span></div>
-</section>
-
-<!-- ============ 5 · EQUAL-PAYLOAD OPS ============ -->
-<section class="slide">
-  <p class="eyebrow">Factor 2 · 1.0–1.8×</p>
-  <h2>Same 81 floats per number — so why is one faster?</h2>
-  <div class="grow cols" style="align-items:center">
-    <div class="col" style="flex:1.3 1 340px">
-      <div class="panel">
-        <div class="legend sans">
-          <span><i class="sw hh"></i>HyperDual{8,8}</span>
-          <span><i class="sw fd"></i>nested Dual 8×8</span>
-        </div>
-        <div id="opchart"></div>
-        <p class="caption" style="margin-top:0.5em">ns per element, streamed over 256-element vectors, Apple M4. Isolated ops
-        are close on NEON — the interesting differences appear in registers and on wider SIMD.</p>
-      </div>
-    </div>
-    <div class="col">
-      <div class="panel">
-        <table>
-          <thead><tr><th>one f eval</th><th>ForwardDiff</th><th>HyperHessians</th><th>ratio</th></tr></thead>
-          <tbody>
-            <tr><td>ackley · M4</td><td>16.4 µs</td><td class="hh">16.0 µs</td><td>1.02×</td></tr>
-            <tr><td>rosenbrock · M4</td><td>19.5 µs</td><td class="hh">11.2 µs</td><td>1.74×</td></tr>
-            <tr><td>ackley · Zen 4</td><td>18.9 µs</td><td class="hh">10.7 µs</td><td>1.77×</td></tr>
-            <tr><td>rosenbrock · Zen 4</td><td>28.6 µs</td><td class="hh">17.0 µs</td><td>1.68×</td></tr>
-          </tbody>
-        </table>
-        <p class="caption">Whole functions tell a sharper story than single ops: transcendental-bound code
-        converges, register-resident arithmetic doesn't.</p>
-      </div>
-    </div>
-  </div>
-  <div class="footer-note"><span>three mechanisms follow →</span><span class="counter"></span></div>
-</section>
-
-<!-- ============ 6 · LANE SHAPE ============ -->
-<section class="slide">
-  <p class="eyebrow">Factor 2 · mechanism A</p>
-  <h2>Lane shape: 8 is a SIMD width. 9 is not.</h2>
-  <div class="grow">
-    <div class="panel" style="margin-bottom:1em">
-      <div class="lane-title sans">HyperDual{8,8} — every derivative lane is 8 doubles = whole registers (one zmm)</div>
-      <div class="lane-strip" id="lane-hh"></div>
-    </div>
-    <div class="panel">
-      <div class="lane-title sans">nested Dual 8×8 — same 648 bytes sliced into nine 9-double lanes, a straggler in every one</div>
-      <div class="lane-strip" id="lane-fd"></div>
-    </div>
-    <p class="caption">Each cell is one <code>Float64</code>; each group is a lane the compiler processes as
-    a unit. 8 doubles = 4×NEON, 2×AVX2, or exactly <strong>1×AVX-512 register</strong>. 9 doubles = a full
-    vector set <em>plus a scalar straggler</em> — on every lane, in every operation. HyperHessians also fuses
-    every accumulation through <code>muladd</code>; the nested layout's mul-then-add never fuses.</p>
-  </div>
-  <div class="footer-note"><span>on 2-wide NEON the straggler is cheap — on 8-wide AVX-512 it is not →</span><span class="counter"></span></div>
-</section>
-
-<!-- ============ 7 · AVX-512 ============ -->
-<section class="slide">
-  <p class="eyebrow">Factor 2 · mechanism A, measured on Zen 4</p>
-  <h2>On AVX-512, one multiply: 25 FMAs vs 71 shuffles</h2>
-  <div class="grow cols">
-    <div class="col">
-      <div class="codecard">
-        <div class="cc-head"><span class="cc-title">HyperDual{8,8} <code>*</code></span><span class="cc-sub">186 instructions</span></div>
-        <pre><code><span class="ln good">  21× vfmadd231pd zmm  <span class="cm">; 8-wide fused</span></span>
-<span class="ln good">   4× vfmadd213pd zmm</span>
-<span class="ln good">  11× vmulpd zmm</span>
-<span class="ln">  15× vbroadcastsd</span>
-<span class="ln">  22× vmov (loads/stores)</span>
-<span class="ln">  12× shuffle/gather</span></code></pre>
-        <div class="cc-verdict">
-          <span class="v-pill good">25 zmm FMAs</span>
-          <span class="v-pill good">each lane = one register</span>
-        </div>
-      </div>
-    </div>
-    <div class="col">
-      <div class="codecard">
-        <div class="cc-head"><span class="cc-title">nested Dual 8×8 <code>*</code></span><span class="cc-sub">418 instructions</span></div>
-        <pre><code><span class="ln bad">  49× vpermt2pd        <span class="cm">; shuffles</span></span>
-<span class="ln bad">  18× vgatherdpd       <span class="cm">; gathers</span></span>
-<span class="ln">  34× vmulpd + 25× vaddpd</span>
-<span class="ln bad">   0× vfmadd           <span class="cm">; never fused</span></span>
-<span class="ln">  17× vmulsd + 8× vaddsd <span class="cm">; stragglers</span></span>
-<span class="ln">  83× vmov (loads/stores)</span></code></pre>
-        <div class="cc-verdict">
-          <span class="v-pill bad">0 FMAs</span>
-          <span class="v-pill bad">71 shuffle/gather</span>
-          <span class="v-pill bad">25 scalar ops</span>
-        </div>
-      </div>
-    </div>
-    <div class="col" style="flex:0.9 1 280px">
-      <ul class="tight">
-        <li>More instructions <em>rearranging data</em> than doing arithmetic.</li>
-        <li>Result: multiply is <strong>3.1× slower</strong> (53.5 vs 17.4 ns/element) at identical payload.</li>
-        <li>2.25× the instruction count → the whole-function 1.7–1.8× gap on Zen 4.</li>
-      </ul>
-    </div>
-  </div>
-  <div class="footer-note"><span>code_native, AMD EPYC 9354 · full listings in benchmark/why-faster/results/</span><span class="counter"></span></div>
-</section>
-
-<!-- ============ 8 · DEAD LANES ============ -->
-<section class="slide">
-  <p class="eyebrow">Factor 2 · mechanism B</p>
-  <h2>Flat layouts let LLVM delete dead derivative lanes</h2>
-  <div class="grow cols" style="align-items:center">
-    <div class="col" style="flex:1.2 1 340px">
-      <div class="codecard">
-        <div class="cc-head"><span class="cc-title">DiffTests.rosenbrock_1</span><span class="cc-sub">the constants are duals</span></div>
-        <pre><code><span class="ln">function rosenbrock_1(x)</span>
-<span class="ln bad">    a = one(eltype(x))     <span class="cm"># a dual! ϵ ≡ 0</span></span>
-<span class="ln bad">    b = 100 * a            <span class="cm"># a dual! ϵ ≡ 0</span></span>
-<span class="ln">    result = zero(eltype(x))</span>
-<span class="ln">    for i in 1:length(x)-1</span>
-<span class="ln">        result += (a - x[i])^2 +</span>
-<span class="ln bad">                  b * (x[i+1] - x[i]^2)^2</span>
-<span class="ln">    end</span>
-<span class="ln">    result</span>
-<span class="ln">end</span></code></pre>
-      </div>
-    </div>
-    <div class="col">
-      <ul class="tight">
-        <li>Every iteration multiplies by a dual whose 80 derivative floats are <strong>known zeros</strong>.</li>
-        <li>Through the flat, fully-inlined <code>HyperDual</code> code, LLVM constant-folds the dead lanes away — the op collapses to near real×dual cost.</li>
-        <li>Through the nested representation the folding largely fails: the zeros are computed.</li>
-        <li>Evidence: rewrite with literal <code>1</code> and <code>100</code> and the two types run at <strong>parity</strong> (33.6 vs 35.0 ns/element); with dual constants the gap is 1.74×.</li>
-      </ul>
-    </div>
-  </div>
-  <div class="footer-note"><span>same zeros, same algebra — transparency to the compiler differs</span><span class="counter"></span></div>
-</section>
-
-<!-- ============ 9 · OVERHEAD ============ -->
-<section class="slide">
-  <p class="eyebrow">Factor 3 · 1.1–1.3×</p>
-  <h2>Everything around the evaluations</h2>
-  <div class="grow">
-    <div class="panel">
-      <table>
-        <thead><tr><th>per hessian! call · n = 256</th><th>ForwardDiff</th><th>HyperHessians</th></tr></thead>
-        <tbody>
-          <tr><td>heap allocated</td><td>~600 KB</td><td class="hh">0 B</td></tr>
-          <tr><td>gradient vectors allocated</td><td>32 × 18.4 KB, one per outer chunk</td><td class="hh">—</td></tr>
-          <tr><td>full dual-array reseeding</td><td>32 × 162 KB</td><td class="hh">1 × 162 KB</td></tr>
-          <tr><td>seed writes per evaluation</td><td>full inner chunk machinery</td><td class="hh">16 array entries</td></tr>
-          <tr><td>result extraction</td><td>dual gradient → copy into H columns</td><td class="hh">ϵ₁₂ block → H directly</td></tr>
-          <tr><td>time outside f evals (M4 ackley)</td><td>3.6 ms — 18%</td><td class="hh">0.6 ms — 7%</td></tr>
-        </tbody>
-      </table>
-    </div>
-    <p class="caption">The Jacobian-of-gradient driver allocates a fresh dual-typed gradient vector on every
-    outer chunk and re-seeds the whole input array; the hyper-dual driver fills one buffer per Hessian, seeds
-    16 entries per pass, reuses the ϵ₁ seed across the inner loop, and writes each 8×8 block straight into H.</p>
-  </div>
-  <div class="footer-note"><span>measured with @allocated after warmup</span><span class="counter"></span></div>
-</section>
-
-<!-- ============ 10 · ACCOUNTING ============ -->
-<section class="slide">
-  <p class="eyebrow">Verification</p>
-  <h2>The accounting closes</h2>
-  <div class="grow">
-    <div class="panel">
-      <table>
-        <thead><tr><th>case</th><th>symmetry</th><th>arithmetic</th><th>overhead</th><th>product</th><th>measured</th></tr></thead>
-        <tbody>
-          <tr><td>ackley · M4</td><td>1.94×</td><td>1.02×</td><td>1.12×</td><td>2.2×</td><td class="hh">2.23×</td></tr>
-          <tr><td>rosenbrock · M4</td><td>1.94×</td><td>1.74×</td><td>1.09×</td><td>3.7×</td><td class="hh">3.67×</td></tr>
-          <tr><td>ackley · Zen 4</td><td>1.94×</td><td>1.77×</td><td>1.29×</td><td>4.4×</td><td class="hh">4.39×</td></tr>
-          <tr><td>rosenbrock · Zen 4</td><td>1.94×</td><td>1.68×</td><td>1.10×</td><td>3.6×</td><td class="hh">3.64×</td></tr>
-        </tbody>
-      </table>
-    </div>
-    <p class="caption">Each factor measured independently: eval counts by counting closure, arithmetic by
-    timing single evaluations of f on each dual type, overhead as the residual — and their product matches
-    every end-to-end total. No unexplained speedup, no benchmark magic.</p>
-  </div>
-  <div class="footer-note"><span>evals × per-eval cost + residual = total, on both machines</span><span class="counter"></span></div>
-</section>
-
-<!-- ============ 11 · BEYOND ============ -->
-<section class="slide">
-  <p class="eyebrow">Beyond one Hessian</p>
-  <h2>The same structure keeps paying</h2>
-  <div class="grow cols" style="align-items:center">
-    <div class="col">
-      <div class="panel">
-        <div class="g-title sans">Hessian-vector products: asymmetric lanes</div>
-        <pre class="mono" style="font-size:0.68em; line-height:1.6; margin:0"><code>HyperDual{8, 1, Float64}
-  ϵ1 ← identity chunks   (8 lanes)
-  ϵ2 ← the tangent v      (1 lane)
-  ϵ12 = H·v columns, directly</code></pre>
-        <p class="caption">No nesting, no second pass — the mixed term <em>is</em> the answer. Bundle
-        multiple tangents as <code>HyperDual{8, k}</code>.</p>
-      </div>
-    </div>
-    <div class="col">
-      <div class="panel">
-        <div class="g-title sans">Threading: block pairs are independent</div>
-        <table>
-          <thead><tr><th>tasks</th><th>1</th><th>2</th><th>4</th><th>8</th></tr></thead>
-          <tbody>
-            <tr><td>speedup (n=512)</td><td>1.0×</td><td>1.9×</td><td>3.8×</td><td class="hh">7.1×</td></tr>
-          </tbody>
-        </table>
-        <p class="caption">The k(k+1)/2 evaluations share nothing but reads —
-        <code>ThreadedHessianConfig</code> scales near-linearly across performance cores.</p>
-      </div>
-    </div>
-  </div>
-  <div class="footer-note"><span>hvp / hvp! / vhvp and ThreadedHessianConfig in the package API</span><span class="counter"></span></div>
-</section>
-
-<!-- ============ 12 · TAKEAWAYS ============ -->
-<section class="slide">
-  <p class="eyebrow">Takeaways</p>
-  <h2>Speed came from structure the compiler can see</h2>
-  <div class="grow">
-    <ul class="tight" style="font-size:1.08em">
-      <li><strong>Exploit the math:</strong> symmetry alone halves the work — 1.94× before any code tricks.</li>
-      <li><strong>Shape data for the machine:</strong> 8-wide flat lanes are register-exact and FMA-fusable; nested 9-wide lanes cost shuffles, gathers, and stragglers on every op.</li>
-      <li><strong>Stay transparent to LLVM:</strong> flat + fully inlined means dead derivative lanes fold away and intermediates never touch memory.</li>
-      <li><strong>Keep the driver silent:</strong> zero allocations, 16 seed writes per pass, blocks written straight into H.</li>
-      <li><strong>Decompose your benchmarks:</strong> a speedup you can't factor is a speedup you don't understand.</li>
-    </ul>
-  </div>
-  <div class="footer-note"><span>github.com/KristofferC/HyperHessians.jl · analysis &amp; scripts: benchmark/why-faster/</span><span class="counter"></span></div>
-</section>
+<div id="deck"></div>
 
 <script>
-  // navigation
-  (function () {
-    const slides = Array.from(document.querySelectorAll(".slide"));
-    let cur = Math.min(Math.max((parseInt(location.hash.slice(1), 10) || 1) - 1, 0), slides.length - 1);
-    function show(i) {
-      cur = Math.min(Math.max(i, 0), slides.length - 1);
-      slides.forEach((s, k) => s.classList.toggle("active", k === cur));
-      history.replaceState(null, "", "#" + (cur + 1));
-      document.querySelectorAll(".counter").forEach(c => c.textContent = (cur + 1) + " / " + slides.length);
-    }
-    addEventListener("keydown", e => {
-      if (e.key === "ArrowRight" || e.key === " " || e.key === "PageDown") { show(cur + 1); e.preventDefault(); }
-      else if (e.key === "ArrowLeft" || e.key === "PageUp") { show(cur - 1); e.preventDefault(); }
-      else if (e.key === "Home") show(0);
-      else if (e.key === "End") show(slides.length - 1);
-      else if (e.key === "p") window.print();
-    });
-    addEventListener("click", e => {
-      if (e.target.closest("a, code, pre, table")) return;
-      show(e.clientX > innerWidth / 3 ? cur + 1 : cur - 1);
-    });
-    show(cur);
-  })();
+(function () {
+  "use strict";
 
-  // symmetry grids
-  (function () {
-    const fd = document.getElementById("grid-fd");
-    const hh = document.getElementById("grid-hh");
-    fd.style.gridTemplateColumns = "repeat(32, 0.55em)";
-    hh.style.gridTemplateColumns = "repeat(32, 0.55em)";
-    for (let i = 0; i < 32; i++)
-      for (let j = 0; j < 32; j++) {
-        const a = document.createElement("div");
-        a.className = "on-fd";
-        fd.appendChild(a);
-        const b = document.createElement("div");
-        if (j >= i) b.className = "on-hh";
-        hh.appendChild(b);
+  // ---------- helpers ----------
+  const esc = s => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  function inline(s) {
+    s = esc(s);
+    s = s.replace(/`([^`]+)`/g, (_, t) => "<code>" + t + "</code>");
+    s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+    s = s.replace(/\*([^*]+)\*/g, "<em>$1</em>");
+    return s;
+  }
+  const el = (tag, cls, html) => {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (html !== undefined) e.innerHTML = html;
+    return e;
+  };
+
+  // ---------- block parser ----------
+  // Parses an array of lines into DOM nodes appended to `parent`.
+  function parseBlocks(lines, parent, inPanel) {
+    let i = 0;
+    while (i < lines.length) {
+      const line = lines[i];
+      const t = line.trim();
+
+      if (t === "") { i++; continue; }
+
+      // fenced sub-structures --------------------------------------------
+      if (t.startsWith("::: cols")) {
+        const end = findFenceEnd(lines, i);
+        const inner = lines.slice(i + 1, end);
+        parent.appendChild(buildCols(inner));
+        i = end + 1; continue;
       }
-  })();
-
-  // per-op bars (patched baseline, Apple M4)
-  (function () {
-    const data = [
-      { op: "*", vals: [17.7, 22.7] },
-      { op: "/", vals: [22.7, 25.8] },
-      { op: "exp", vals: [26.5, 24.3] },
-      { op: "sqrt", vals: [13.8, 14.7] },
-      { op: "sin", vals: [29.5, 31.7] },
-    ];
-    const cls = ["hh", "fd"];
-    const max = 31.7;
-    const root = document.getElementById("opchart");
-    for (const g of data) {
-      const grp = document.createElement("div");
-      grp.className = "bargroup";
-      const lab = document.createElement("div");
-      lab.className = "g-label";
-      lab.textContent = g.op;
-      grp.appendChild(lab);
-      g.vals.forEach(function (v, k) {
-        const row = document.createElement("div");
-        row.className = "bar-row";
-        const track = document.createElement("div");
-        track.className = "bar-track";
-        const bar = document.createElement("div");
-        bar.className = "bar " + cls[k];
-        bar.style.width = (v / max * 100).toFixed(1) + "%";
-        track.appendChild(bar);
-        const val = document.createElement("div");
-        val.className = "bar-val";
-        val.textContent = v.toFixed(1) + " ns";
-        row.appendChild(track);
-        row.appendChild(val);
-        grp.appendChild(row);
-      });
-      root.appendChild(grp);
-    }
-  })();
-
-  // memory lanes
-  (function () {
-    function group(parent, cells) {
-      const g = document.createElement("div");
-      g.className = "cellgroup";
-      for (const c of cells) {
-        const d = document.createElement("div");
-        d.className = "cell " + c;
-        g.appendChild(d);
+      if (t.startsWith("::: panel")) {
+        const title = t.slice(9).trim();
+        const end = findFenceEnd(lines, i);
+        const panel = el("div", "panel");
+        if (title) panel.appendChild(el("div", "panel-title sans", inline(title)));
+        parseBlocks(lines.slice(i + 1, end), panel, true);
+        parent.appendChild(panel);
+        i = end + 1; continue;
       }
-      parent.appendChild(g);
+      if (t.startsWith("::: tiles")) {
+        const end = findFenceEnd(lines, i);
+        parent.appendChild(buildTiles(lines.slice(i + 1, end)));
+        i = end + 1; continue;
+      }
+
+      // code card ---------------------------------------------------------
+      if (t.startsWith("```")) {
+        const header = t.slice(3).trim();
+        let j = i + 1;
+        const codeLines = [];
+        while (j < lines.length && lines[j].trim() !== "```") { codeLines.push(lines[j]); j++; }
+        let pills = null;
+        if (j + 1 < lines.length && lines[j + 1].trim().startsWith("@pills")) {
+          pills = lines[j + 1].trim().slice(6).trim();
+        }
+        parent.appendChild(buildCodeCard(header, codeLines, pills));
+        i = j + 1 + (pills !== null ? 1 : 0); continue;
+      }
+
+      // table --------------------------------------------------------------
+      if (t.startsWith("|")) {
+        let j = i;
+        const rows = [];
+        while (j < lines.length && lines[j].trim().startsWith("|")) { rows.push(lines[j].trim()); j++; }
+        const table = buildTable(rows);
+        if (inPanel) parent.appendChild(table);
+        else { const p = el("div", "panel"); p.appendChild(table); parent.appendChild(p); }
+        i = j; continue;
+      }
+
+      // bullets -------------------------------------------------------------
+      if (t.startsWith("- ")) {
+        let j = i;
+        const ul = el("ul");
+        while (j < lines.length && lines[j].trim().startsWith("- ")) {
+          ul.appendChild(el("li", null, inline(lines[j].trim().slice(2))));
+          j++;
+        }
+        parent.appendChild(ul); i = j; continue;
+      }
+
+      // caption --------------------------------------------------------------
+      if (t.startsWith("> ")) {
+        parent.appendChild(el("p", "caption", inline(t.slice(2))));
+        i++; continue;
+      }
+
+      // figure placeholder ----------------------------------------------------
+      const ph = t.match(/^\{\{([\w-]+)\}\}$/);
+      if (ph) {
+        parent.appendChild(buildFigure(ph[1]));
+        i++; continue;
+      }
+
+      // plain paragraph ---------------------------------------------------------
+      parent.appendChild(el("p", null, inline(t)));
+      i++;
     }
-    const hh = document.getElementById("lane-hh");
-    group(hh, ["v"]);
-    group(hh, Array(8).fill("e1"));
-    group(hh, Array(8).fill("e2"));
-    for (let r = 0; r < 8; r++) group(hh, Array(8).fill("e12"));
-    const fd = document.getElementById("lane-fd");
-    for (let r = 0; r < 9; r++) group(fd, ["iv"].concat(Array(7).fill("ip"), ["strag"]));
-  })();
+  }
+
+  function findFenceEnd(lines, start) {
+    let depth = 0;
+    for (let i = start; i < lines.length; i++) {
+      const t = lines[i].trim();
+      if (t.startsWith(":::") && t.length > 3) depth++;
+      else if (t === ":::") { depth--; if (depth === 0) return i; }
+    }
+    return lines.length;
+  }
+
+  function buildCols(lines) {
+    const cols = el("div", "cols");
+    let cur = null;
+    let buf = [];
+    const flush = () => { if (cur) parseBlocks(buf, cur, false); buf = []; };
+    for (let i = 0; i < lines.length; i++) {
+      const t = lines[i].trim();
+      const m = t.match(/^:: col\s*([\d.]+)?$/);
+      if (m) {
+        flush();
+        cur = el("div", "col");
+        if (m[1]) cur.style.flex = m[1] + " 1 300px";
+        cols.appendChild(cur);
+      } else if (cur) {
+        // keep nested fences intact for recursive parsing
+        buf.push(lines[i]);
+      }
+    }
+    flush();
+    return cols;
+  }
+
+  function buildTiles(lines) {
+    const eq = el("div", "equation sans");
+    for (const raw of lines) {
+      const t = raw.trim();
+      if (t === "") continue;
+      if (t === "×" || t === "x") { eq.appendChild(el("div", "op", "×")); continue; }
+      if (t === "≈" || t === "=") { eq.appendChild(el("div", "op", "≈")); continue; }
+      const result = t.startsWith("!");
+      const parts = (result ? t.slice(1) : t).split("|").map(s => s.trim());
+      const tile = el("div", "tile" + (result ? " result" : ""));
+      tile.appendChild(el("div", "t-label", inline(parts[0] || "")));
+      tile.appendChild(el("div", "t-value", inline(parts[1] || "")));
+      if (parts[2]) tile.appendChild(el("div", "t-note", inline(parts[2])));
+      eq.appendChild(tile);
+    }
+    return eq;
+  }
+
+  function buildTable(rows) {
+    const table = el("table");
+    let head = true;
+    for (const r of rows) {
+      if (/^\|[\s|:-]+\|$/.test(r)) { head = false; continue; }
+      const cells = r.slice(1, r.endsWith("|") ? -1 : undefined).split("|").map(s => s.trim());
+      const tr = el("tr");
+      for (const c of cells) tr.appendChild(el(head ? "th" : "td", null, inline(c)));
+      (head ? tableHead(table) : tableBody(table)).appendChild(tr);
+    }
+    return table;
+  }
+  function tableHead(t) { let h = t.querySelector("thead"); if (!h) { h = el("thead"); t.appendChild(h); } return h; }
+  function tableBody(t) { let b = t.querySelector("tbody"); if (!b) { b = el("tbody"); t.appendChild(b); } return b; }
+
+  function buildCodeCard(header, codeLines, pills) {
+    const card = el("div", "codecard");
+    if (header) {
+      const [title, sub] = header.split("|").map(s => s.trim());
+      const head = el("div", "cc-head");
+      head.appendChild(el("span", "cc-title", inline(title)));
+      if (sub) head.appendChild(el("span", "cc-sub", inline(sub)));
+      card.appendChild(head);
+    }
+    const pre = el("pre");
+    const code = el("code");
+    for (let raw of codeLines) {
+      let cls = "ln";
+      if (raw.startsWith("[+]")) { cls += " good"; raw = raw.slice(3); }
+      else if (raw.startsWith("[-]")) { cls += " bad"; raw = raw.slice(3); }
+      let html = esc(raw);
+      // gray out trailing # / ; comments (or whole-line comments)
+      html = html.replace(/(^\s*[#;].*$)|(\s[#;] .*$)/, m => '<span class="cm">' + m + "</span>");
+      code.appendChild(el("span", cls, html || " "));
+    }
+    pre.appendChild(code);
+    card.appendChild(pre);
+    if (pills) {
+      const v = el("div", "cc-verdict");
+      for (const p of pills.split("|").map(s => s.trim())) {
+        const m = p.match(/^(good|bad):(.*)$/);
+        v.appendChild(el("span", "v-pill" + (m ? " " + m[1] : ""), inline(m ? m[2].trim() : p)));
+      }
+      card.appendChild(v);
+    }
+    return card;
+  }
+
+  // ---------- generated figures ----------
+  function buildFigure(name) {
+    if (name === "grid-fd" || name === "grid-hh") {
+      const g = el("div", "blocks-grid");
+      const hh = name === "grid-hh";
+      for (let i = 0; i < 32; i++)
+        for (let j = 0; j < 32; j++) {
+          const d = el("div");
+          if (!hh) d.className = "on-fd";
+          else if (j >= i) d.className = "on-hh";
+          g.appendChild(d);
+        }
+      return g;
+    }
+    if (name === "lane-hh" || name === "lane-fd") {
+      const strip = el("div", "lane-strip");
+      const group = cells => {
+        const g = el("div", "cellgroup");
+        for (const c of cells) g.appendChild(el("div", "cell " + c));
+        strip.appendChild(g);
+      };
+      if (name === "lane-hh") {
+        group(["v"]);
+        group(Array(8).fill("e1"));
+        group(Array(8).fill("e2"));
+        for (let r = 0; r < 8; r++) group(Array(8).fill("e12"));
+      } else {
+        for (let r = 0; r < 9; r++) group(["iv"].concat(Array(7).fill("ip"), ["strag"]));
+      }
+      return strip;
+    }
+    if (name === "opchart") {
+      // per-op ns/element, Apple M4, [HyperDual, nested Dual]
+      const data = [
+        { op: "*", vals: [17.7, 22.7] },
+        { op: "/", vals: [22.7, 25.8] },
+        { op: "exp", vals: [26.5, 24.3] },
+        { op: "sqrt", vals: [13.8, 14.7] },
+        { op: "sin", vals: [29.5, 31.7] },
+      ];
+      const max = Math.max(...data.flatMap(d => d.vals));
+      const wrap = el("div");
+      const legend = el("div", "legend sans");
+      legend.innerHTML = '<span><i class="sw hh"></i>HyperDual{8,8}</span><span><i class="sw fd"></i>nested Dual 8×8</span>';
+      wrap.appendChild(legend);
+      for (const g of data) {
+        const grp = el("div", "bargroup");
+        grp.appendChild(el("div", "g-label", esc(g.op)));
+        g.vals.forEach((v, k) => {
+          const row = el("div", "bar-row");
+          const track = el("div", "bar-track");
+          const bar = el("div", "bar " + (k === 0 ? "hh" : "fd"));
+          bar.style.width = (v / max * 100).toFixed(1) + "%";
+          track.appendChild(bar);
+          row.appendChild(track);
+          row.appendChild(el("div", "bar-val", v.toFixed(1) + " ns"));
+          grp.appendChild(row);
+        });
+        wrap.appendChild(grp);
+      }
+      return wrap;
+    }
+    return el("div", null, "[unknown figure: " + esc(name) + "]");
+  }
+
+  // ---------- slide assembly ----------
+  const src = document.getElementById("deck-src").textContent;
+  const slideSources = src.split(/\n---\n/).map(s => s.split("\n"));
+  const deck = document.getElementById("deck");
+
+  for (const lines of slideSources) {
+    const slide = el("section", "slide");
+    let layoutTitle = false, eyebrow = null, heading = null, lede = [], chips = null, footer = "";
+    const bodyLines = [];
+    let inCode = false;
+    for (const raw of lines) {
+      const t = raw.trim();
+      if (t.startsWith("```")) { inCode = !inCode; bodyLines.push(raw); continue; }
+      if (inCode) { bodyLines.push(raw); continue; }
+      if (t.startsWith("@layout")) { layoutTitle = /title/.test(t); }
+      else if (t.startsWith("@eyebrow")) eyebrow = t.slice(8).trim();
+      else if (t.startsWith("@chips")) chips = t.slice(6).trim();
+      else if (t.startsWith("@footer")) footer = t.slice(7).trim();
+      else if (t.startsWith("# ")) heading = t.slice(2);
+      else if (t.startsWith("~ ")) lede.push(t.slice(2));
+      else bodyLines.push(raw);
+    }
+    const head = el("div");
+    if (eyebrow) head.appendChild(el("p", "eyebrow", inline(eyebrow)));
+    if (heading) head.appendChild(el(layoutTitle ? "h1" : "h2", null, inline(heading)));
+    for (const l of lede) head.appendChild(el("p", "lede", inline(l)));
+
+    const grow = el("div", "grow");
+    if (layoutTitle) {
+      grow.appendChild(head);
+      parseBlocks(bodyLines, grow, false);
+      if (chips) {
+        const row = el("div", "chips sans");
+        for (const c of chips.split("|").map(s => s.trim())) row.appendChild(el("span", "chip", inline(c)));
+        grow.appendChild(row);
+      }
+      slide.appendChild(grow);
+    } else {
+      slide.appendChild(head);
+      parseBlocks(bodyLines, grow, false);
+      slide.appendChild(grow);
+    }
+    const foot = el("div", "footer-note");
+    foot.appendChild(el("span", null, inline(footer)));
+    foot.appendChild(el("span", "counter"));
+    slide.appendChild(foot);
+    deck.appendChild(slide);
+  }
+
+  // ---------- navigation ----------
+  const slides = Array.from(document.querySelectorAll(".slide"));
+  let cur = Math.min(Math.max((parseInt(location.hash.slice(1), 10) || 1) - 1, 0), slides.length - 1);
+  function show(i) {
+    cur = Math.min(Math.max(i, 0), slides.length - 1);
+    slides.forEach((s, k) => s.classList.toggle("active", k === cur));
+    history.replaceState(null, "", "#" + (cur + 1));
+    document.querySelectorAll(".counter").forEach(c => c.textContent = (cur + 1) + " / " + slides.length);
+  }
+  addEventListener("keydown", e => {
+    if (e.key === "ArrowRight" || e.key === " " || e.key === "PageDown") { show(cur + 1); e.preventDefault(); }
+    else if (e.key === "ArrowLeft" || e.key === "PageUp") { show(cur - 1); e.preventDefault(); }
+    else if (e.key === "Home") show(0);
+    else if (e.key === "End") show(slides.length - 1);
+    else if (e.key === "p") window.print();
+  });
+  addEventListener("click", e => {
+    if (e.target.closest("a, code, pre, table")) return;
+    show(e.clientX > innerWidth / 3 ? cur + 1 : cur - 1);
+  });
+  show(cur);
+})();
 </script>
