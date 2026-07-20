@@ -39,22 +39,53 @@
 @chips github.com/KristofferC/HyperHessians.jl | Hessians · Hessian-vector products · threading
 
 ---
+@eyebrow Background
+# The usual way: finite differences
+
+::: cols
+:: col
+```Taylor, with a step h
+f(x₀ + h) = f(x₀) + h·f′(x₀) + h²/2·f″(x₀) + …
+
+f′(x₀) ≈ (f(x₀ + h) − f(x₀)) / h    # error O(h)
+```
+
+- Big h: the dropped Taylor terms show up as error.
+- Small h: f(x₀+h) − f(x₀) cancels in floating point.
+- No h gives you all the digits.
+:: col
+```julia> | differentiate sin at 1.0, error vs cos(1.0)
+julia> fd(f, x, h) = (f(x + h) - f(x)) / h;
+
+julia> fd(sin, 1.0, 1e-2)  - cos(1.0)
+-0.00421632485627077      # truncation
+
+julia> fd(sin, 1.0, 1e-8)  - cos(1.0)
+-2.9698852266335507e-9    # as good as it gets
+
+julia> fd(sin, 1.0, 1e-14) - cos(1.0)
+0.00370697619818694       # cancellation
+```
+:::
+
+---
 @eyebrow Dual numbers
-# One rule: ε² = 0
+# Perturb with ε where ε² = 0 — the series stops by itself
 
-```The rule | an infinitesimal that squares to zero
-ε² = 0,   ε ≠ 0
+```Same Taylor series, no step size
+ε² = 0,  ε ≠ 0                    # compare i² = −1
 
-f(x + ε) = f(x) + f′(x)·ε      # the Taylor series cuts itself off:
-                               # every higher term has an ε² in it
+f(x₀ + ε) = f(x₀) + ε·f′(x₀) + ~~ε²/2·f″(x₀) + ε³/6·f‴(x₀) + …~~
+          = f(x₀) + ε·f′(x₀)      # exact: nothing dropped, nothing cancels
 ```
 
-```The product rule comes out by itself | no calculus needed
-(a + a′ε) · (b + b′ε)  =  ab + (a′b + ab′)ε + a′b′·ε²
-                       =  ab + (a′b + ab′)ε
-```
+```In struct terms — a dual number d is the pair (d.v, d.ϵ)
+f(d) = f(d.v) + f′(d.v)·d.ϵ · ε                          # what every rule implements
 
-> A dual number is a pair (value, derivative). Push pairs through your function and each operation updates both. Write down one rule per operation and you are done.
+(a + a′ε)·(b + b′ε) = ab + (a′b + ab′)ε + ~~a′b′·ε²~~    # even * needs no calculus
+
+f′(x₀) = ϵ-part of f(x₀ + 1ε)                            # seed 1, read off. no h anywhere
+```
 
 ---
 @eyebrow Dual numbers
@@ -615,6 +646,7 @@ HyperDual{8, 1, Float64}
   .grow > .codecard pre { font-size: 0.85em; }
   .codecard pre .ln { display: block; padding: 0 1.1em; white-space: pre; }
   .codecard pre .cm { color: var(--code-cm); }
+  .codecard pre .st { text-decoration: line-through; text-decoration-thickness: 2px; text-decoration-color: var(--bad-edge); color: var(--code-cm); }
   .codecard pre .bad { background: var(--bad-bg); box-shadow: inset 3px 0 0 var(--bad-edge); }
   .codecard pre .good { background: var(--good-bg); box-shadow: inset 3px 0 0 var(--good-edge); }
   .cc-verdict { display: flex; gap: 0.5em; flex-wrap: wrap; padding: 0.5em 1em; border-top: 1px solid var(--line); }
@@ -822,6 +854,7 @@ HyperDual{8, 1, Float64}
       if (raw.startsWith("[+]")) { cls += " good"; raw = raw.slice(3); }
       else if (raw.startsWith("[-]")) { cls += " bad"; raw = raw.slice(3); }
       let html = esc(raw);
+      html = html.replace(/~~([^~]+)~~/g, '<span class="st">$1</span>');
       html = html.replace(/(^\s*[#;].*$)|(\s[#;] .*$)/, m => '<span class="cm">' + m + "</span>");
       code.appendChild(el("span", cls, html || " "));
     }
