@@ -848,14 +848,6 @@
         <tr><td>rosenbrock_1</td><td>Apple M4 · chunk 8 · patched FD</td><td>23.9 ms</td><td>6.5 ms</td><td>3.67×</td></tr>
         <tr><td>ackley</td><td>AMD Zen 4 · chunk 8 · patched FD</td><td>25.7 ms</td><td>5.9 ms</td><td>4.39×</td></tr>
         <tr><td>rosenbrock_1</td><td>AMD Zen 4 · chunk 8 · patched FD</td><td>34.0 ms</td><td>9.4 ms</td><td>3.64×</td></tr>
-        <tr><td>ackley</td><td>Apple M4 · chunk 8 · stock FD</td><td>28.3 ms</td><td>8.9 ms</td><td>3.19×</td></tr>
-        <tr><td>rosenbrock_1</td><td>Apple M4 · chunk 8 · stock FD</td><td>41.2 ms</td><td>6.3 ms</td><td>6.54×</td></tr>
-        <tr><td>ackley</td><td>AMD Zen 4 · chunk 8 · stock FD</td><td>46.3 ms</td><td>5.8 ms</td><td>7.92×</td></tr>
-        <tr><td>rosenbrock_1</td><td>AMD Zen 4 · chunk 8 · stock FD</td><td>56.7 ms</td><td>11.9 ms</td><td>4.77×</td></tr>
-        <tr><td>ackley</td><td>arrowlake-s · package defaults · stock FD</td><td>16.2 ms</td><td>2.6 ms</td><td>6.30×</td></tr>
-        <tr><td>rosenbrock_1</td><td>arrowlake-s · package defaults · stock FD</td><td>25.9 ms</td><td>3.1 ms</td><td>8.45×</td></tr>
-        <tr><td>self_weighted_logit</td><td>arrowlake-s · package defaults · stock FD</td><td>16.7 ms</td><td>4.2 ms</td><td>3.99×</td></tr>
-        <tr><td>vec2num_3 (n=128)</td><td>arrowlake-s · package defaults · stock FD</td><td>871.7 ms</td><td>184.2 ms</td><td>4.73×</td></tr>
       </tbody>
     </table>
     </div>
@@ -867,9 +859,12 @@
 
   <div class="prose">
     <p><strong>The largest single finding is ForwardDiff's, not HyperHessians'.</strong> The missing
-    <code>@inline</code> on <code>dual_definition_retval</code> costs stock ForwardDiff 1.4–1.7× on every
-    nested-dual Hessian (confirmed on v1.3.0 and master v1.4.1). Users today experience the stock rows in
-    the table above; the patch should go upstream, at which point the honest gap is the patched rows.</p>
+    <code>@inline</code> on <code>dual_definition_retval</code> costs stock ForwardDiff 1.4–1.8× on every
+    nested-dual Hessian (confirmed on v1.3.0 and master v1.4.1; before/after in §2a). All numbers above are
+    against the patched ForwardDiff — the fix is committed on a branch of the vendored checkout, headed
+    upstream. The repository's committed benchmark sweep (<code>benchmark/results/summary.md</code>,
+    arrowlake-s, e.g. rosenbrock 8.45×) predates this analysis: stock ForwardDiff at package-default
+    chunks. It should be re-run against a patched release before being quoted.</p>
     <p><strong>Machine dependence, measured.</strong> The two architectures split cleanly: on NEON the
     patched per-op arithmetic is near parity and symmetry dominates (2.2–3.7× total); on AVX-512 the
     lane-shape/FMA advantage adds a solid 1.7–1.8× on top (3.6–4.4× total). The committed arrowlake-s
