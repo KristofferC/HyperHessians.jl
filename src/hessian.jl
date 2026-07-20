@@ -131,6 +131,17 @@ seed_epsilon_2(d::HyperDual{N1, N2, T}, ϵ2) where {N1, N2, T} = HyperDual{N1, N
     return range_i
 end
 
+# Seed a diagonal block: write value, ϵ1 and ϵ2 in a single pass (ϵ12 is zeroed).
+@inline function seed_block_ϵ1ϵ2!(d::AbstractVector{<:HyperDual{N1, N2}}, x, seeds, block_i, ax) where {N1, N2}
+    range_i = block_range(block_i, N1, ax)
+    @inbounds for k in 1:length(range_i)
+        idx = range_i[k]
+        seed = seeds[k]
+        d[idx] = HyperDual(x[idx], seed, seed)
+    end
+    return range_i
+end
+
 @inline function seed_block_ϵ2!(d::AbstractVector{<:HyperDual{N1, N2}}, seeds, range_j) where {N1, N2}
     @inbounds for k in 1:length(range_j)
         idx = range_j[k]
@@ -140,7 +151,7 @@ end
 end
 
 @inline function zero_block_ϵ2!(d::AbstractVector{<:HyperDual{N1, N2}}, seeds, range_j) where {N1, N2}
-    zeroϵ2 = zero_ϵ(seeds[1])
+    zeroϵ2 = zero_ϵ(eltype(seeds))
     @inbounds for k in 1:length(range_j)
         idx = range_j[k]
         d[idx] = seed_epsilon_2(d[idx], zeroϵ2)
@@ -169,7 +180,7 @@ const HVBundle = Union{AbstractVector, Tuple{Vararg{AbstractVector}}}
 @inline ntangents(cfg::HVPConfig) = ntangents(eltype(cfg.duals))
 
 @inline function zero_block_ϵ1!(d::AbstractVector{<:HyperDual{N1, N2}}, seeds, range_i) where {N1, N2}
-    zeroϵ1 = zero_ϵ(seeds[1])
+    zeroϵ1 = zero_ϵ(eltype(seeds))
     @inbounds for k in 1:length(range_i)
         idx = range_i[k]
         d[idx] = seed_epsilon_1(d[idx], zeroϵ1)
@@ -244,9 +255,19 @@ function extract_hessian!(H::AbstractMatrix, v::HyperDual{N1, N2}, block_i::Int,
     range_i = block_range(block_i, N1, axes(H, 1))
     range_j = block_range(block_j, N2, axes(H, 2))
 
-    @inbounds for (I, i) in enumerate(range_i)
-        for (J, j) in enumerate(range_j)
-            H[i, j] = v.ϵ12[I][J]
+    if block_i == block_j
+        # Diagonal blocks are symmetric: store the transposed entry so both the
+        # tuple reads and the column writes are contiguous.
+        @inbounds for (J, j) in enumerate(range_j)
+            for (I, i) in enumerate(range_i)
+                H[i, j] = v.ϵ12[J][I]
+            end
+        end
+    else
+        @inbounds for (J, j) in enumerate(range_j)
+            for (I, i) in enumerate(range_i)
+                H[i, j] = v.ϵ12[I][J]
+            end
         end
     end
     return H
@@ -296,11 +317,8 @@ function hessian(f::F, x::AbstractArray, cfg::AnyHessianConfig) where {F}
 end
 
 function hessian!(H::AbstractMatrix, f::F, x::AbstractVector{T}, cfg::HessianConfig) where {F, T}
-    if chunksize(cfg) == length(x)
-        return hessian_vector!(H, f, x, cfg)
-    else
-        return hessian_chunk!(H, f, x, cfg)
-    end
+    hessian_core!(H, nothing, f, x, cfg)
+    return H
 end
 hessian!(H::AbstractMatrix, f::F, x::AbstractArray) where {F} = begin
     f_vec, x_vec, _ = _vectorize_input(f, x)
@@ -312,37 +330,40 @@ function hessian!(H::AbstractMatrix, f::F, x::AbstractArray, cfg::AnyHessianConf
     return hessian!(H, f_vec, x_vec, cfg)
 end
 
-function hessian_vector_core!(H::AbstractMatrix, G::Union{Nothing, AbstractVector}, f, x::AbstractVector, cfg::HessianConfig)
-    size(H, 1) == size(H, 2) == length(x) || throw(DimensionMismatch(lazy"H must be square with size matching length(x)=$(length(x)), got size(H)=$(size(H))"))
-    G === nothing || length(G) == length(x) || throw(DimensionMismatch(lazy"gradient must have length $(length(x)), got $(length(G))"))
-    cfg.duals .= HyperDual.(x, cfg.seeds, cfg.seeds)
-    v = f(cfg.duals)
-    check_scalar(v)
-    v = _ensure_dual(v, cfg.duals)
-    if G !== nothing
-        G .= Tuple(v.ϵ1)
-    end
-    extract_hessian!(H, v)
-    return v.v
-end
-
-hessian_vector!(H::AbstractMatrix, f::F, x::AbstractVector, cfg::HessianConfig) where {F} =
-    (hessian_vector_core!(H, nothing, f, x, cfg); H)
-
-function hessian_chunk_core!(H::AbstractMatrix, G::Union{Nothing, AbstractVector}, f, x::AbstractVector{T}, cfg::HessianConfig) where {T}
+function hessian_core!(H::AbstractMatrix, G::Union{Nothing, AbstractVector}, f, x::AbstractVector{T}, cfg::HessianConfig) where {T}
     size(H, 1) == size(H, 2) == length(x) || throw(DimensionMismatch(lazy"H must be square with size matching length(x)=$(length(x)), got size(H)=$(size(H))"))
     G === nothing || length(G) == length(x) || throw(DimensionMismatch(lazy"gradient must have length $(length(x)), got $(length(G))"))
     ax = axes(x, 1)
+    if length(x) <= chunksize(cfg)
+        # Single chunk (including empty x): seed everything in one pass and
+        # evaluate f once; the diagonal block is all of H, so no symmetrization.
+        seed_block_ϵ1ϵ2!(cfg.duals, x, cfg.seeds, 1, ax)
+        v = f(cfg.duals)
+        check_scalar(v)
+        v = _ensure_dual(v, cfg.duals)
+        if length(x) == chunksize(cfg)
+            # Chunk covers H exactly: unrolled whole-column stores.
+            extract_hessian!(H, v)
+        else
+            extract_hessian!(H, v, 1, 1)
+        end
+        if G !== nothing
+            extract_gradient!(G, v, 1)
+        end
+        return v.v
+    end
     n_chunks = ceil(Int, length(x) / chunksize(cfg))
     cfg.duals .= HyperDual{chunksize(cfg), chunksize(cfg)}.(x)
     prev_range = 0:-1  # empty range sentinel
     value = zero(T)
     for i in 1:n_chunks
         zero_block_ϵ1!(cfg.duals, cfg.seeds, prev_range)
-        range_i = seed_block_ϵ1!(cfg.duals, cfg.seeds, i, ax)
+        range_i = seed_block_ϵ1ϵ2!(cfg.duals, x, cfg.seeds, i, ax)
         for j in i:n_chunks
             range_j = j == i ? range_i : block_range(j, chunksize(cfg), ax)
-            seed_block_ϵ2!(cfg.duals, cfg.seeds, range_j)
+            if j > i
+                seed_block_ϵ2!(cfg.duals, cfg.seeds, range_j)
+            end
             v = f(cfg.duals)
             check_scalar(v)
             v = _ensure_dual(v, cfg.duals)
@@ -358,9 +379,6 @@ function hessian_chunk_core!(H::AbstractMatrix, G::Union{Nothing, AbstractVector
     symmetrize!(H)
     return value
 end
-
-hessian_chunk!(H::AbstractMatrix, f::F, x::AbstractVector, cfg::HessianConfig) where {F} =
-    (hessian_chunk_core!(H, nothing, f, x, cfg); H)
 
 # Map linear pair index p ∈ 1:k(k+1)/2 to upper-triangle (i, j), i ≤ j, in
 # row-major order: (1,1) (1,2) ... (1,k) (2,2) ... (k,k). Called once per
@@ -442,7 +460,7 @@ end
 function hessian!(H::AbstractMatrix, f::F, x::AbstractVector{T}, cfg::ThreadedHessianConfig) where {F, T}
     _check_config_length(cfg, length(x))
     if chunksize(cfg) == length(x) # single evaluation, includes empty input
-        hessian_vector_core!(H, nothing, f, x, _serial_config(cfg))
+        hessian_core!(H, nothing, f, x, _serial_config(cfg))
         return H
     else
         return (hessian_chunk_threaded_core!(H, nothing, f, x, cfg); H)
@@ -454,20 +472,14 @@ function hessian_gradient_value!(H::AbstractMatrix, G::AbstractVector, f::F, x::
     size(H, 1) == size(H, 2) == length(x) || throw(DimensionMismatch(lazy"H must be square with size matching length(x)=$(length(x)), got size(H)=$(size(H))"))
     length(G) == length(x) || throw(DimensionMismatch(lazy"G must have length $(length(x)), got $(length(G))"))
     if chunksize(cfg) == length(x)
-        return hessian_vector_core!(H, G, f, x, _serial_config(cfg))
+        return hessian_core!(H, G, f, x, _serial_config(cfg))
     else
         return hessian_chunk_threaded_core!(H, G, f, x, cfg)
     end
 end
 
 function hessian_gradient_value!(H::AbstractMatrix, G::AbstractVector, f::F, x::AbstractVector{T}, cfg::HessianConfig) where {F, T}
-    size(H, 1) == size(H, 2) == length(x) || throw(DimensionMismatch(lazy"H must be square with size matching length(x)=$(length(x)), got size(H)=$(size(H))"))
-    length(G) == length(x) || throw(DimensionMismatch(lazy"G must have length $(length(x)), got $(length(G))"))
-    if chunksize(cfg) == length(x)
-        return hessian_gradient_value_vector!(H, G, f, x, cfg)
-    else
-        return hessian_gradient_value_chunk!(H, G, f, x, cfg)
-    end
+    return hessian_core!(H, G, f, x, cfg)
 end
 
 function hessian_gradient_value!(H::AbstractMatrix, G::AbstractVector, f::F, x::AbstractVector) where {F}
@@ -515,12 +527,6 @@ hessian_gradient_value(f::F, x::AbstractArray) where {F} =
     grad = shape === nothing ? res.gradient : reshape(res.gradient, shape)
     return (; value = res.value, gradient = grad, hessian = res.hessian)
 end
-
-hessian_gradient_value_vector!(H::AbstractMatrix, G::AbstractVector, f::F, x::AbstractVector, cfg::HessianConfig) where {F} =
-    hessian_vector_core!(H, G, f, x, cfg)
-
-hessian_gradient_value_chunk!(H::AbstractMatrix, G::AbstractVector, f::F, x::AbstractVector{T}, cfg::HessianConfig) where {F, T} =
-    hessian_chunk_core!(H, G, f, x, cfg)
 
 """
     hvp(f, x, tangents[, cfg])
@@ -651,14 +657,6 @@ end
     return nothing
 end
 
-@inline fill_output!(hv::AbstractVector, z) = fill!(hv, z)
-@inline function fill_output!(hv::Tuple{Vararg{AbstractVector, N}}, z) where {N}
-    for h in hv
-        fill!(h, z)
-    end
-    return hv
-end
-
 @inline function _reshape_output(hv::AbstractVector, shape, orig_shape)
     return orig_shape === nothing ? hv : reshape(hv, shape)
 end
@@ -731,16 +729,8 @@ end
     check_hvp_config_eltype(cfg, x, v)
     check_tangent_dims(x, v)
     check_output_dims(hv, length(x), n_tangents)
-    valN = Val(n_tangents)
-    if chunksize(cfg) == length(x)
-        return hvp_vector_dir!(hv, f, x, v, cfg, valN)
-    else
-        return hvp_chunk_dir!(hv, f, x, v, cfg, valN)
-    end
+    return hvp_gradient_value_dir_core!(nothing, hv, f, x, v, cfg, Val(n_tangents))
 end
-
-@inline hvp_vector_dir!(hv::HVBundle, f, x::AbstractVector{T}, v::TangentBundle, cfg::HVPConfig, valN::Val{N}) where {T, N} =
-    hvp_gradient_value_vector_dir_core!(nothing, hv, f, x, v, cfg, valN)
 
 # Gradient + HVP + value (directional)
 hvp_gradient_value(f::F, x::AbstractVector, v::TangentBundle) where {F} =
@@ -769,12 +759,7 @@ function hvp_gradient_value!(hv::HVBundle, g::AbstractVector, f::F, x::AbstractV
     check_grad_dims(g, length(x))
     check_tangent_dims(x, v)
     check_output_dims(hv, length(x), n_tangents)
-    valN = Val(n_tangents)
-    if chunksize(cfg) == length(x)
-        return hvp_gradient_value_vector_dir!(g, hv, f, x, v, cfg, valN)
-    else
-        return hvp_gradient_value_chunk_dir!(g, hv, f, x, v, cfg, valN)
-    end
+    return hvp_gradient_value_dir_core!(g, hv, f, x, v, cfg, Val(n_tangents))
 end
 hvp_gradient_value!(hv::AbstractArray, g::AbstractArray, f::F, x::AbstractArray, v::TangentBundle) where {F} =
     _hvp_common_array!(hv, g, f, x, v, nothing)
@@ -787,25 +772,47 @@ function hvp_gradient_value!(hv::Tuple{Vararg{AbstractArray, N}}, g::AbstractArr
     return _hvp_common_array!(hv, g, f, x, v, cfg)
 end
 
-@inline hvp_gradient_value_vector_dir!(g::AbstractVector, hv::HVBundle, f, x::AbstractVector, v::TangentBundle, cfg::HVPConfig, valN::Val{N}) where {N} =
-    hvp_gradient_value_vector_dir_core!(g, hv, f, x, v, cfg, valN)
-
-@inline function hvp_gradient_value_chunk_dir_core!(g::Union{Nothing, AbstractVector}, hv::HVBundle, f, x::AbstractVector{T}, v::TangentBundle, cfg::HVPConfig, ::Val{N}) where {T, N}
+@inline function hvp_gradient_value_dir_core!(g::Union{Nothing, AbstractVector}, hv::HVBundle, f, x::AbstractVector{T}, v::TangentBundle, cfg::HVPConfig, ::Val{N}) where {T, N}
     Nchunk = chunksize(cfg)
-    fill_output!(hv, zero(T))
-    n_chunks = ceil(Int, length(x) / Nchunk)
     ax = axes(x, 1)
-    zeroϵ1 = zero_ϵ(cfg.seeds[1])
-    value = zero(T)
     dualT = dual_value_type(eltype(cfg.duals))
+    if length(x) <= Nchunk
+        # Single chunk (including empty x): seed ε₁ with the identity and ε₂
+        # with the tangents in one pass and evaluate f once.
+        range_i = block_range(1, Nchunk, ax)
+        @inbounds for k in 1:length(range_i)
+            idx = range_i[k]
+            cfg.duals[idx] = HyperDual(dualT(x[idx]), cfg.seeds[k], directional_ϵ2(v, idx, Val(N), dualT))
+        end
+        out = f(cfg.duals)
+        check_scalar(out)
+        out = _ensure_dual(out, cfg.duals)
+        @inbounds for (I, idx_i) in enumerate(range_i)
+            if g !== nothing
+                g[idx_i] = out.ϵ1[I]
+            end
+            store_hvp!(hv, idx_i, out.ϵ12[I], Val(N))
+        end
+        return g === nothing ? hv : out.v
+    end
 
-    # Initialize ε₂ once and keep ε₁ zeroed globally.
+    n_chunks = ceil(Int, length(x) / Nchunk)
+    zeroϵ1 = zero_ϵ(eltype(cfg.seeds))
+    value = zero(T)
+
+    # Initialize ε₂ with the tangents and seed ε₁ for the first block in one pass.
+    range_i = block_range(1, Nchunk, ax)
     @inbounds for j in eachindex(x)
-        cfg.duals[j] = HyperDual(dualT(x[j]), zeroϵ1, directional_ϵ2(v, j, Val(N), dualT))
+        ϵ1 = j in range_i ? cfg.seeds[j - first(range_i) + 1] : zeroϵ1
+        cfg.duals[j] = HyperDual(dualT(x[j]), ϵ1, directional_ϵ2(v, j, Val(N), dualT))
     end
 
     for i in 1:n_chunks
-        range_i = seed_hvp_dir!(cfg.duals, cfg.seeds, i, ax)
+        if i > 1
+            # Zero the previous block's ε₁ and seed the current one.
+            zero_block_ϵ1!(cfg.duals, cfg.seeds, range_i)
+            range_i = seed_block_ϵ1!(cfg.duals, cfg.seeds, i, ax)
+        end
         out = f(cfg.duals)
         check_scalar(out)
         out = _ensure_dual(out, cfg.duals)
@@ -816,43 +823,6 @@ end
             end
             store_hvp!(hv, idx_i, out.ϵ12[I], Val(N))
         end
-        zero_block_ϵ1!(cfg.duals, cfg.seeds, range_i)
     end
     return g === nothing ? hv : value
 end
-
-@inline function seed_hvp_dir!(d::AbstractVector{<:HyperDual{N1, N2, <:Any}}, seeds, block_i::Int, ax) where {N1, N2}
-    range_i = block_range(block_i, N1, ax)
-
-    # Seed ε₁ block rows without creating views
-    @inbounds for (offset, idx) in enumerate(range_i)
-        d[idx] = seed_epsilon_1(d[idx], seeds[offset])
-    end
-    return range_i
-end
-
-function hvp_chunk_dir!(hv::HVBundle, f::F, x::AbstractVector{T}, v::TangentBundle, cfg::HVPConfig, ::Val{N}) where {F, T, N}
-    return hvp_gradient_value_chunk_dir_core!(nothing, hv, f, x, v, cfg, Val(N))
-end
-
-@inline function hvp_gradient_value_vector_dir_core!(g::Union{Nothing, AbstractVector}, hv::HVBundle, f, x::AbstractVector, v::TangentBundle, cfg::HVPConfig, ::Val{N}) where {N}
-    # Seed ε₁ with identity directions and ε₂ with the bundled tangents;
-    # the mixed term ε₁ᵀ A ε₂ yields each H * v column in ϵ₁₂.
-    dualT = dual_value_type(eltype(cfg.duals))
-    @inbounds for i in eachindex(x)
-        cfg.duals[i] = HyperDual(dualT(x[i]), cfg.seeds[i], directional_ϵ2(v, i, Val(N), dualT))
-    end
-    out = f(cfg.duals)
-    check_scalar(out)
-    out = _ensure_dual(out, cfg.duals)
-    @inbounds for i in 1:length(x)
-        if g !== nothing
-            g[i] = out.ϵ1[i]
-        end
-        store_hvp!(hv, i, out.ϵ12[i], Val(N))
-    end
-    return g === nothing ? hv : out.v
-end
-
-hvp_gradient_value_chunk_dir!(g::AbstractVector, hv::HVBundle, f::F, x::AbstractVector, v::TangentBundle, cfg::HVPConfig, valN::Val{N}) where {F, N} =
-    hvp_gradient_value_chunk_dir_core!(g, hv, f, x, v, cfg, valN)

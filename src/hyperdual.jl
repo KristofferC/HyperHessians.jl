@@ -38,6 +38,7 @@ const ϵT{N, T} = NTuple{N, T}
 
 # Tuple implementations (default)
 @inline zero_ϵ(::Type{NTuple{N, T}}) where {N, T} = ntuple(_ -> zero(T), Val(N))
+@inline zero_ϵ(::Type{Tuple{}}) = () # NTuple{0, T} leaves T unbound
 @inline zero_ϵ(x::NTuple{N, T}) where {N, T} = zero_ϵ(NTuple{N, T})
 @inline to_ϵ(::Type{NTuple{N, T}}, x) where {N, T} = convert(NTuple{N, T}, x)
 @inline convert_cross(::Type{NTuple{N, T}}, xs::NTuple{M, Any}) where {N, M, T} =
