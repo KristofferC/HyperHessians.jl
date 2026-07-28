@@ -210,9 +210,15 @@ end
 @noinline check_scalar(x) =
     x isa Real || throw(ErrorException("expected a real scalar to be returned from function passed to `hessian`"))
 
+@inline _simd_of(::Type{HyperDual{N1, N2, T, S}}) where {N1, N2, T, S} = S
+@inline _simd_of(::Type{<:HyperDual}) = false
+
 @inline _ensure_dual(v::HyperDual{N1, N2}, ::AbstractVector{<:HyperDual{N1, N2}}) where {N1, N2} = v
 @inline _ensure_dual(v::HyperDual{N1, N2}, ::HyperDual{N1, N2}) where {N1, N2} = v
-@inline _ensure_dual(v::Real, ::AbstractVector{<:HyperDual{N1, N2}}) where {N1, N2} = HyperDual{N1, N2}(v)
+# Keep typeof(v) as the value type (a constant f may return e.g. BigFloat);
+# only the backend flag follows the buffer.
+@inline _ensure_dual(v::Real, d::AbstractVector{<:HyperDual{N1, N2}}) where {N1, N2} =
+    HyperDual{N1, N2, typeof(v), _simd_of(eltype(d))}(v)
 @inline _ensure_dual(v::Real, ::HyperDual{N1, N2}) where {N1, N2} = HyperDual{N1, N2}(v)
 
 @inline _vectorize_input(f, x::AbstractVector) = (f, x, nothing)

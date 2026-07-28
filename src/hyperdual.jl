@@ -102,30 +102,60 @@ const FAST_MODE = FastArithmetic{false}()
 const SIMDMode = Union{IEEEArithmetic{true}, FastArithmetic{true}}
 const SIMDFloat = Union{Float32, Float64}
 
-@inline _add(mode::SIMDMode, a::NTuple{N, T}, b::NTuple{N, T}) where {N, T <: SIMDFloat} =
+@inline _add(::IEEEArithmetic{true}, a::NTuple{N, T}, b::NTuple{N, T}) where {N, T <: SIMDFloat} =
     Tuple(Vec{N, T}(a) + Vec{N, T}(b))
-@inline _neg(mode::SIMDMode, a::NTuple{N, T}) where {N, T <: SIMDFloat} =
-    Tuple(-Vec{N, T}(a))
-@inline _mul(mode::SIMDMode, a::NTuple{N, T}, r::T) where {N, T <: SIMDFloat} =
+@inline _mul(::IEEEArithmetic{true}, a::NTuple{N, T}, r::T) where {N, T <: SIMDFloat} =
     Tuple(Vec{N, T}(a) * r)
-@inline _mul(mode::SIMDMode, r::T, a::NTuple{N, T}) where {N, T <: SIMDFloat} =
+@inline _mul(::IEEEArithmetic{true}, r::T, a::NTuple{N, T}) where {N, T <: SIMDFloat} =
     Tuple(r * Vec{N, T}(a))
-@inline _div(mode::SIMDMode, a::NTuple{N, T}, r::T) where {N, T <: SIMDFloat} =
+@inline _div(::IEEEArithmetic{true}, a::NTuple{N, T}, r::T) where {N, T <: SIMDFloat} =
     Tuple(Vec{N, T}(a) / r)
-@inline _muladd(mode::SIMDMode, a::T, b::NTuple{N, T}, c::NTuple{N, T}) where {N, T <: SIMDFloat} =
+@inline _muladd(::IEEEArithmetic{true}, a::T, b::NTuple{N, T}, c::NTuple{N, T}) where {N, T <: SIMDFloat} =
     Tuple(muladd(Vec{N, T}(a), Vec{N, T}(b), Vec{N, T}(c)))
-@inline _muladd(mode::SIMDMode, a::NTuple{N, T}, b::T, c::NTuple{N, T}) where {N, T <: SIMDFloat} =
+@inline _muladd(::IEEEArithmetic{true}, a::NTuple{N, T}, b::T, c::NTuple{N, T}) where {N, T <: SIMDFloat} =
     Tuple(muladd(Vec{N, T}(a), Vec{N, T}(b), Vec{N, T}(c)))
 
+# Fast-mode Vec ops carry LLVM fast flags like their scalar counterparts.
+@inline _add(::FastArithmetic{true}, a::NTuple{N, T}, b::NTuple{N, T}) where {N, T <: SIMDFloat} =
+    Tuple(Base.FastMath.add_fast(Vec{N, T}(a), Vec{N, T}(b)))
+@inline _mul(::FastArithmetic{true}, a::NTuple{N, T}, r::T) where {N, T <: SIMDFloat} =
+    Tuple(Base.FastMath.mul_fast(Vec{N, T}(a), r))
+@inline _mul(::FastArithmetic{true}, r::T, a::NTuple{N, T}) where {N, T <: SIMDFloat} =
+    Tuple(Base.FastMath.mul_fast(r, Vec{N, T}(a)))
+@inline _div(::FastArithmetic{true}, a::NTuple{N, T}, r::T) where {N, T <: SIMDFloat} =
+    Tuple(Base.FastMath.div_fast(Vec{N, T}(a), r))
+@inline _muladd(::FastArithmetic{true}, a::T, b::NTuple{N, T}, c::NTuple{N, T}) where {N, T <: SIMDFloat} =
+    Tuple(Base.FastMath.add_fast(Base.FastMath.mul_fast(Vec{N, T}(a), Vec{N, T}(b)), Vec{N, T}(c)))
+@inline _muladd(::FastArithmetic{true}, a::NTuple{N, T}, b::T, c::NTuple{N, T}) where {N, T <: SIMDFloat} =
+    Tuple(Base.FastMath.add_fast(Base.FastMath.mul_fast(Vec{N, T}(a), Vec{N, T}(b)), Vec{N, T}(c)))
+
+# Negation is exact, so one method covers both modes.
+@inline _neg(::SIMDMode, a::NTuple{N, T}) where {N, T <: SIMDFloat} =
+    Tuple(-Vec{N, T}(a))
+
 # Length-1 lanes (e.g. the ϵ₂/ϵ₁₂ rows of directional HVP duals): Vec{1} is
-# pure overhead, keep those scalar.
-@inline _add(mode::SIMDMode, a::Tuple{T}, b::Tuple{T}) where {T <: SIMDFloat} = (_add(mode, a[1], b[1]),)
-@inline _neg(mode::SIMDMode, a::Tuple{T}) where {T <: SIMDFloat} = (_neg(mode, a[1]),)
-@inline _mul(mode::SIMDMode, a::Tuple{T}, r::T) where {T <: SIMDFloat} = (_mul(mode, a[1], r),)
-@inline _mul(mode::SIMDMode, r::T, a::Tuple{T}) where {T <: SIMDFloat} = (_mul(mode, r, a[1]),)
-@inline _div(mode::SIMDMode, a::Tuple{T}, r::T) where {T <: SIMDFloat} = (_div(mode, a[1], r),)
-@inline _muladd(mode::SIMDMode, a::T, b::Tuple{T}, c::Tuple{T}) where {T <: SIMDFloat} = (_muladd(mode, a, b[1], c[1]),)
-@inline _muladd(mode::SIMDMode, a::Tuple{T}, b::T, c::Tuple{T}) where {T <: SIMDFloat} = (_muladd(mode, a[1], b, c[1]),)
+# pure overhead, keep those scalar. Length-0 lanes would build the illegal
+# Vec{0} whenever a scalar argument binds T. Both are defined per concrete
+# mode so they stay strictly more specific than the per-mode Vec methods.
+for M in (:(IEEEArithmetic{true}), :(FastArithmetic{true}))
+    @eval begin
+        @inline _add(mode::$M, a::Tuple{T}, b::Tuple{T}) where {T <: SIMDFloat} = (_add(mode, a[1], b[1]),)
+        @inline _neg(mode::$M, a::Tuple{T}) where {T <: SIMDFloat} = (_neg(mode, a[1]),)
+        @inline _mul(mode::$M, a::Tuple{T}, r::T) where {T <: SIMDFloat} = (_mul(mode, a[1], r),)
+        @inline _mul(mode::$M, r::T, a::Tuple{T}) where {T <: SIMDFloat} = (_mul(mode, r, a[1]),)
+        @inline _div(mode::$M, a::Tuple{T}, r::T) where {T <: SIMDFloat} = (_div(mode, a[1], r),)
+        @inline _muladd(mode::$M, a::T, b::Tuple{T}, c::Tuple{T}) where {T <: SIMDFloat} = (_muladd(mode, a, b[1], c[1]),)
+        @inline _muladd(mode::$M, a::Tuple{T}, b::T, c::Tuple{T}) where {T <: SIMDFloat} = (_muladd(mode, a[1], b, c[1]),)
+
+        @inline _add(mode::$M, a::Tuple{}, b::Tuple{}) = ()
+        @inline _neg(mode::$M, a::Tuple{}) = ()
+        @inline _mul(mode::$M, a::Tuple{}, r::T) where {T <: SIMDFloat} = ()
+        @inline _mul(mode::$M, r::T, a::Tuple{}) where {T <: SIMDFloat} = ()
+        @inline _div(mode::$M, a::Tuple{}, r::T) where {T <: SIMDFloat} = ()
+        @inline _muladd(mode::$M, a::T, b::Tuple{}, c::Tuple{}) where {T <: SIMDFloat} = ()
+        @inline _muladd(mode::$M, a::Tuple{}, b::T, c::Tuple{}) where {T <: SIMDFloat} = ()
+    end
+end
 
 # S selects the arithmetic backend: false = plain tuple ops (works for any T),
 # true = SIMD.Vec-forced ops for Float32/Float64 components.
@@ -375,6 +405,25 @@ end
     x * y + z
 @inline Base.muladd(x::HyperDual{N1, N2, T, S}, y::HyperDual{N1, N2, T, S}, z::Real) where {N1, N2, T, S} =
     x * y + z
+# Same-shape duals with mismatched T or S in any combination of slots are
+# otherwise dispatch-ambiguous among the scalar-slot methods above (a Real
+# slot matches a dual of a different parameterization). Enumerate every
+# pattern explicitly and promote to a common type; different-shape duals in
+# Real slots keep their nesting semantics through the scalar-slot methods.
+@inline Base.muladd(x::HyperDual{N1, N2, T1, S1}, y::HyperDual{N1, N2, T2, S2}, z::HyperDual{N1, N2, T1, S1}) where {N1, N2, T1, T2, S1, S2} =
+    muladd(promote(x, y, z)...)
+@inline Base.muladd(x::HyperDual{N1, N2, T2, S2}, y::HyperDual{N1, N2, T1, S1}, z::HyperDual{N1, N2, T1, S1}) where {N1, N2, T1, T2, S1, S2} =
+    muladd(promote(x, y, z)...)
+@inline Base.muladd(x::HyperDual{N1, N2, T1, S1}, y::HyperDual{N1, N2, T1, S1}, z::HyperDual{N1, N2, T2, S2}) where {N1, N2, T1, T2, S1, S2} =
+    muladd(promote(x, y, z)...)
+@inline Base.muladd(x::HyperDual{N1, N2, T1, S1}, y::HyperDual{N1, N2, T2, S2}, z::HyperDual{N1, N2, T3, S3}) where {N1, N2, T1, T2, T3, S1, S2, S3} =
+    muladd(promote(x, y, z)...)
+@inline Base.muladd(x::HyperDual{N1, N2, T1, S1}, y::HyperDual{N1, N2, T2, S2}, z::Real) where {N1, N2, T1, T2, S1, S2} =
+    muladd(promote(x, y, z)...)
+@inline Base.muladd(x::HyperDual{N1, N2, T1, S1}, y::Real, z::HyperDual{N1, N2, T2, S2}) where {N1, N2, T1, T2, S1, S2} =
+    muladd(promote(x, y, z)...)
+@inline Base.muladd(x::Real, y::HyperDual{N1, N2, T1, S1}, z::HyperDual{N1, N2, T2, S2}) where {N1, N2, T1, T2, S1, S2} =
+    muladd(promote(x, y, z)...)
 
 # Comparisons and predicates act on the primal value (ForwardDiff semantics):
 # derivative components are ignored so branching code sees plain numbers.

@@ -42,6 +42,19 @@ import ForwardDiff, DiffTests
     # Int scalars fall back to the generic tuple ops but still work
     @test (hs * 2).v == 3.0
 
+    # mixed backends in binary rules promote, independent of argument order
+    for op in (atan, hypot, ^, muladd)
+        rt = op === muladd ? muladd(h, h, h) : op(h, h)
+        for mixed in (op === muladd ? (muladd(hs, h, hs), muladd(h, hs, h), muladd(hs, hs, h)) :
+                (op(hs, h), op(h, hs)))
+            @test typeof(mixed) === typeof(h)
+            @test mixed.v == rt.v && mixed.ϵ1 == rt.ϵ1 && mixed.ϵ12 == rt.ϵ12
+        end
+    end
+    # same-shape duals in scalar slots must not nest into HyperDual-of-HyperDual
+    @test muladd(hs, h, 1.0) isa HyperDual{2, 2, Float64, false}
+    @test muladd(hs, h, 1.0).v == muladd(h, h, 1.0).v
+
     # config type inference: literal Bool and Val fold to a concrete type,
     # runtime Bool gives the two-config union
     cfg_lit(x) = HessianConfig(x, Chunk{4}(); simd = true)
@@ -49,6 +62,12 @@ import ForwardDiff, DiffTests
     @test isconcretetype(Base.promote_op(cfg_lit, Vector{Float64}))
     @test isconcretetype(Base.promote_op(cfg_val, Vector{Float64}, Val{true}))
     @test Base.promote_op(cfg_val, Vector{Float64}, Bool) isa Union
+
+    # empty input: length-0 ϵ tuples must not build Vec{0}
+    @test HyperHessians.hessian(y -> sum(y)^2, Float64[], HessianConfig(Float64[]; simd = true)) ==
+        zeros(0, 0)
+    e = HyperDual{0, 0, Float64, true}(2.0)
+    @test (2.0 * e + e * e / 2 - muladd(e, 3.0, e)).v == -2.0
 
     # BigFloat eltype with simd flag silently uses the generic path
     xb = big.(collect(range(0.1, 1.0, length = 4)))

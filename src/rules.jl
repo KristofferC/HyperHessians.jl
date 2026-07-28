@@ -344,22 +344,27 @@ end
 for (f, fₓ, fᵧ, fₓₓ, fₓᵧ, fᵧᵧ) in BINARY_DIFF_RULES
     expr = binary_rule_expr(f, fₓ, fᵧ, fₓₓ, fₓᵧ, fᵧᵧ)
     cse_expr = rule_cse(expr; warn = false)
-    @eval @inline function Base.$f(hx::HyperDual{N1, N2, T}, hy::HyperDual{N1, N2, T}) where {N1, N2, T}
+    # The same-S constraint sends mixed-backend pairs through promotion; the
+    # `isa HyperDual{N1, N2}` guards catch same-shape duals in a `Real` slot
+    # (they would otherwise be differentiated as constants).
+    @eval @inline function Base.$f(hx::HyperDual{N1, N2, T, S}, hy::HyperDual{N1, N2, T, S}) where {N1, N2, T, S}
         x = hx.v
         y = hy.v
         $cse_expr
         return chain_rule_dual(hx, hy, f, fₓ, fᵧ, fₓₓ, fₓᵧ, fᵧᵧ)
     end
-    @eval @inline function Base.$f(hx::HyperDual{N1, N2, T1}, hy::HyperDual{N1, N2, T2}) where {N1, N2, T1, T2}
+    @eval @inline function Base.$f(hx::HyperDual{N1, N2}, hy::HyperDual{N1, N2}) where {N1, N2}
         return Base.$f(promote(hx, hy)...)
     end
     @eval @inline function Base.$f(hx::HyperDual{N1, N2, T}, y_raw::Real) where {N1, N2, T}
+        y_raw isa HyperDual{N1, N2} && return Base.$f(promote(hx, y_raw)...)
         x = hx.v
         y = y_raw
         $cse_expr
         return chain_rule_dual(hx, f, fₓ, fₓₓ)
     end
     @eval @inline function Base.$f(x_raw::Real, hy::HyperDual{N1, N2, T}) where {N1, N2, T}
+        x_raw isa HyperDual{N1, N2} && return Base.$f(promote(x_raw, hy)...)
         x = x_raw
         y = hy.v
         $cse_expr
@@ -370,8 +375,8 @@ for (f, fₓ, fᵧ, fₓₓ, fₓᵧ, fᵧᵧ) in BINARY_DIFF_RULES
     fast_expr = binary_rule_expr(:(Base.FastMath.$fast_sym), fₓ, fᵧ, fₓₓ, fₓᵧ, fᵧᵧ)
     fast_cse_expr = rule_cse(fast_expr; warn = false)
     @eval @inline function Base.FastMath.$fast_sym(
-            hx::HyperDual{N1, N2, T}, hy::HyperDual{N1, N2, T}
-        ) where {N1, N2, T}
+            hx::HyperDual{N1, N2, T, S}, hy::HyperDual{N1, N2, T, S}
+        ) where {N1, N2, T, S}
         x = hx.v
         y = hy.v
         @fastmath begin
@@ -380,13 +385,14 @@ for (f, fₓ, fᵧ, fₓₓ, fₓᵧ, fᵧᵧ) in BINARY_DIFF_RULES
         end
     end
     @eval @inline function Base.FastMath.$fast_sym(
-            hx::HyperDual{N1, N2, T1}, hy::HyperDual{N1, N2, T2}
-        ) where {N1, N2, T1, T2}
+            hx::HyperDual{N1, N2}, hy::HyperDual{N1, N2}
+        ) where {N1, N2}
         return Base.FastMath.$fast_sym(promote(hx, hy)...)
     end
     @eval @inline function Base.FastMath.$fast_sym(
             hx::HyperDual{N1, N2, T}, y_raw::Real
         ) where {N1, N2, T}
+        y_raw isa HyperDual{N1, N2} && return Base.FastMath.$fast_sym(promote(hx, y_raw)...)
         x = hx.v
         y = y_raw
         @fastmath begin
@@ -397,6 +403,7 @@ for (f, fₓ, fᵧ, fₓₓ, fₓᵧ, fᵧᵧ) in BINARY_DIFF_RULES
     @eval @inline function Base.FastMath.$fast_sym(
             x_raw::Real, hy::HyperDual{N1, N2, T}
         ) where {N1, N2, T}
+        x_raw isa HyperDual{N1, N2} && return Base.FastMath.$fast_sym(promote(x_raw, hy)...)
         x = x_raw
         y = hy.v
         @fastmath begin
