@@ -44,12 +44,17 @@ const ϵT{N, T} = NTuple{N, T}
 @inline convert_cross(::Type{NTuple{N, T}}, xs::NTuple{M, Any}) where {N, M, T} =
     ntuple(i -> to_ϵ(NTuple{N, T}, xs[i]), Val(M))
 
+# The `simd` flag selects the SIMD.Vec-backed tuple operations below; scalar
+# operations are identical for both flag values.
 abstract type ArithmeticMode end
-struct IEEEArithmetic <: ArithmeticMode end
-struct FastArithmetic <: ArithmeticMode end
+struct IEEEArithmetic{simd} <: ArithmeticMode end
+struct FastArithmetic{simd} <: ArithmeticMode end
 
-const IEEE_MODE = IEEEArithmetic()
-const FAST_MODE = FastArithmetic()
+const IEEE_MODE = IEEEArithmetic{false}()
+const FAST_MODE = FastArithmetic{false}()
+
+@inline _simd(::IEEEArithmetic{S}) where {S} = S
+@inline _simd(::FastArithmetic{S}) where {S} = S
 
 @inline _add(::IEEEArithmetic, a::Real, b::Real) = a + b
 @inline _add(::FastArithmetic, a::Real, b::Real) = Base.FastMath.add_fast(a, b)
@@ -89,29 +94,79 @@ const FAST_MODE = FastArithmetic()
 @inline _outer(mode::ArithmeticMode, t1::NTuple{N1, T1}, t2::NTuple{N2, T2}) where {N1, N2, T1, T2} =
     ntuple(i -> _mul(mode, t2, t1[i]), Val(N1))
 
-# Shorthand for the ordinary IEEE arithmetic used throughout the public methods.
-@inline ⊕(a, b) = _add(IEEE_MODE, a, b)
-@inline ⊟(a) = _neg(IEEE_MODE, a)
-@inline ⊖(a, b) = _sub(IEEE_MODE, a, b)
-@inline ⊙(a, b) = _mul(IEEE_MODE, a, b)
-@inline ⊘(a, b) = _div(IEEE_MODE, a, b)
-@inline _muladd(a, b, c) = _muladd(IEEE_MODE, a, b, c)
-@inline ⊗(t1, t2) = _outer(IEEE_MODE, t1, t2)
+# SIMD.Vec-forced implementations, selected by HyperDuals carrying S = true
+# (`HessianConfig(x; simd = true)`). Only same-eltype Float32/Float64 tuples
+# are forced; anything else (nested duals, BigFloat, mixed precision, empty
+# tuples, non-matching scalar types) falls back to the generic ntuple code
+# above, which auto-vectorizes.
+const SIMDMode = Union{IEEEArithmetic{true}, FastArithmetic{true}}
+const SIMDFloat = Union{Float32, Float64}
 
-struct HyperDual{N1, N2, T} <: Real
+@inline _add(mode::SIMDMode, a::NTuple{N, T}, b::NTuple{N, T}) where {N, T <: SIMDFloat} =
+    Tuple(Vec{N, T}(a) + Vec{N, T}(b))
+@inline _neg(mode::SIMDMode, a::NTuple{N, T}) where {N, T <: SIMDFloat} =
+    Tuple(-Vec{N, T}(a))
+@inline _mul(mode::SIMDMode, a::NTuple{N, T}, r::T) where {N, T <: SIMDFloat} =
+    Tuple(Vec{N, T}(a) * r)
+@inline _mul(mode::SIMDMode, r::T, a::NTuple{N, T}) where {N, T <: SIMDFloat} =
+    Tuple(r * Vec{N, T}(a))
+@inline _div(mode::SIMDMode, a::NTuple{N, T}, r::T) where {N, T <: SIMDFloat} =
+    Tuple(Vec{N, T}(a) / r)
+@inline _muladd(mode::SIMDMode, a::T, b::NTuple{N, T}, c::NTuple{N, T}) where {N, T <: SIMDFloat} =
+    Tuple(muladd(Vec{N, T}(a), Vec{N, T}(b), Vec{N, T}(c)))
+@inline _muladd(mode::SIMDMode, a::NTuple{N, T}, b::T, c::NTuple{N, T}) where {N, T <: SIMDFloat} =
+    Tuple(muladd(Vec{N, T}(a), Vec{N, T}(b), Vec{N, T}(c)))
+
+# Length-1 lanes (e.g. the ϵ₂/ϵ₁₂ rows of directional HVP duals): Vec{1} is
+# pure overhead, keep those scalar.
+@inline _add(mode::SIMDMode, a::Tuple{T}, b::Tuple{T}) where {T <: SIMDFloat} = (_add(mode, a[1], b[1]),)
+@inline _neg(mode::SIMDMode, a::Tuple{T}) where {T <: SIMDFloat} = (_neg(mode, a[1]),)
+@inline _mul(mode::SIMDMode, a::Tuple{T}, r::T) where {T <: SIMDFloat} = (_mul(mode, a[1], r),)
+@inline _mul(mode::SIMDMode, r::T, a::Tuple{T}) where {T <: SIMDFloat} = (_mul(mode, r, a[1]),)
+@inline _div(mode::SIMDMode, a::Tuple{T}, r::T) where {T <: SIMDFloat} = (_div(mode, a[1], r),)
+@inline _muladd(mode::SIMDMode, a::T, b::Tuple{T}, c::Tuple{T}) where {T <: SIMDFloat} = (_muladd(mode, a, b[1], c[1]),)
+@inline _muladd(mode::SIMDMode, a::Tuple{T}, b::T, c::Tuple{T}) where {T <: SIMDFloat} = (_muladd(mode, a[1], b, c[1]),)
+
+# S selects the arithmetic backend: false = plain tuple ops (works for any T),
+# true = SIMD.Vec-forced ops for Float32/Float64 components.
+struct HyperDual{N1, N2, T, S} <: Real
     v::T
     ϵ1::ϵT{N1, T}
     ϵ2::ϵT{N2, T}
     ϵ12::NTuple{N1, ϵT{N2, T}}
 end
+
+# Internal constructors preserving the backend flag of the operands.
+@inline hyperdual(mode::ArithmeticMode, v, ϵ1, ϵ2, ϵ12) = hyperdual(Val(_simd(mode)), v, ϵ1, ϵ2, ϵ12)
+@inline hyperdual(::Val{S}, v::T, ϵ1::ϵT{N1, T}, ϵ2::ϵT{N2, T}, ϵ12::NTuple{N1, ϵT{N2, T}}) where {S, N1, N2, T} =
+    HyperDual{N1, N2, T, S}(v, ϵ1, ϵ2, ϵ12)
+@inline function hyperdual(::Val{S}, v::T1, ϵ1::ϵT{N1, T2}, ϵ2::ϵT{N2, T2}, ϵ12::NTuple{N1, ϵT{N2, T2}}) where {S, N1, N2, T1, T2}
+    T = promote_type(T1, T2)
+    return HyperDual{N1, N2, T, S}(T(v), to_ϵ(ϵT{N1, T}, ϵ1), to_ϵ(ϵT{N2, T}, ϵ2), convert_cross(ϵT{N2, T}, ϵ12))
+end
+
+@inline _ieee_mode(::HyperDual{N1, N2, T, S}) where {N1, N2, T, S} = IEEEArithmetic{S}()
+@inline _fast_mode(::HyperDual{N1, N2, T, S}) where {N1, N2, T, S} = FastArithmetic{S}()
+
+# Public constructors default to the tuple backend.
+HyperDual(v::T1, ϵ1::ϵT{N1, T2}, ϵ2::ϵT{N2, T2}, ϵ12::NTuple{N1, ϵT{N2, T2}}) where {N1, N2, T1, T2} =
+    hyperdual(Val(false), v, ϵ1, ϵ2, ϵ12)
 HyperDual(v::T, ϵ1::ϵT{N1, T}, ϵ2::ϵT{N2, T}) where {N1, N2, T} =
     HyperDual(v, ϵ1, ϵ2, ntuple(_ -> ntuple(_ -> zero(T), Val(N2)), Val(N1)))
 HyperDual{N1, N2}(v::T) where {N1, N2, T} =
     HyperDual(v, ntuple(_ -> zero(T), Val(N1)), ntuple(_ -> zero(T), Val(N2)))
 HyperDual{N1, N2, T}(v) where {N1, N2, T} = HyperDual{N1, N2}(T(v))
 HyperDual{N1, N2, T}(v::HyperDual{N1, N2, T}) where {N1, N2, T} = v
-HyperDual{N1, N2, T}(v::HyperDual{N1, N2}) where {N1, N2, T} = convert(HyperDual{N1, N2, T}, v)
+HyperDual{N1, N2, T}(v::HyperDual{N1, N2, <:Any, S}) where {N1, N2, T, S} = convert(HyperDual{N1, N2, T, S}, v)
 HyperDual{N1, N2}(v::HyperDual{N1, N2}) where {N1, N2} = v
+
+HyperDual{N1, N2, T, S}(v::Real) where {N1, N2, T, S} = hyperdual(
+    Val(S), T(v),
+    ntuple(_ -> zero(T), Val(N1)), ntuple(_ -> zero(T), Val(N2)),
+    ntuple(_ -> ntuple(_ -> zero(T), Val(N2)), Val(N1)),
+)
+HyperDual{N1, N2, T, S}(v::HyperDual{N1, N2, T, S}) where {N1, N2, T, S} = v
+HyperDual{N1, N2, T, S}(v::HyperDual{N1, N2}) where {N1, N2, T, S} = convert(HyperDual{N1, N2, T, S}, v)
 
 # Disambiguate against Base's numeric conversion constructors (Complex, Char,
 # TwicePrecision), which also target Real/Number. Route through the scalar value.
@@ -121,11 +176,7 @@ _scalar(v::Base.TwicePrecision{T}) where {T} = T(v)
 for R in (:Complex, :AbstractChar, :(Base.TwicePrecision))
     @eval HyperDual{N1, N2, T}(v::$R) where {N1, N2, T} = HyperDual{N1, N2}(T(v))
     @eval HyperDual{N1, N2}(v::$R) where {N1, N2} = HyperDual{N1, N2}(_scalar(v))
-end
-
-function HyperDual(v::T1, ϵ1::ϵT{N1, T2}, ϵ2::ϵT{N2, T2}, ϵ12::NTuple{N1, ϵT{N2, T2}}) where {N1, N2, T1, T2}
-    T = promote_type(T1, T2)
-    return HyperDual(T(v), to_ϵ(ϵT{N1, T}, ϵ1), to_ϵ(ϵT{N2, T}, ϵ2), convert_cross(ϵT{N2, T}, ϵ12))
+    @eval HyperDual{N1, N2, T, S}(v::$R) where {N1, N2, T, S} = HyperDual{N1, N2, T, S}(T(v))
 end
 
 # Accessor Functions
@@ -136,27 +187,31 @@ end
 @inline mapϵ12(f, h1::HyperDual{N1, N2}, h2::HyperDual{N1, N2}) where {N1, N2} =
     ntuple(i -> f(h1.ϵ12[i], h2.ϵ12[i]), Val(N1))
 
-Base.promote_rule(::Type{HyperDual{N1, N2, T1}}, ::Type{HyperDual{N1, N2, T2}}) where {N1, N2, T1, T2} =
-    HyperDual{N1, N2, promote_type(T1, T2)}
-Base.promote_rule(::Type{HyperDual{N1, N2, T1}}, ::Type{T2}) where {N1, N2, T1, T2 <: Real} =
-    HyperDual{N1, N2, promote_type(T1, T2)}
-Base.convert(::Type{HyperDual{N1, N2, T1}}, h::HyperDual{N1, N2, T2}) where {N1, N2, T1, T2} =
-    HyperDual{N1, N2, T1}(T1(h.v), to_ϵ(ϵT{N1, T1}, h.ϵ1), to_ϵ(ϵT{N2, T1}, h.ϵ2), convert_cross(ϵT{N2, T1}, h.ϵ12))
-Base.convert(::Type{HyperDual{N1, N2, T}}, x::Real) where {N1, N2, T} = HyperDual{N1, N2, T}(T(x))
+# Mixed backends promote to the tuple backend.
+Base.promote_rule(::Type{HyperDual{N1, N2, T1, S1}}, ::Type{HyperDual{N1, N2, T2, S2}}) where {N1, N2, T1, T2, S1, S2} =
+    HyperDual{N1, N2, promote_type(T1, T2), S1 && S2}
+Base.promote_rule(::Type{HyperDual{N1, N2, T1, S}}, ::Type{T2}) where {N1, N2, T1, S, T2 <: Real} =
+    HyperDual{N1, N2, promote_type(T1, T2), S}
+Base.convert(::Type{HyperDual{N1, N2, T1, S}}, h::HyperDual{N1, N2, T2, S2}) where {N1, N2, T1, T2, S, S2} =
+    HyperDual{N1, N2, T1, S}(T1(h.v), to_ϵ(ϵT{N1, T1}, h.ϵ1), to_ϵ(ϵT{N2, T1}, h.ϵ2), convert_cross(ϵT{N2, T1}, h.ϵ12))
+Base.convert(::Type{HyperDual{N1, N2, T, S}}, x::Real) where {N1, N2, T, S} = HyperDual{N1, N2, T, S}(T(x))
 
 function Base.show(io::IO, h::HyperDual)
     print(io, h.v, " + ", Tuple(h.ϵ1), "ϵ1", " + ", Tuple(h.ϵ2), "ϵ2", " + ", map(Tuple, h.ϵ12), "ϵ12")
     return
 end
 
-Base.one(::Type{HyperDual{N1, N2, T}}) where {N1, N2, T} = HyperDual{N1, N2}(one(T))
-Base.zero(::Type{HyperDual{N1, N2, T}}) where {N1, N2, T} = HyperDual{N1, N2}(zero(T))
-Base.one(::HyperDual{N1, N2, T}) where {N1, N2, T} = one(HyperDual{N1, N2, T})
-Base.zero(::HyperDual{N1, N2, T}) where {N1, N2, T} = zero(HyperDual{N1, N2, T})
-Base.float(h::HyperDual{N1, N2, T}) where {N1, N2, T} = convert(HyperDual{N1, N2, float(T)}, h)
+Base.one(::Type{HyperDual{N1, N2, T, S}}) where {N1, N2, T, S} = HyperDual{N1, N2, T, S}(one(T))
+Base.zero(::Type{HyperDual{N1, N2, T, S}}) where {N1, N2, T, S} = HyperDual{N1, N2, T, S}(zero(T))
+Base.one(::Type{HyperDual{N1, N2, T}}) where {N1, N2, T} = one(HyperDual{N1, N2, T, false})
+Base.zero(::Type{HyperDual{N1, N2, T}}) where {N1, N2, T} = zero(HyperDual{N1, N2, T, false})
+Base.one(::HyperDual{N1, N2, T, S}) where {N1, N2, T, S} = one(HyperDual{N1, N2, T, S})
+Base.zero(::HyperDual{N1, N2, T, S}) where {N1, N2, T, S} = zero(HyperDual{N1, N2, T, S})
+Base.float(h::HyperDual{N1, N2, T, S}) where {N1, N2, T, S} = convert(HyperDual{N1, N2, float(T), S}, h)
 
 @inline function _neg_hyperdual(mode::ArithmeticMode, h::HyperDual{N1, N2}) where {N1, N2}
-    return HyperDual(
+    return hyperdual(
+        mode,
         _neg(mode, h.v),
         _neg(mode, h.ϵ1),
         _neg(mode, h.ϵ2),
@@ -169,7 +224,8 @@ end
         h1::HyperDual{N1, N2, T},
         h2::HyperDual{N1, N2, T},
     ) where {N1, N2, T}
-    return HyperDual(
+    return hyperdual(
+        mode,
         _add(mode, h1.v, h2.v),
         _add(mode, h1.ϵ1, h2.ϵ1),
         _add(mode, h1.ϵ2, h2.ϵ2),
@@ -182,7 +238,8 @@ end
         h1::HyperDual{N1, N2, T},
         h2::HyperDual{N1, N2, T},
     ) where {N1, N2, T}
-    return HyperDual(
+    return hyperdual(
+        mode,
         _sub(mode, h1.v, h2.v),
         _sub(mode, h1.ϵ1, h2.ϵ1),
         _sub(mode, h1.ϵ2, h2.ϵ2),
@@ -190,31 +247,39 @@ end
     )
 end
 
-@inline Base.:(-)(h::HyperDual) = _neg_hyperdual(IEEE_MODE, h)
+@inline Base.:(-)(h::HyperDual) = _neg_hyperdual(_ieee_mode(h), h)
 @inline Base.:(+)(h::HyperDual) = h
 
-@inline Base.:+(h1::HyperDual{N1, N2, T}, h2::HyperDual{N1, N2, T}) where {N1, N2, T} =
-    _add_hyperdual(IEEE_MODE, h1, h2)
-@inline Base.:+(h1::HyperDual{N1, N2, T1}, h2::HyperDual{N1, N2, T2}) where {N1, N2, T1, T2} = +(promote(h1, h2)...)
-@inline Base.:+(h::HyperDual{N1, N2}, r::Real) where {N1, N2} =
-    HyperDual(h.v + r, h.ϵ1, h.ϵ2, h.ϵ12)
-@inline Base.:+(r::Real, h::HyperDual{N1, N2}) where {N1, N2} =
-    HyperDual(r + h.v, h.ϵ1, h.ϵ2, h.ϵ12)
+@inline Base.:+(h1::HyperDual{N1, N2, T, S}, h2::HyperDual{N1, N2, T, S}) where {N1, N2, T, S} =
+    _add_hyperdual(IEEEArithmetic{S}(), h1, h2)
+@inline Base.:+(h1::HyperDual{N1, N2}, h2::HyperDual{N1, N2}) where {N1, N2} = +(promote(h1, h2)...)
+@inline Base.:+(h::HyperDual{N1, N2, T, S}, r::Real) where {N1, N2, T, S} =
+    hyperdual(Val(S), h.v + r, h.ϵ1, h.ϵ2, h.ϵ12)
+@inline Base.:+(r::Real, h::HyperDual{N1, N2, T, S}) where {N1, N2, T, S} =
+    hyperdual(Val(S), r + h.v, h.ϵ1, h.ϵ2, h.ϵ12)
 
-@inline Base.:-(h1::HyperDual{N1, N2, T}, h2::HyperDual{N1, N2, T}) where {N1, N2, T} =
-    _sub_hyperdual(IEEE_MODE, h1, h2)
-@inline Base.:-(h1::HyperDual{N1, N2, T1}, h2::HyperDual{N1, N2, T2}) where {N1, N2, T1, T2} = -(promote(h1, h2)...)
-@inline Base.:-(h::HyperDual{N1, N2}, r::Real) where {N1, N2} =
-    HyperDual(h.v - r, h.ϵ1, h.ϵ2, h.ϵ12)
-@inline Base.:-(r::Real, h::HyperDual{N1, N2}) where {N1, N2} =
-    HyperDual(r - h.v, ⊟(h.ϵ1), ⊟(h.ϵ2), mapϵ12(⊟, h))
+@inline Base.:-(h1::HyperDual{N1, N2, T, S}, h2::HyperDual{N1, N2, T, S}) where {N1, N2, T, S} =
+    _sub_hyperdual(IEEEArithmetic{S}(), h1, h2)
+@inline Base.:-(h1::HyperDual{N1, N2}, h2::HyperDual{N1, N2}) where {N1, N2} = -(promote(h1, h2)...)
+@inline Base.:-(h::HyperDual{N1, N2, T, S}, r::Real) where {N1, N2, T, S} =
+    hyperdual(Val(S), h.v - r, h.ϵ1, h.ϵ2, h.ϵ12)
+@inline function Base.:-(r::Real, h::HyperDual{N1, N2}) where {N1, N2}
+    mode = _ieee_mode(h)
+    return hyperdual(mode, r - h.v, _neg(mode, h.ϵ1), _neg(mode, h.ϵ2), mapϵ12(x -> _neg(mode, x), h))
+end
 
-@inline Base.:*(h::HyperDual{N1, N2}, r::Real) where {N1, N2} =
-    HyperDual(h.v * r, h.ϵ1 ⊙ r, h.ϵ2 ⊙ r, mapϵ12(ϵ -> ϵ ⊙ r, h))
-@inline Base.:/(h::HyperDual{N1, N2}, r::Real) where {N1, N2} =
-    HyperDual(h.v / r, h.ϵ1 ⊘ r, h.ϵ2 ⊘ r, mapϵ12(ϵ -> ϵ ⊘ r, h))
-@inline Base.:(*)(r::Real, h::HyperDual{N1, N2}) where {N1, N2} =
-    HyperDual(r * h.v, r ⊙ h.ϵ1, r ⊙ h.ϵ2, mapϵ12(ϵ -> r ⊙ ϵ, h))
+@inline function Base.:*(h::HyperDual{N1, N2}, r::Real) where {N1, N2}
+    mode = _ieee_mode(h)
+    return hyperdual(mode, h.v * r, _mul(mode, h.ϵ1, r), _mul(mode, h.ϵ2, r), mapϵ12(ϵ -> _mul(mode, ϵ, r), h))
+end
+@inline function Base.:/(h::HyperDual{N1, N2}, r::Real) where {N1, N2}
+    mode = _ieee_mode(h)
+    return hyperdual(mode, h.v / r, _div(mode, h.ϵ1, r), _div(mode, h.ϵ2, r), mapϵ12(ϵ -> _div(mode, ϵ, r), h))
+end
+@inline function Base.:(*)(r::Real, h::HyperDual{N1, N2}) where {N1, N2}
+    mode = _ieee_mode(h)
+    return hyperdual(mode, r * h.v, _mul(mode, r, h.ϵ1), _mul(mode, r, h.ϵ2), mapϵ12(ϵ -> _mul(mode, r, ϵ), h))
+end
 
 # Dedicated division rule: cheaper than h1 * inv(h2) (fewer chain-rule products).
 # f = x/y, fₓ = 1/y, fᵧ = -f/y, fₓₓ = 0, fₓᵧ = -1/y², fᵧᵧ = 2f/y²
@@ -254,53 +319,61 @@ end
         h.ϵ12[i],
         _mul(mode, _mul(mode, f′′, h.ϵ1[i]), h.ϵ2),
     )
-    return HyperDual(f, ϵ1, ϵ2, ntuple(g, Val(N1)))
+    return hyperdual(mode, f, ϵ1, ϵ2, ntuple(g, Val(N1)))
 end
 
 @inline Base.:(/)(r::Real, h::HyperDual) = r * inv(h)
-@inline Base.:(/)(h1::HyperDual{N1, N2, T}, h2::HyperDual{N1, N2, T}) where {N1, N2, T} =
-    _div_hyperdual(IEEE_MODE, h1, h2)
-@inline Base.:(/)(h1::HyperDual{N1, N2, T1}, h2::HyperDual{N1, N2, T2}) where {N1, N2, T1, T2} = /(promote(h1, h2)...)
+@inline Base.:(/)(h1::HyperDual{N1, N2, T, S}, h2::HyperDual{N1, N2, T, S}) where {N1, N2, T, S} =
+    _div_hyperdual(IEEEArithmetic{S}(), h1, h2)
+@inline Base.:(/)(h1::HyperDual{N1, N2}, h2::HyperDual{N1, N2}) where {N1, N2} = /(promote(h1, h2)...)
 
-@inline function Base.muladd(x::HyperDual{N1, N2, T}, y::Real, z::HyperDual{N1, N2, T}) where {N1, N2, T}
-    return HyperDual(
+@inline function Base.muladd(x::HyperDual{N1, N2, T, S}, y::Real, z::HyperDual{N1, N2, T, S}) where {N1, N2, T, S}
+    mode = IEEEArithmetic{S}()
+    return hyperdual(
+        mode,
         muladd(x.v, y, z.v),
-        _muladd(y, x.ϵ1, z.ϵ1),
-        _muladd(y, x.ϵ2, z.ϵ2),
-        ntuple(i -> _muladd(y, x.ϵ12[i], z.ϵ12[i]), Val(N1))
+        _muladd(mode, y, x.ϵ1, z.ϵ1),
+        _muladd(mode, y, x.ϵ2, z.ϵ2),
+        ntuple(i -> _muladd(mode, y, x.ϵ12[i], z.ϵ12[i]), Val(N1))
     )
 end
-@inline function Base.muladd(x::Real, y::HyperDual{N1, N2, T}, z::HyperDual{N1, N2, T}) where {N1, N2, T}
-    return HyperDual(
+@inline function Base.muladd(x::Real, y::HyperDual{N1, N2, T, S}, z::HyperDual{N1, N2, T, S}) where {N1, N2, T, S}
+    mode = IEEEArithmetic{S}()
+    return hyperdual(
+        mode,
         muladd(x, y.v, z.v),
-        _muladd(x, y.ϵ1, z.ϵ1),
-        _muladd(x, y.ϵ2, z.ϵ2),
-        ntuple(i -> _muladd(x, y.ϵ12[i], z.ϵ12[i]), Val(N1)),
+        _muladd(mode, x, y.ϵ1, z.ϵ1),
+        _muladd(mode, x, y.ϵ2, z.ϵ2),
+        ntuple(i -> _muladd(mode, x, y.ϵ12[i], z.ϵ12[i]), Val(N1)),
     )
 end
-@inline function Base.muladd(x::HyperDual{N1, N2, T}, y::Real, z::Real) where {N1, N2, T}
-    return HyperDual(
+@inline function Base.muladd(x::HyperDual{N1, N2, T, S}, y::Real, z::Real) where {N1, N2, T, S}
+    mode = IEEEArithmetic{S}()
+    return hyperdual(
+        mode,
         muladd(x.v, y, z),
-        x.ϵ1 ⊙ y,
-        x.ϵ2 ⊙ y,
-        ntuple(i -> x.ϵ12[i] ⊙ y, Val(N1)),
+        _mul(mode, x.ϵ1, y),
+        _mul(mode, x.ϵ2, y),
+        ntuple(i -> _mul(mode, x.ϵ12[i], y), Val(N1)),
     )
 end
-@inline function Base.muladd(x::Real, y::HyperDual{N1, N2, T}, z::Real) where {N1, N2, T}
-    return HyperDual(
+@inline function Base.muladd(x::Real, y::HyperDual{N1, N2, T, S}, z::Real) where {N1, N2, T, S}
+    mode = IEEEArithmetic{S}()
+    return hyperdual(
+        mode,
         muladd(x, y.v, z),
-        y.ϵ1 ⊙ x,
-        y.ϵ2 ⊙ x,
-        ntuple(i -> y.ϵ12[i] ⊙ x, Val(N1)),
+        _mul(mode, y.ϵ1, x),
+        _mul(mode, y.ϵ2, x),
+        ntuple(i -> _mul(mode, y.ϵ12[i], x), Val(N1)),
     )
 end
-@inline Base.muladd(x::Real, y::Real, z::HyperDual{N1, N2, T}) where {N1, N2, T} =
-    HyperDual(muladd(x, y, z.v), z.ϵ1, z.ϵ2, z.ϵ12)
+@inline Base.muladd(x::Real, y::Real, z::HyperDual{N1, N2, T, S}) where {N1, N2, T, S} =
+    hyperdual(Val(S), muladd(x, y, z.v), z.ϵ1, z.ϵ2, z.ϵ12)
 # All-HyperDual multiplicands are ambiguous between the mixed methods above, so
 # resolve them explicitly via the general product-then-sum.
-@inline Base.muladd(x::HyperDual{N1, N2, T}, y::HyperDual{N1, N2, T}, z::HyperDual{N1, N2, T}) where {N1, N2, T} =
+@inline Base.muladd(x::HyperDual{N1, N2, T, S}, y::HyperDual{N1, N2, T, S}, z::HyperDual{N1, N2, T, S}) where {N1, N2, T, S} =
     x * y + z
-@inline Base.muladd(x::HyperDual{N1, N2, T}, y::HyperDual{N1, N2, T}, z::Real) where {N1, N2, T} =
+@inline Base.muladd(x::HyperDual{N1, N2, T, S}, y::HyperDual{N1, N2, T, S}, z::Real) where {N1, N2, T, S} =
     x * y + z
 
 # Comparisons and predicates act on the primal value (ForwardDiff semantics):
@@ -331,24 +404,32 @@ end
 
 # Rounding: derivative is zero almost everywhere.
 for f in (:floor, :ceil, :trunc)
-    @eval @inline Base.$f(h::HyperDual{N1, N2}) where {N1, N2} = HyperDual{N1, N2}($f(h.v))
+    @eval @inline function Base.$f(h::HyperDual{N1, N2, T, S}) where {N1, N2, T, S}
+        fv = $f(h.v)
+        return HyperDual{N1, N2, typeof(fv), S}(fv)
+    end
     @eval @inline Base.$f(::Type{I}, h::HyperDual) where {I <: Real} = $f(I, h.v)
 end
-@inline Base.round(h::HyperDual{N1, N2}, r::RoundingMode = RoundNearest) where {N1, N2} =
-    HyperDual{N1, N2}(round(h.v, r))
+@inline function Base.round(h::HyperDual{N1, N2, T, S}, r::RoundingMode = RoundNearest) where {N1, N2, T, S}
+    fv = round(h.v, r)
+    return HyperDual{N1, N2, typeof(fv), S}(fv)
+end
 @inline Base.round(::Type{I}, h::HyperDual) where {I <: Real} = round(I, h.v)
 
 # mod/rem: derivative w.r.t. x is 1 almost everywhere, so ϵ parts pass through.
 # The two-dual methods use mod(x, y) = x - fld(x, y) * y with fld constant a.e.
-@inline Base.mod(h::HyperDual{N1, N2}, r::Real) where {N1, N2} = HyperDual(mod(h.v, r), h.ϵ1, h.ϵ2, h.ϵ12)
-@inline Base.rem(h::HyperDual{N1, N2}, r::Real) where {N1, N2} = HyperDual(rem(h.v, r), h.ϵ1, h.ϵ2, h.ϵ12)
+@inline Base.mod(h::HyperDual{N1, N2, T, S}, r::Real) where {N1, N2, T, S} =
+    hyperdual(Val(S), mod(h.v, r), h.ϵ1, h.ϵ2, h.ϵ12)
+@inline Base.rem(h::HyperDual{N1, N2, T, S}, r::Real) where {N1, N2, T, S} =
+    hyperdual(Val(S), rem(h.v, r), h.ϵ1, h.ϵ2, h.ϵ12)
 @inline Base.mod(h1::HyperDual{N1, N2}, h2::HyperDual{N1, N2}) where {N1, N2} = h1 - fld(h1.v, h2.v) * h2
 @inline Base.rem(h1::HyperDual{N1, N2}, h2::HyperDual{N1, N2}) where {N1, N2} = h1 - div(h1.v, h2.v) * h2
-@inline Base.mod2pi(h::HyperDual{N1, N2}) where {N1, N2} = HyperDual(mod2pi(h.v), h.ϵ1, h.ϵ2, h.ϵ12)
-@inline Base.rem2pi(h::HyperDual{N1, N2}, r::RoundingMode) where {N1, N2} =
-    HyperDual(rem2pi(h.v, r), h.ϵ1, h.ϵ2, h.ϵ12)
+@inline Base.mod2pi(h::HyperDual{N1, N2, T, S}) where {N1, N2, T, S} =
+    hyperdual(Val(S), mod2pi(h.v), h.ϵ1, h.ϵ2, h.ϵ12)
+@inline Base.rem2pi(h::HyperDual{N1, N2, T, S}, r::RoundingMode) where {N1, N2, T, S} =
+    hyperdual(Val(S), rem2pi(h.v, r), h.ϵ1, h.ϵ2, h.ϵ12)
 
-@inline Base.:(*)(h1::HyperDual{N1, N2, T1}, h2::HyperDual{N1, N2, T2}) where {N1, N2, T1, T2} = *(promote(h1, h2)...)
+@inline Base.:(*)(h1::HyperDual{N1, N2}, h2::HyperDual{N1, N2}) where {N1, N2} = *(promote(h1, h2)...)
 @inline function _mul_hyperdual(
         mode::ArithmeticMode,
         h1::HyperDual{N1, N2, T},
@@ -370,10 +451,10 @@ end
         ),
     )
     ϵ12 = ntuple(g, Val(N1))
-    return HyperDual(r, ϵ1, ϵ2, ϵ12)
+    return hyperdual(mode, r, ϵ1, ϵ2, ϵ12)
 end
-@inline Base.:(*)(h1::HyperDual{N1, N2, T}, h2::HyperDual{N1, N2, T}) where {N1, N2, T} =
-    _mul_hyperdual(IEEE_MODE, h1, h2)
+@inline Base.:(*)(h1::HyperDual{N1, N2, T, S}, h2::HyperDual{N1, N2, T, S}) where {N1, N2, T, S} =
+    _mul_hyperdual(IEEEArithmetic{S}(), h1, h2)
 @inline Base.literal_pow(::typeof(^), x::HyperDual, ::Val{0}) = one(typeof(x))
 @inline Base.literal_pow(::typeof(^), x::HyperDual, ::Val{1}) = x
 @inline Base.literal_pow(::typeof(^), x::HyperDual, ::Val{p}) where {p} = x^p
@@ -414,75 +495,91 @@ end
         return chain_rule_dual(mode, h, f, f′, f′′)
     end
 end
-@inline Base.:(^)(h::HyperDual, n::Integer) = _pow_hyperdual(IEEE_MODE, h, n)
+@inline Base.:(^)(h::HyperDual, n::Integer) = _pow_hyperdual(_ieee_mode(h), h, n)
 # Disambiguate against Base.^(::Number, ::Rational): use the general real-power rule.
 @inline Base.:(^)(h::HyperDual, r::Rational) = h^float(r)
 
 # `@fastmath` rewrites user arithmetic to these functions. The methods below
 # select fast arithmetic for both the primal and all derivative components.
-@inline Base.FastMath.sub_fast(h::HyperDual) = _neg_hyperdual(FAST_MODE, h)
+@inline Base.FastMath.sub_fast(h::HyperDual) = _neg_hyperdual(_fast_mode(h), h)
 
 @inline Base.FastMath.add_fast(
-    h1::HyperDual{N1, N2, T}, h2::HyperDual{N1, N2, T}
-) where {N1, N2, T} = _add_hyperdual(FAST_MODE, h1, h2)
+    h1::HyperDual{N1, N2, T, S}, h2::HyperDual{N1, N2, T, S}
+) where {N1, N2, T, S} = _add_hyperdual(FastArithmetic{S}(), h1, h2)
 @inline Base.FastMath.add_fast(
-    h1::HyperDual{N1, N2, T1}, h2::HyperDual{N1, N2, T2}
-) where {N1, N2, T1, T2} = Base.FastMath.add_fast(promote(h1, h2)...)
-@inline Base.FastMath.add_fast(h::HyperDual, r::Real) =
-    HyperDual(Base.FastMath.add_fast(h.v, r), h.ϵ1, h.ϵ2, h.ϵ12)
-@inline Base.FastMath.add_fast(r::Real, h::HyperDual) =
-    HyperDual(Base.FastMath.add_fast(r, h.v), h.ϵ1, h.ϵ2, h.ϵ12)
+    h1::HyperDual{N1, N2}, h2::HyperDual{N1, N2}
+) where {N1, N2} = Base.FastMath.add_fast(promote(h1, h2)...)
+@inline Base.FastMath.add_fast(h::HyperDual{N1, N2, T, S}, r::Real) where {N1, N2, T, S} =
+    hyperdual(Val(S), Base.FastMath.add_fast(h.v, r), h.ϵ1, h.ϵ2, h.ϵ12)
+@inline Base.FastMath.add_fast(r::Real, h::HyperDual{N1, N2, T, S}) where {N1, N2, T, S} =
+    hyperdual(Val(S), Base.FastMath.add_fast(r, h.v), h.ϵ1, h.ϵ2, h.ϵ12)
 
 @inline Base.FastMath.sub_fast(
-    h1::HyperDual{N1, N2, T}, h2::HyperDual{N1, N2, T}
-) where {N1, N2, T} = _sub_hyperdual(FAST_MODE, h1, h2)
+    h1::HyperDual{N1, N2, T, S}, h2::HyperDual{N1, N2, T, S}
+) where {N1, N2, T, S} = _sub_hyperdual(FastArithmetic{S}(), h1, h2)
 @inline Base.FastMath.sub_fast(
-    h1::HyperDual{N1, N2, T1}, h2::HyperDual{N1, N2, T2}
-) where {N1, N2, T1, T2} = Base.FastMath.sub_fast(promote(h1, h2)...)
-@inline Base.FastMath.sub_fast(h::HyperDual, r::Real) =
-    HyperDual(Base.FastMath.sub_fast(h.v, r), h.ϵ1, h.ϵ2, h.ϵ12)
-@inline Base.FastMath.sub_fast(r::Real, h::HyperDual) = HyperDual(
-    Base.FastMath.sub_fast(r, h.v),
-    _neg(FAST_MODE, h.ϵ1),
-    _neg(FAST_MODE, h.ϵ2),
-    mapϵ12(x -> _neg(FAST_MODE, x), h),
-)
+    h1::HyperDual{N1, N2}, h2::HyperDual{N1, N2}
+) where {N1, N2} = Base.FastMath.sub_fast(promote(h1, h2)...)
+@inline Base.FastMath.sub_fast(h::HyperDual{N1, N2, T, S}, r::Real) where {N1, N2, T, S} =
+    hyperdual(Val(S), Base.FastMath.sub_fast(h.v, r), h.ϵ1, h.ϵ2, h.ϵ12)
+@inline function Base.FastMath.sub_fast(r::Real, h::HyperDual{N1, N2}) where {N1, N2}
+    mode = _fast_mode(h)
+    return hyperdual(
+        mode,
+        Base.FastMath.sub_fast(r, h.v),
+        _neg(mode, h.ϵ1),
+        _neg(mode, h.ϵ2),
+        mapϵ12(x -> _neg(mode, x), h),
+    )
+end
 
 @inline Base.FastMath.mul_fast(
-    h1::HyperDual{N1, N2, T}, h2::HyperDual{N1, N2, T}
-) where {N1, N2, T} = _mul_hyperdual(FAST_MODE, h1, h2)
+    h1::HyperDual{N1, N2, T, S}, h2::HyperDual{N1, N2, T, S}
+) where {N1, N2, T, S} = _mul_hyperdual(FastArithmetic{S}(), h1, h2)
 @inline Base.FastMath.mul_fast(
-    h1::HyperDual{N1, N2, T1}, h2::HyperDual{N1, N2, T2}
-) where {N1, N2, T1, T2} = Base.FastMath.mul_fast(promote(h1, h2)...)
-@inline Base.FastMath.mul_fast(h::HyperDual, r::Real) = HyperDual(
-    Base.FastMath.mul_fast(h.v, r),
-    _mul(FAST_MODE, h.ϵ1, r),
-    _mul(FAST_MODE, h.ϵ2, r),
-    mapϵ12(x -> _mul(FAST_MODE, x, r), h),
-)
-@inline Base.FastMath.mul_fast(r::Real, h::HyperDual) = HyperDual(
-    Base.FastMath.mul_fast(r, h.v),
-    _mul(FAST_MODE, r, h.ϵ1),
-    _mul(FAST_MODE, r, h.ϵ2),
-    mapϵ12(x -> _mul(FAST_MODE, r, x), h),
-)
+    h1::HyperDual{N1, N2}, h2::HyperDual{N1, N2}
+) where {N1, N2} = Base.FastMath.mul_fast(promote(h1, h2)...)
+@inline function Base.FastMath.mul_fast(h::HyperDual{N1, N2}, r::Real) where {N1, N2}
+    mode = _fast_mode(h)
+    return hyperdual(
+        mode,
+        Base.FastMath.mul_fast(h.v, r),
+        _mul(mode, h.ϵ1, r),
+        _mul(mode, h.ϵ2, r),
+        mapϵ12(x -> _mul(mode, x, r), h),
+    )
+end
+@inline function Base.FastMath.mul_fast(r::Real, h::HyperDual{N1, N2}) where {N1, N2}
+    mode = _fast_mode(h)
+    return hyperdual(
+        mode,
+        Base.FastMath.mul_fast(r, h.v),
+        _mul(mode, r, h.ϵ1),
+        _mul(mode, r, h.ϵ2),
+        mapϵ12(x -> _mul(mode, r, x), h),
+    )
+end
 
 @inline Base.FastMath.div_fast(
-    h1::HyperDual{N1, N2, T}, h2::HyperDual{N1, N2, T}
-) where {N1, N2, T} = _div_hyperdual(FAST_MODE, h1, h2)
+    h1::HyperDual{N1, N2, T, S}, h2::HyperDual{N1, N2, T, S}
+) where {N1, N2, T, S} = _div_hyperdual(FastArithmetic{S}(), h1, h2)
 @inline Base.FastMath.div_fast(
-    h1::HyperDual{N1, N2, T1}, h2::HyperDual{N1, N2, T2}
-) where {N1, N2, T1, T2} = Base.FastMath.div_fast(promote(h1, h2)...)
-@inline Base.FastMath.div_fast(h::HyperDual, r::Real) = HyperDual(
-    Base.FastMath.div_fast(h.v, r),
-    _div(FAST_MODE, h.ϵ1, r),
-    _div(FAST_MODE, h.ϵ2, r),
-    mapϵ12(x -> _div(FAST_MODE, x, r), h),
-)
+    h1::HyperDual{N1, N2}, h2::HyperDual{N1, N2}
+) where {N1, N2} = Base.FastMath.div_fast(promote(h1, h2)...)
+@inline function Base.FastMath.div_fast(h::HyperDual{N1, N2}, r::Real) where {N1, N2}
+    mode = _fast_mode(h)
+    return hyperdual(
+        mode,
+        Base.FastMath.div_fast(h.v, r),
+        _div(mode, h.ϵ1, r),
+        _div(mode, h.ϵ2, r),
+        mapϵ12(x -> _div(mode, x, r), h),
+    )
+end
 @inline Base.FastMath.div_fast(r::Real, h::HyperDual) =
-    _rdiv_hyperdual(FAST_MODE, r, h)
+    _rdiv_hyperdual(_fast_mode(h), r, h)
 
 @inline Base.FastMath.pow_fast(h::HyperDual, n::Integer) =
-    _pow_hyperdual(FAST_MODE, h, n)
+    _pow_hyperdual(_fast_mode(h), h, n)
 @inline Base.FastMath.pow_fast(h::HyperDual, ::Val{p}) where {p} =
-    _pow_hyperdual(FAST_MODE, h, p)
+    _pow_hyperdual(_fast_mode(h), h, p)
