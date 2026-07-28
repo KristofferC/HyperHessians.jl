@@ -6,18 +6,32 @@ end
 @inline _chunksize(seeds) = something(_chunksize(eltype(seeds)), length(seeds))
 (chunksize(cfg::HessianConfig)::Int) = _chunksize(cfg.seeds)::Int
 
-function HessianConfig(x::AbstractVector{T}, chunk = Chunk(x)::Chunk) where {T}
+"""
+    HessianConfig(x[, chunk::Chunk]; simd = false)
+
+Configuration for `hessian`/`hessian!`. `simd = true` uses SIMD.Vec-forced
+arithmetic for the derivative components (only effective for `Float32`/
+`Float64` elements); whether that is faster depends on the function, chunk
+size, and CPU — benchmark, or let ChunkPicker.jl decide.
+
+The flag becomes a type parameter of the config: a constant `simd` infers
+to a concrete config type, a runtime one to a two-type `Union`.
+"""
+Base.@constprop :aggressive function HessianConfig(x::AbstractVector{T}, chunk = Chunk(x)::Chunk; simd::Bool = false) where {T}
     N = chunksize(chunk)
     N > 0 || (N == 0 && isempty(x)) || throw(ArgumentError(lazy"chunk size must be positive, got $N"))
-    duals = similar(x, HyperDual{N, N, T}) # not Vector
+    # Branch so inference sees two concrete config types (a constant `simd`
+    # folds to one); `HyperDual{N, N, T, simd}` alone stays existential.
+    D = simd ? HyperDual{N, N, T, true} : HyperDual{N, N, T, false}
+    duals = similar(x, D) # not Vector
     seeds = NTuple{N, T}[construct_seeds(NTuple{N, T})...]
     return HessianConfig(duals, seeds)
 end
-HessianConfig(x::AbstractArray{T}, chunk = Chunk(x)::Chunk) where {T} =
-    HessianConfig(vec(x), chunk)
+Base.@constprop :aggressive HessianConfig(x::AbstractArray{T}, chunk = Chunk(x)::Chunk; simd::Bool = false) where {T} =
+    HessianConfig(vec(x), chunk; simd)
 
 """
-    ThreadedHessianConfig(x, chunk::Chunk = Chunk(x); ntasks = Threads.nthreads())
+    ThreadedHessianConfig(x, chunk::Chunk = Chunk(x); ntasks = Threads.nthreads(), simd = false)
 
 Like [`HessianConfig`](@ref), but `hessian`/`hessian!` calls evaluate the
 independent Hessian blocks in parallel on `ntasks` tasks.
@@ -36,17 +50,18 @@ end
 
 n_block_pairs(n::Int, N::Int) = (k = N == 0 ? 0 : cld(n, N); k * (k + 1) ÷ 2)
 
-function ThreadedHessianConfig(x::AbstractVector{T}, chunk::Chunk = Chunk(x); ntasks::Integer = Threads.nthreads()) where {T}
+Base.@constprop :aggressive function ThreadedHessianConfig(x::AbstractVector{T}, chunk::Chunk = Chunk(x); ntasks::Integer = Threads.nthreads(), simd::Bool = false) where {T}
     N = chunksize(chunk)
     N > 0 || (N == 0 && isempty(x)) || throw(ArgumentError(lazy"chunk size must be positive, got $N"))
     ntasks > 0 || throw(ArgumentError(lazy"ntasks must be positive, got $ntasks"))
     nbuffers = max(1, min(Int(ntasks), n_block_pairs(length(x), N)))
-    duals = [similar(x, HyperDual{N, N, T}) for _ in 1:nbuffers]
+    D = simd ? HyperDual{N, N, T, true} : HyperDual{N, N, T, false}
+    duals = [similar(x, D) for _ in 1:nbuffers]
     seeds = NTuple{N, T}[construct_seeds(NTuple{N, T})...]
     return ThreadedHessianConfig(duals, seeds)
 end
-ThreadedHessianConfig(x::AbstractArray{T}, chunk::Chunk = Chunk(x); ntasks::Integer = Threads.nthreads()) where {T} =
-    ThreadedHessianConfig(vec(x), chunk; ntasks)
+Base.@constprop :aggressive ThreadedHessianConfig(x::AbstractArray{T}, chunk::Chunk = Chunk(x); ntasks::Integer = Threads.nthreads(), simd::Bool = false) where {T} =
+    ThreadedHessianConfig(vec(x), chunk; ntasks, simd)
 
 const AnyHessianConfig = Union{HessianConfig, ThreadedHessianConfig}
 
@@ -55,11 +70,12 @@ _serial_config(cfg::ThreadedHessianConfig) =
     HessianConfig{eltype(cfg.duals), typeof(cfg.seeds)}(cfg.duals[1], cfg.seeds)
 
 """
-    HVPConfig(x[, tangents], chunk::Chunk = Chunk(x))
+    HVPConfig(x[, tangents], chunk::Chunk = Chunk(x); simd = false)
 
 Configuration for Hessian–vector products. Pass the tangents (a vector, or a
 tuple of vectors for multiple directions) so the config allocates one ϵ₂ lane
-per tangent.
+per tangent. `simd` selects SIMD.Vec-forced arithmetic for the gradient
+lanes, as in [`HessianConfig`](@ref) (the per-tangent lanes stay scalar).
 """
 mutable struct HVPConfig{D <: AbstractVector{<:HyperDual}, S}
     const duals::D
@@ -67,24 +83,26 @@ mutable struct HVPConfig{D <: AbstractVector{<:HyperDual}, S}
 end
 (chunksize(cfg::HVPConfig)::Int) = _chunksize(cfg.seeds)
 
-HVPConfig(x::AbstractVector{T}, chunk::Chunk = Chunk(x)::Chunk) where {T} =
-    _HVPConfig(x, chunk, Val(1), T)
-HVPConfig(x::AbstractVector{T}, v::AbstractVector, chunk::Chunk = Chunk(x)::Chunk) where {T} =
-    _HVPConfig(x, chunk, Val(1), promote_type(T, eltype(v)))
-HVPConfig(x::AbstractVector{T}, v::Tuple{Vararg{AbstractVector, N}}, chunk::Chunk = Chunk(x)::Chunk) where {T, N} =
-    _HVPConfig(x, chunk, Val(N), promote_type(T, ntuple(i -> eltype(v[i]), Val(N))...))
-HVPConfig(x::AbstractArray{T}, chunk::Chunk = Chunk(x)::Chunk) where {T} =
-    HVPConfig(vec(x), chunk)
-HVPConfig(x::AbstractArray{T}, v::AbstractVector, chunk::Chunk = Chunk(x)::Chunk) where {T} =
-    HVPConfig(vec(x), vec(v), chunk)
-HVPConfig(x::AbstractArray{T}, v::Tuple{Vararg{AbstractArray, N}}, chunk::Chunk = Chunk(x)::Chunk) where {T, N} =
-    HVPConfig(vec(x), ntuple(i -> vec(v[i]), Val(N)), chunk)
+Base.@constprop :aggressive HVPConfig(x::AbstractVector{T}, chunk::Chunk = Chunk(x)::Chunk; simd::Bool = false) where {T} =
+    _HVPConfig(x, chunk, Val(1), T, simd)
+Base.@constprop :aggressive HVPConfig(x::AbstractVector{T}, v::AbstractVector, chunk::Chunk = Chunk(x)::Chunk; simd::Bool = false) where {T} =
+    _HVPConfig(x, chunk, Val(1), promote_type(T, eltype(v)), simd)
+Base.@constprop :aggressive HVPConfig(x::AbstractVector{T}, v::Tuple{Vararg{AbstractVector, N}}, chunk::Chunk = Chunk(x)::Chunk; simd::Bool = false) where {T, N} =
+    _HVPConfig(x, chunk, Val(N), promote_type(T, ntuple(i -> eltype(v[i]), Val(N))...), simd)
+Base.@constprop :aggressive HVPConfig(x::AbstractArray{T}, chunk::Chunk = Chunk(x)::Chunk; simd::Bool = false) where {T} =
+    HVPConfig(vec(x), chunk; simd)
+Base.@constprop :aggressive HVPConfig(x::AbstractArray{T}, v::AbstractVector, chunk::Chunk = Chunk(x)::Chunk; simd::Bool = false) where {T} =
+    HVPConfig(vec(x), vec(v), chunk; simd)
+Base.@constprop :aggressive HVPConfig(x::AbstractArray{T}, v::Tuple{Vararg{AbstractArray, N}}, chunk::Chunk = Chunk(x)::Chunk; simd::Bool = false) where {T, N} =
+    HVPConfig(vec(x), ntuple(i -> vec(v[i]), Val(N)), chunk; simd)
 
-function _HVPConfig(x::AbstractVector, chunk::Chunk, ::Val{ntangents}, ::Type{T}) where {T, ntangents}
+Base.@constprop :aggressive function _HVPConfig(x::AbstractVector, chunk::Chunk, ::Val{ntangents}, ::Type{T}, simd::Bool) where {T, ntangents}
     N = chunksize(chunk)
     N > 0 || (N == 0 && isempty(x)) || throw(ArgumentError(lazy"chunk size must be positive, got $N"))
     ntangents > 0 || throw(ArgumentError(lazy"number of tangents must be positive, got $ntangents"))
-    duals = similar(x, HyperDual{N, ntangents, T}) # directional: ε₂ has one lane per tangent
+    # directional: ε₂ has one lane per tangent
+    D = simd ? HyperDual{N, ntangents, T, true} : HyperDual{N, ntangents, T, false}
+    duals = similar(x, D)
     seeds = NTuple{N, T}[construct_seeds(NTuple{N, T})...]
     return HVPConfig{typeof(duals), typeof(seeds)}(duals, seeds)
 end
@@ -110,7 +128,7 @@ end
 function VHVPConfig(x::AbstractArray, v::AbstractArray)
     length(vec(x)) == length(vec(v)) || throw(DimensionMismatch(lazy"tangent must have length $(length(x)), got $(length(v))"))
     baseT = promote_type(eltype(x), eltype(v))
-    buffer = similar(vec(x), HyperDual{1, 1, baseT})
+    buffer = similar(vec(x), HyperDual{1, 1, baseT, false})
     return VHVPConfig(buffer)
 end
 
@@ -119,8 +137,8 @@ end
     start:min(last(ax), start + chunk - 1)
 end
 
-seed_epsilon_1(d::HyperDual{N1, N2, T}, ϵ1) where {N1, N2, T} = HyperDual{N1, N2, T}(d.v, ϵ1, d.ϵ2, d.ϵ12)
-seed_epsilon_2(d::HyperDual{N1, N2, T}, ϵ2) where {N1, N2, T} = HyperDual{N1, N2, T}(d.v, d.ϵ1, ϵ2, d.ϵ12)
+seed_epsilon_1(d::HyperDual{N1, N2, T, S}, ϵ1) where {N1, N2, T, S} = HyperDual{N1, N2, T, S}(d.v, ϵ1, d.ϵ2, d.ϵ12)
+seed_epsilon_2(d::HyperDual{N1, N2, T, S}, ϵ2) where {N1, N2, T, S} = HyperDual{N1, N2, T, S}(d.v, d.ϵ1, ϵ2, d.ϵ12)
 
 @inline function seed_block_ϵ1!(d::AbstractVector{<:HyperDual{N1, N2}}, seeds, block_i, ax) where {N1, N2}
     range_i = block_range(block_i, N1, ax)
@@ -191,9 +209,15 @@ end
 @noinline check_scalar(x) =
     x isa Real || throw(ErrorException("expected a real scalar to be returned from function passed to `hessian`"))
 
+@inline _simd_of(::Type{HyperDual{N1, N2, T, S}}) where {N1, N2, T, S} = S
+@inline _simd_of(::Type{<:HyperDual}) = false
+
 @inline _ensure_dual(v::HyperDual{N1, N2}, ::AbstractVector{<:HyperDual{N1, N2}}) where {N1, N2} = v
 @inline _ensure_dual(v::HyperDual{N1, N2}, ::HyperDual{N1, N2}) where {N1, N2} = v
-@inline _ensure_dual(v::Real, ::AbstractVector{<:HyperDual{N1, N2}}) where {N1, N2} = HyperDual{N1, N2}(v)
+# Keep typeof(v) as the value type (a constant f may return e.g. BigFloat);
+# only the backend flag follows the buffer.
+@inline _ensure_dual(v::Real, d::AbstractVector{<:HyperDual{N1, N2}}) where {N1, N2} =
+    HyperDual{N1, N2, typeof(v), _simd_of(eltype(d))}(v)
 @inline _ensure_dual(v::Real, ::HyperDual{N1, N2}) where {N1, N2} = HyperDual{N1, N2}(v)
 
 @inline _vectorize_input(f, x::AbstractVector) = (f, x, nothing)
@@ -353,7 +377,7 @@ function hessian_core!(H::AbstractMatrix, G::Union{Nothing, AbstractVector}, f, 
         return v.v
     end
     n_chunks = ceil(Int, length(x) / chunksize(cfg))
-    cfg.duals .= HyperDual{chunksize(cfg), chunksize(cfg)}.(x)
+    cfg.duals .= eltype(cfg.duals).(x)
     prev_range = 0:-1  # empty range sentinel
     value = zero(T)
     for i in 1:n_chunks
@@ -396,9 +420,9 @@ function linear_to_pair(p::Int, k::Int)
     return i, j
 end
 
-function hessian_pair_range!(H, G, f::F, x, duals::AbstractVector{HyperDual{N, N, T}}, seeds, prange, n_chunks) where {F, N, T}
+function hessian_pair_range!(H, G, f::F, x, duals::AbstractVector{HyperDual{N, N, T, S}}, seeds, prange, n_chunks) where {F, N, T, S}
     ax = axes(x, 1)
-    duals .= HyperDual{N, N, T}.(x)
+    duals .= HyperDual{N, N, T, S}.(x)
     value = zero(eltype(x))
     isempty(prange) && return value
     i, j = linear_to_pair(first(prange), n_chunks)

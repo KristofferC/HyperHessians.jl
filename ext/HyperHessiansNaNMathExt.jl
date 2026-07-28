@@ -85,22 +85,24 @@ end
 for (f, fₓ, fᵧ, fₓₓ, fₓᵧ, fᵧᵧ) in NANMATH_BINARY_DIFF_RULES
     expr = nanmath_binary_rule_expr(f, fₓ, fᵧ, fₓₓ, fₓᵧ, fᵧᵧ)
     cse_expr = rule_cse(expr; warn = false)
-    @eval @inline function NaNMath.$f(hx::HyperDual{N1, N2, T}, hy::HyperDual{N1, N2, T}) where {N1, N2, T}
+    @eval @inline function NaNMath.$f(hx::HyperDual{N1, N2, T, S}, hy::HyperDual{N1, N2, T, S}) where {N1, N2, T, S}
         x = hx.v
         y = hy.v
         $cse_expr
         return chain_rule_dual(hx, hy, f, fₓ, fᵧ, fₓₓ, fₓᵧ, fᵧᵧ)
     end
-    @eval @inline function NaNMath.$f(hx::HyperDual{N1, N2, T1}, hy::HyperDual{N1, N2, T2}) where {N1, N2, T1, T2}
+    @eval @inline function NaNMath.$f(hx::HyperDual{N1, N2}, hy::HyperDual{N1, N2}) where {N1, N2}
         return NaNMath.$f(promote(hx, hy)...)
     end
     @eval @inline function NaNMath.$f(hx::HyperDual{N1, N2, T}, y_raw::Real) where {N1, N2, T}
+        y_raw isa HyperDual{N1, N2} && return NaNMath.$f(promote(hx, y_raw)...)
         x = hx.v
         y = T(y_raw)
         $cse_expr
         return chain_rule_dual(hx, f, fₓ, fₓₓ)
     end
     @eval @inline function NaNMath.$f(x_raw::Real, hy::HyperDual{N1, N2, T}) where {N1, N2, T}
+        x_raw isa HyperDual{N1, N2} && return NaNMath.$f(promote(x_raw, hy)...)
         x = T(x_raw)
         y = hy.v
         $cse_expr

@@ -28,8 +28,8 @@ It works similarly to `ForwardDiff.hessian` but should have better run-time and 
 
 | Type | Description |
 | ---- | ----------- |
-| `HessianConfig(x, chunk)` | Config for Hessian calls |
-| `ThreadedHessianConfig(x, chunk; ntasks)` | Config for multithreaded Hessian calls |
+| `HessianConfig(x, chunk; simd)` | Config for Hessian calls |
+| `ThreadedHessianConfig(x, chunk; ntasks, simd)` | Config for multithreaded Hessian calls |
 | `HVPConfig(x, chunk)` | Config for Hessian–vector products |
 | `VHVPConfig(x, v)` | Config for vector-Hessian-vector products |
 | `Chunk{N}()` | Specify chunk size `N` |
@@ -103,6 +103,14 @@ A decent overall choice seems to be a chunk size of 8.
 It is also in general a good idea to pick a chunk size as a multiple of 4 to use SIMD effectively.
 
 The `chunk_size` argument can be left out and HyperHessians will try to determine a reasonable choice.
+
+`HessianConfig` (and `ThreadedHessianConfig`) also accept a `simd` keyword:
+`simd = true` forces SIMD.Vec-based arithmetic for the derivative components
+(`Float32`/`Float64` only) instead of relying on the auto-vectorizer. Whether
+this is faster depends on the function, the chunk size and the CPU (it tends
+to win big on AVX512 and for chunk sizes the auto-vectorizer handles poorly);
+[ChunkPicker.jl](https://github.com/KristofferC/ChunkPicker.jl) can benchmark
+the combinations and recommend a configuration.
 
 If the chunk size `c` is smaller than the input vector with length `n`, the function will be called `k = ceil(Int, n / c); k(k+1)÷2` times, each time computing a part of the hessian:
 

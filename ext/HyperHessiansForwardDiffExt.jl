@@ -21,8 +21,8 @@ end
 @inline ForwardDiff.NaNMath.pow(h::HyperDual, d::Dual) = invoke(ForwardDiff.NaNMath.pow, Tuple{Real, typeof(d)}, h, d)
 @inline ForwardDiff.NaNMath.pow(d::Dual, h::HyperDual) = invoke(ForwardDiff.NaNMath.pow, Tuple{typeof(d), Real}, d, h)
 
-Base.promote_rule(::Type{HyperDual{N1, N2, T}}, ::Type{Dual{Ty, V, N}}) where {N1, N2, T, Ty, V, N} =
-    Dual{Ty, promote_type(HyperDual{N1, N2, T}, V), N}
+Base.promote_rule(::Type{HyperDual{N1, N2, T, S}}, ::Type{Dual{Ty, V, N}}) where {N1, N2, T, S, Ty, V, N} =
+    Dual{Ty, promote_type(HyperDual{N1, N2, T, S}, V), N}
 
 # muladd: all mixed HyperDual/Dual argument combinations. ForwardDiff defines
 # its ternary ops against every type in AMBIGUOUS_TYPES (not just Real), so

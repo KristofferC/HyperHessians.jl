@@ -6,6 +6,7 @@ end
 
 
 using CommonSubexpressions: cse, binarize
+using SIMD: Vec
 
 include("hyperdual.jl")
 include("rules.jl")
