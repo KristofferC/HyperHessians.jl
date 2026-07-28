@@ -6,9 +6,6 @@ end
 @inline _chunksize(seeds) = something(_chunksize(eltype(seeds)), length(seeds))
 (chunksize(cfg::HessianConfig)::Int) = _chunksize(cfg.seeds)::Int
 
-@inline _simd_bool(s::Bool) = s
-@inline _simd_bool(::Val{S}) where {S} = S::Bool
-
 """
     HessianConfig(x[, chunk::Chunk]; simd = false)
 
@@ -17,21 +14,20 @@ arithmetic for the derivative components (only effective for `Float32`/
 `Float64` elements); whether that is faster depends on the function, chunk
 size, and CPU — benchmark, or let ChunkPicker.jl decide.
 
-The flag becomes a type parameter of the config. A literal `Bool` infers
-concretely; pass `Val(true)`/`Val(false)` to guarantee that when the flag
-is computed at runtime.
+The flag becomes a type parameter of the config: a constant `simd` infers
+to a concrete config type, a runtime one to a two-type `Union`.
 """
-function HessianConfig(x::AbstractVector{T}, chunk = Chunk(x)::Chunk; simd::Union{Bool, Val} = false) where {T}
+Base.@constprop :aggressive function HessianConfig(x::AbstractVector{T}, chunk = Chunk(x)::Chunk; simd::Bool = false) where {T}
     N = chunksize(chunk)
     N > 0 || (N == 0 && isempty(x)) || throw(ArgumentError(lazy"chunk size must be positive, got $N"))
-    # Branch so inference sees two concrete config types (a literal or Val
-    # `simd` folds to one); `HyperDual{N, N, T, simd}` alone stays existential.
-    D = _simd_bool(simd) ? HyperDual{N, N, T, true} : HyperDual{N, N, T, false}
+    # Branch so inference sees two concrete config types (a constant `simd`
+    # folds to one); `HyperDual{N, N, T, simd}` alone stays existential.
+    D = simd ? HyperDual{N, N, T, true} : HyperDual{N, N, T, false}
     duals = similar(x, D) # not Vector
     seeds = NTuple{N, T}[construct_seeds(NTuple{N, T})...]
     return HessianConfig(duals, seeds)
 end
-HessianConfig(x::AbstractArray{T}, chunk = Chunk(x)::Chunk; simd::Union{Bool, Val} = false) where {T} =
+Base.@constprop :aggressive HessianConfig(x::AbstractArray{T}, chunk = Chunk(x)::Chunk; simd::Bool = false) where {T} =
     HessianConfig(vec(x), chunk; simd)
 
 """
@@ -54,17 +50,17 @@ end
 
 n_block_pairs(n::Int, N::Int) = (k = N == 0 ? 0 : cld(n, N); k * (k + 1) ÷ 2)
 
-function ThreadedHessianConfig(x::AbstractVector{T}, chunk::Chunk = Chunk(x); ntasks::Integer = Threads.nthreads(), simd::Union{Bool, Val} = false) where {T}
+Base.@constprop :aggressive function ThreadedHessianConfig(x::AbstractVector{T}, chunk::Chunk = Chunk(x); ntasks::Integer = Threads.nthreads(), simd::Bool = false) where {T}
     N = chunksize(chunk)
     N > 0 || (N == 0 && isempty(x)) || throw(ArgumentError(lazy"chunk size must be positive, got $N"))
     ntasks > 0 || throw(ArgumentError(lazy"ntasks must be positive, got $ntasks"))
     nbuffers = max(1, min(Int(ntasks), n_block_pairs(length(x), N)))
-    D = _simd_bool(simd) ? HyperDual{N, N, T, true} : HyperDual{N, N, T, false}
+    D = simd ? HyperDual{N, N, T, true} : HyperDual{N, N, T, false}
     duals = [similar(x, D) for _ in 1:nbuffers]
     seeds = NTuple{N, T}[construct_seeds(NTuple{N, T})...]
     return ThreadedHessianConfig(duals, seeds)
 end
-ThreadedHessianConfig(x::AbstractArray{T}, chunk::Chunk = Chunk(x); ntasks::Integer = Threads.nthreads(), simd::Union{Bool, Val} = false) where {T} =
+Base.@constprop :aggressive ThreadedHessianConfig(x::AbstractArray{T}, chunk::Chunk = Chunk(x); ntasks::Integer = Threads.nthreads(), simd::Bool = false) where {T} =
     ThreadedHessianConfig(vec(x), chunk; ntasks, simd)
 
 const AnyHessianConfig = Union{HessianConfig, ThreadedHessianConfig}

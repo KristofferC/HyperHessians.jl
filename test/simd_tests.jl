@@ -45,8 +45,10 @@ import ForwardDiff, DiffTests
     # mixed backends in binary rules promote, independent of argument order
     for op in (atan, hypot, ^, muladd)
         rt = op === muladd ? muladd(h, h, h) : op(h, h)
-        for mixed in (op === muladd ? (muladd(hs, h, hs), muladd(h, hs, h), muladd(hs, hs, h)) :
-                (op(hs, h), op(h, hs)))
+        for mixed in (
+                op === muladd ? (muladd(hs, h, hs), muladd(h, hs, h), muladd(hs, hs, h)) :
+                    (op(hs, h), op(h, hs))
+            )
             @test typeof(mixed) === typeof(h)
             @test mixed.v == rt.v && mixed.ϵ1 == rt.ϵ1 && mixed.ϵ12 == rt.ϵ12
         end
@@ -55,13 +57,12 @@ import ForwardDiff, DiffTests
     @test muladd(hs, h, 1.0) isa HyperDual{2, 2, Float64, false}
     @test muladd(hs, h, 1.0).v == muladd(h, h, 1.0).v
 
-    # config type inference: literal Bool and Val fold to a concrete type,
-    # runtime Bool gives the two-config union
+    # config type inference: a constant flag folds to a concrete type,
+    # a runtime Bool gives the two-config union
     cfg_lit(x) = HessianConfig(x, Chunk{4}(); simd = true)
-    cfg_val(x, s) = HessianConfig(x, Chunk{4}(); simd = s)
+    cfg_var(x, s) = HessianConfig(x, Chunk{4}(); simd = s)
     @test isconcretetype(Base.promote_op(cfg_lit, Vector{Float64}))
-    @test isconcretetype(Base.promote_op(cfg_val, Vector{Float64}, Val{true}))
-    @test Base.promote_op(cfg_val, Vector{Float64}, Bool) isa Union
+    @test Base.promote_op(cfg_var, Vector{Float64}, Bool) isa Union
 
     # empty input: length-0 ϵ tuples must not build Vec{0}
     @test HyperHessians.hessian(y -> sum(y)^2, Float64[], HessianConfig(Float64[]; simd = true)) ==
