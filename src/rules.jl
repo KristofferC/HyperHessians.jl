@@ -307,6 +307,28 @@ end
     return hs, hc
 end
 
+@inline function Base.FastMath.sin_fast(j::Jet)
+    mode = _fast_mode(j)
+    s = Base.FastMath.sin_fast(j.v)
+    c = Base.FastMath.cos_fast(j.v)
+    return chain_rule_jet(mode, j, s, c, _neg(mode, s))
+end
+
+@inline function Base.FastMath.cos_fast(j::Jet)
+    mode = _fast_mode(j)
+    s = Base.FastMath.sin_fast(j.v)
+    c = Base.FastMath.cos_fast(j.v)
+    return chain_rule_jet(mode, j, c, _neg(mode, s), _neg(mode, c))
+end
+
+@inline function Base.FastMath.sincos_fast(j::Jet)
+    mode = _fast_mode(j)
+    s, c = Base.FastMath.sincos_fast(j.v)
+    js = chain_rule_jet(mode, j, s, c, _neg(mode, s))
+    jc = chain_rule_jet(mode, j, c, _neg(mode, s), _neg(mode, c))
+    return js, jc
+end
+
 @inline function Base.sinpi(h::HyperDual{N1, N2}) where {N1, N2}
     s, c = sincospi(h.v)
     return chain_rule_dual(h, s, π * c, -π^2 * s)
@@ -317,6 +339,26 @@ end
     return chain_rule_dual(h, c, -π * s, -π^2 * c)
 end
 
+@inline function Base.sin(j::Jet{N, M}) where {N, M}
+    s, c = sincos(j.v)
+    return chain_rule_jet(j, s, c, -s)
+end
+
+@inline function Base.cos(j::Jet{N, M}) where {N, M}
+    s, c = sincos(j.v)
+    return chain_rule_jet(j, c, -s, -c)
+end
+
+@inline function Base.sinpi(j::Jet{N, M}) where {N, M}
+    s, c = sincospi(j.v)
+    return chain_rule_jet(j, s, π * c, -π^2 * s)
+end
+
+@inline function Base.cospi(j::Jet{N, M}) where {N, M}
+    s, c = sincospi(j.v)
+    return chain_rule_jet(j, c, -π * s, -π^2 * c)
+end
+
 for (f, f′, f′′) in DIFF_RULES
     expr = rule_expr(f, f′, f′′)
     cse_expr = rule_cse(expr; warn = false)
@@ -324,6 +366,12 @@ for (f, f′, f′′) in DIFF_RULES
         x = h.v
         $cse_expr
         return chain_rule_dual(h, f, f′, f′′)
+    end
+
+    @eval @inline function Base.$f(j::Jet{N, M, T}) where {N, M, T}
+        x = j.v
+        $cse_expr
+        return chain_rule_jet(j, f, f′, f′′)
     end
 
     fast_sym = get(FAST_UNARY_OPS, f, nothing)
@@ -337,6 +385,15 @@ for (f, f′, f′′) in DIFF_RULES
         @fastmath begin
             $fast_cse_expr
             return chain_rule_dual(_fast_mode(h), h, f, f′, f′′)
+        end
+    end
+    @eval @inline function Base.FastMath.$fast_sym(
+            j::Jet{N, M, T}
+        ) where {N, M, T}
+        x = j.v
+        @fastmath begin
+            $fast_cse_expr
+            return chain_rule_jet(_fast_mode(j), j, f, f′, f′′)
         end
     end
 end
@@ -369,6 +426,30 @@ for (f, fₓ, fᵧ, fₓₓ, fₓᵧ, fᵧᵧ) in BINARY_DIFF_RULES
         y = hy.v
         $cse_expr
         return chain_rule_dual(hy, f, fᵧ, fᵧᵧ)
+    end
+
+    @eval @inline function Base.$f(jx::Jet{N, M, T, S}, jy::Jet{N, M, T, S}) where {N, M, T, S}
+        x = jx.v
+        y = jy.v
+        $cse_expr
+        return chain_rule_jet(jx, jy, f, fₓ, fᵧ, fₓₓ, fₓᵧ, fᵧᵧ)
+    end
+    @eval @inline function Base.$f(jx::Jet{N, M}, jy::Jet{N, M}) where {N, M}
+        return Base.$f(promote(jx, jy)...)
+    end
+    @eval @inline function Base.$f(jx::Jet{N, M, T}, y_raw::Real) where {N, M, T}
+        y_raw isa Jet{N, M} && return Base.$f(promote(jx, y_raw)...)
+        x = jx.v
+        y = y_raw
+        $cse_expr
+        return chain_rule_jet(jx, f, fₓ, fₓₓ)
+    end
+    @eval @inline function Base.$f(x_raw::Real, jy::Jet{N, M, T}) where {N, M, T}
+        x_raw isa Jet{N, M} && return Base.$f(promote(x_raw, jy)...)
+        x = x_raw
+        y = jy.v
+        $cse_expr
+        return chain_rule_jet(jy, f, fᵧ, fᵧᵧ)
     end
 
     fast_sym = FAST_BINARY_OPS[f]
@@ -411,6 +492,44 @@ for (f, fₓ, fᵧ, fₓₓ, fₓᵧ, fᵧᵧ) in BINARY_DIFF_RULES
             return chain_rule_dual(_fast_mode(hy), hy, f, fᵧ, fᵧᵧ)
         end
     end
+
+    @eval @inline function Base.FastMath.$fast_sym(
+            jx::Jet{N, M, T, S}, jy::Jet{N, M, T, S}
+        ) where {N, M, T, S}
+        x = jx.v
+        y = jy.v
+        @fastmath begin
+            $fast_cse_expr
+            return chain_rule_jet(_fast_mode(jx), jx, jy, f, fₓ, fᵧ, fₓₓ, fₓᵧ, fᵧᵧ)
+        end
+    end
+    @eval @inline function Base.FastMath.$fast_sym(
+            jx::Jet{N, M}, jy::Jet{N, M}
+        ) where {N, M}
+        return Base.FastMath.$fast_sym(promote(jx, jy)...)
+    end
+    @eval @inline function Base.FastMath.$fast_sym(
+            jx::Jet{N, M, T}, y_raw::Real
+        ) where {N, M, T}
+        y_raw isa Jet{N, M} && return Base.FastMath.$fast_sym(promote(jx, y_raw)...)
+        x = jx.v
+        y = y_raw
+        @fastmath begin
+            $fast_cse_expr
+            return chain_rule_jet(_fast_mode(jx), jx, f, fₓ, fₓₓ)
+        end
+    end
+    @eval @inline function Base.FastMath.$fast_sym(
+            x_raw::Real, jy::Jet{N, M, T}
+        ) where {N, M, T}
+        x_raw isa Jet{N, M} && return Base.FastMath.$fast_sym(promote(x_raw, jy)...)
+        x = x_raw
+        y = jy.v
+        @fastmath begin
+            $fast_cse_expr
+            return chain_rule_jet(_fast_mode(jy), jy, f, fᵧ, fᵧᵧ)
+        end
+    end
 end
 # NOTE: `^(::HyperDual, ::Integer)` is defined in hyperdual.jl with dedicated
 # monomial derivatives (the generic rule divides by x and is NaN at x = 0);
@@ -420,6 +539,8 @@ end
 # Base.log(::Irrational{:ℯ}, ::Number).
 @inline Base.:(^)(::Irrational{:ℯ}, h::HyperDual) = exp(h)
 @inline Base.log(::Irrational{:ℯ}, h::HyperDual) = log(h)
+@inline Base.:(^)(::Irrational{:ℯ}, j::Jet) = exp(j)
+@inline Base.log(::Irrational{:ℯ}, j::Jet) = log(j)
 
 
 """

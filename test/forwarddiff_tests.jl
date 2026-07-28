@@ -2,18 +2,24 @@ module ForwardDiffTests
 
 using Test
 using HyperHessians
-using HyperHessians: HyperDual
+using HyperHessians: HyperDual, Jet
 using ForwardDiff
 
 @testset "extension loads" begin
     @test Base.get_extension(HyperHessians, :HyperHessiansForwardDiffExt) !== nothing
 end
 
-@testset "no HyperDual/Dual ambiguities" begin
+@testset "no HyperDual/Jet vs Dual ambiguities" begin
     ambs = Test.detect_ambiguities(Base, HyperHessians, ForwardDiff; recursive = false)
     bad = filter(ambs) do (m1, m2)
         s = string(m1.sig) * string(m2.sig)
-        occursin("HyperDual", s) && occursin(r"ForwardDiff\.Dual", s)
+        occursin(r"ForwardDiff\.Dual", s) || return false
+        # Pairs mixing Jet with HyperDual are only reachable through
+        # nonsensical three-way Jet/HyperDual/Dual calls and are deliberately
+        # left ambiguous (see hyperdual_interface_tests.jl); 1.10's
+        # detect_ambiguities reports them, 1.11+ does not.
+        occursin("HyperDual", s) && occursin("Jet", s) && return false
+        return occursin("HyperDual", s) || occursin("Jet", s)
     end
     isempty(bad) || foreach(p -> println(p[1].sig, "\n    <-> ", p[2].sig), bad)
     @test isempty(bad)
@@ -56,6 +62,41 @@ end
         vals = map(a -> a isa HyperDual ? a.v : a isa ForwardDiff.Dual ? ForwardDiff.value(a) : a, args)
         @test HyperHessians.value(ForwardDiff.value(r)) ≈ muladd(float.(vals)...) rtol = 1.0e-14
     end
+end
+
+@testset "mixed Jet/Dual arithmetic" begin
+    j = Jet(2.0, (1.0,), (1.0,))
+    d = ForwardDiff.Dual{Nothing}(3.0, 1.0)
+
+    primal(x) = x isa Jet ? x.v : ForwardDiff.value(x)
+    for op in (+, -, *, /, ^, atan, hypot, log, mod, rem)
+        for (a, b) in ((j, d), (d, j))
+            r = op(a, b)
+            @test r isa ForwardDiff.Dual{Nothing, <:Jet}
+            @test HyperHessians.value(ForwardDiff.value(r)) ≈ op(primal(a), primal(b)) rtol = 1.0e-14
+        end
+    end
+    @test ForwardDiff.NaNMath.pow(j, d) isa ForwardDiff.Dual{Nothing, <:Jet}
+    @test ForwardDiff.NaNMath.pow(d, j) isa ForwardDiff.Dual{Nothing, <:Jet}
+    @test j < d && isless(j, d) && !(j == d)
+    @test promote_type(typeof(j), typeof(d)) == ForwardDiff.Dual{Nothing, typeof(j), 1}
+
+    for args in (
+            (j, d, 1.0), (d, j, 1.0), (1.0, j, d), (j, 1.0, d), (j, d, j), (d, j, d),
+            (d, π, j), (j, 2, d), (j, d, 1 // 2), (2, d, j),
+        )
+        r = muladd(args...)
+        @test r isa ForwardDiff.Dual{Nothing, <:Jet}
+        vals = map(a -> a isa Jet ? a.v : a isa ForwardDiff.Dual ? ForwardDiff.value(a) : a, args)
+        @test HyperHessians.value(ForwardDiff.value(r)) ≈ muladd(float.(vals)...) rtol = 1.0e-14
+    end
+end
+
+@testset "ForwardDiff.derivative inside jet hessian" begin
+    f(x) = ForwardDiff.derivative(y -> y^2 * sqrt(sum(abs2, x)) + atan(y, x[1]) + hypot(x[2], y), 2.0)
+    x = [0.3, 0.4, 0.5]
+    cfg = HyperHessians.HessianConfig(x, Jet)
+    @test HyperHessians.hessian(f, x, cfg) ≈ ForwardDiff.hessian(f, x)
 end
 
 @testset "ForwardDiff.derivative inside hessian" begin
