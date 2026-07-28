@@ -70,11 +70,12 @@ _serial_config(cfg::ThreadedHessianConfig) =
     HessianConfig{eltype(cfg.duals), typeof(cfg.seeds)}(cfg.duals[1], cfg.seeds)
 
 """
-    HVPConfig(x[, tangents], chunk::Chunk = Chunk(x))
+    HVPConfig(x[, tangents], chunk::Chunk = Chunk(x); simd = false)
 
 Configuration for Hessian–vector products. Pass the tangents (a vector, or a
 tuple of vectors for multiple directions) so the config allocates one ϵ₂ lane
-per tangent.
+per tangent. `simd` selects SIMD.Vec-forced arithmetic for the gradient
+lanes, as in [`HessianConfig`](@ref) (the per-tangent lanes stay scalar).
 """
 mutable struct HVPConfig{D <: AbstractVector{<:HyperDual}, S}
     const duals::D
@@ -82,24 +83,26 @@ mutable struct HVPConfig{D <: AbstractVector{<:HyperDual}, S}
 end
 (chunksize(cfg::HVPConfig)::Int) = _chunksize(cfg.seeds)
 
-HVPConfig(x::AbstractVector{T}, chunk::Chunk = Chunk(x)::Chunk) where {T} =
-    _HVPConfig(x, chunk, Val(1), T)
-HVPConfig(x::AbstractVector{T}, v::AbstractVector, chunk::Chunk = Chunk(x)::Chunk) where {T} =
-    _HVPConfig(x, chunk, Val(1), promote_type(T, eltype(v)))
-HVPConfig(x::AbstractVector{T}, v::Tuple{Vararg{AbstractVector, N}}, chunk::Chunk = Chunk(x)::Chunk) where {T, N} =
-    _HVPConfig(x, chunk, Val(N), promote_type(T, ntuple(i -> eltype(v[i]), Val(N))...))
-HVPConfig(x::AbstractArray{T}, chunk::Chunk = Chunk(x)::Chunk) where {T} =
-    HVPConfig(vec(x), chunk)
-HVPConfig(x::AbstractArray{T}, v::AbstractVector, chunk::Chunk = Chunk(x)::Chunk) where {T} =
-    HVPConfig(vec(x), vec(v), chunk)
-HVPConfig(x::AbstractArray{T}, v::Tuple{Vararg{AbstractArray, N}}, chunk::Chunk = Chunk(x)::Chunk) where {T, N} =
-    HVPConfig(vec(x), ntuple(i -> vec(v[i]), Val(N)), chunk)
+Base.@constprop :aggressive HVPConfig(x::AbstractVector{T}, chunk::Chunk = Chunk(x)::Chunk; simd::Bool = false) where {T} =
+    _HVPConfig(x, chunk, Val(1), T, simd)
+Base.@constprop :aggressive HVPConfig(x::AbstractVector{T}, v::AbstractVector, chunk::Chunk = Chunk(x)::Chunk; simd::Bool = false) where {T} =
+    _HVPConfig(x, chunk, Val(1), promote_type(T, eltype(v)), simd)
+Base.@constprop :aggressive HVPConfig(x::AbstractVector{T}, v::Tuple{Vararg{AbstractVector, N}}, chunk::Chunk = Chunk(x)::Chunk; simd::Bool = false) where {T, N} =
+    _HVPConfig(x, chunk, Val(N), promote_type(T, ntuple(i -> eltype(v[i]), Val(N))...), simd)
+Base.@constprop :aggressive HVPConfig(x::AbstractArray{T}, chunk::Chunk = Chunk(x)::Chunk; simd::Bool = false) where {T} =
+    HVPConfig(vec(x), chunk; simd)
+Base.@constprop :aggressive HVPConfig(x::AbstractArray{T}, v::AbstractVector, chunk::Chunk = Chunk(x)::Chunk; simd::Bool = false) where {T} =
+    HVPConfig(vec(x), vec(v), chunk; simd)
+Base.@constprop :aggressive HVPConfig(x::AbstractArray{T}, v::Tuple{Vararg{AbstractArray, N}}, chunk::Chunk = Chunk(x)::Chunk; simd::Bool = false) where {T, N} =
+    HVPConfig(vec(x), ntuple(i -> vec(v[i]), Val(N)), chunk; simd)
 
-function _HVPConfig(x::AbstractVector, chunk::Chunk, ::Val{ntangents}, ::Type{T}) where {T, ntangents}
+Base.@constprop :aggressive function _HVPConfig(x::AbstractVector, chunk::Chunk, ::Val{ntangents}, ::Type{T}, simd::Bool) where {T, ntangents}
     N = chunksize(chunk)
     N > 0 || (N == 0 && isempty(x)) || throw(ArgumentError(lazy"chunk size must be positive, got $N"))
     ntangents > 0 || throw(ArgumentError(lazy"number of tangents must be positive, got $ntangents"))
-    duals = similar(x, HyperDual{N, ntangents, T, false}) # directional: ε₂ has one lane per tangent
+    # directional: ε₂ has one lane per tangent
+    D = simd ? HyperDual{N, ntangents, T, true} : HyperDual{N, ntangents, T, false}
+    duals = similar(x, D)
     seeds = NTuple{N, T}[construct_seeds(NTuple{N, T})...]
     return HVPConfig{typeof(duals), typeof(seeds)}(duals, seeds)
 end

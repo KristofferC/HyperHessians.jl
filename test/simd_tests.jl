@@ -1,5 +1,5 @@
 using HyperHessians, Test
-using HyperHessians: HyperDual, HessianConfig, ThreadedHessianConfig, Chunk
+using HyperHessians: HyperDual, HessianConfig, ThreadedHessianConfig, HVPConfig, Chunk
 import ForwardDiff, DiffTests
 
 @testset "simd config option" begin
@@ -27,6 +27,20 @@ import ForwardDiff, DiffTests
 
     tcfg = ThreadedHessianConfig(x, Chunk{4}(); simd = true)
     @test HyperHessians.hessian(f, x, tcfg) ≈ ForwardDiff.hessian(f, x)
+
+    # hvp with simd (per-tangent lanes stay scalar, gradient lanes use Vec)
+    v = collect(range(-1.0, 1.0, length = 12))
+    for chunk in (4, 12), nt in (1, 2)
+        tangents = nt == 1 ? v : (v, 2 .* v)
+        hcfg = HVPConfig(x, tangents, Chunk{chunk}(); simd = true)
+        hv = HyperHessians.hvp(f, x, tangents, hcfg)
+        Href = ForwardDiff.hessian(f, x)
+        if nt == 1
+            @test hv ≈ Href * v
+        else
+            @test hv[1] ≈ Href * v && hv[2] ≈ Href * (2 .* v)
+        end
+    end
 
     # scalar mixing keeps the backend; simd duals behave like tuple duals
     h = HyperHessians.HyperDual(1.5, (1.0, 0.0), (0.0, 1.0))
