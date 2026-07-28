@@ -29,7 +29,7 @@ end
         for (a, b) in ((h, d), (d, h))
             r = op(a, b)
             @test r isa ForwardDiff.Dual{Nothing, <:HyperDual}
-            @test HyperHessians.value(ForwardDiff.value(r)) ≈ op(primal(a), primal(b)) rtol = 1e-14
+            @test HyperHessians.value(ForwardDiff.value(r)) ≈ op(primal(a), primal(b)) rtol = 1.0e-14
         end
     end
     @test ForwardDiff.NaNMath.pow(h, d) isa ForwardDiff.Dual{Nothing, <:HyperDual}
@@ -54,7 +54,7 @@ end
         r = muladd(args...)
         @test r isa ForwardDiff.Dual{Nothing, <:HyperDual}
         vals = map(a -> a isa HyperDual ? a.v : a isa ForwardDiff.Dual ? ForwardDiff.value(a) : a, args)
-        @test HyperHessians.value(ForwardDiff.value(r)) ≈ muladd(float.(vals)...) rtol = 1e-14
+        @test HyperHessians.value(ForwardDiff.value(r)) ≈ muladd(float.(vals)...) rtol = 1.0e-14
     end
 end
 
