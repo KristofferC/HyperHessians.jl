@@ -1,6 +1,6 @@
 name = "HyperHessians"
 uuid = "06b494a0-c8e0-40cc-ad32-d99506a00a6c"
-version = "0.2.5"
+version = "0.2.6"
 authors = ["KristofferC <kcarlsson89@gmail.com>"]
 
 [deps]
@@ -8,6 +8,7 @@ CommonSubexpressions = "bbf7d656-a473-5ed7-a52c-81e309532950"
 
 [weakdeps]
 DiffResults = "163ba53b-c6d8-5494-b064-1a9d43ac40c5"
+ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
 LogExpFunctions = "2ab3a3ac-af41-5b50-aa03-7779005ae688"
 NaNMath = "77ba4419-2d1f-58cd-9bb1-8ffee604a2e3"
 SpecialFunctions = "276daf66-3868-5448-9aa4-cd146d93841b"
@@ -15,6 +16,7 @@ StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 
 [extensions]
 HyperHessiansDiffResultsExt = "DiffResults"
+HyperHessiansForwardDiffExt = "ForwardDiff"
 HyperHessiansLogExpFunctionsExt = "LogExpFunctions"
 HyperHessiansNaNMathExt = "NaNMath"
 HyperHessiansNaNMathSpecialFunctionsExt = ["NaNMath", "SpecialFunctions"]
