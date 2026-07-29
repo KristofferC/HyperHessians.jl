@@ -122,11 +122,14 @@ The larger the chunk size the larger part of the Hessian is computed on every ca
 the input vector, the whole hessian is computed in one call to `f`).
 However, with a larger chunk size the special numbers HyperHessians uses become larger and if they become too large this can lead to inefficient execution.
 
-A choice of a chunk size is, therefore, a trade-off and the optimal one is likely to be dependent on the particular function getting differentiated.
-A decent overall choice seems to be a chunk size of 8.
-It is also in general a good idea to pick a chunk size as a multiple of 4 to use SIMD effectively.
+A choice of a chunk size is, therefore, a trade-off and the optimal one is likely to be dependent on the particular function getting differentiated:
+cheap functions favor small chunks (the dual size dominates), expensive ones favor SIMD-width multiples like 8, and
+[ChunkPicker.jl](https://github.com/KristofferC/ChunkPicker.jl) can benchmark the candidates for *your* function.
 
-The `chunk_size` argument can be left out and HyperHessians will try to determine a reasonable choice.
+The `chunk_size` argument can be left out, in which case HyperHessians uses a
+measured function-agnostic default: the whole Hessian in one evaluation for
+small inputs (`length(x) <= 10`, or 12 for `Float32`), then a small chunk
+(4, or 6 for large inputs and `Float32`).
 
 `HessianConfig` (and `ThreadedHessianConfig`) also accept a `simd` keyword:
 `simd = true` forces SIMD.Vec-based arithmetic for the derivative components
