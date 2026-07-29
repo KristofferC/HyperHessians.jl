@@ -29,6 +29,7 @@ It works similarly to `ForwardDiff.hessian` but should have better run-time and 
 | Type | Description |
 | ---- | ----------- |
 | `HessianConfig(x, chunk; simd)` | Config for Hessian calls |
+| `HessianConfig(x, Jet; simd)` | Config using the symmetric `Jet` representation |
 | `ThreadedHessianConfig(x, chunk; ntasks, simd)` | Config for multithreaded Hessian calls |
 | `HVPConfig(x, chunk)` | Config for Hessian–vector products |
 | `VHVPConfig(x, v)` | Config for vector-Hessian-vector products |
@@ -60,6 +61,29 @@ julia> f(x) = exp(x) / sqrt(sin(x)^3 + cos(x)^3);
 julia> HyperHessians.hessian(f, 2.0)
 82.55705026089272
 ```
+
+### Jets
+
+Passing `HyperHessians.Jet` instead of a `Chunk` selects a symmetric "jet"
+number: the whole Hessian is computed in a single evaluation of `f`, and since
+both derivative directions then carry the same seeds, the jet stores the
+gradient once and only the upper triangle of the Hessian
+(1 + n + n(n+1)/2 floats instead of `HyperDual{n,n}`'s 1 + 2n + n²):
+
+```julia
+cfg = HyperHessians.HessianConfig(x, HyperHessians.Jet)              # jet representation
+cfg = HyperHessians.HessianConfig(x, HyperHessians.Jet; simd = true) # with SIMD.Vec arithmetic
+```
+
+Jets tend to win for small inputs where register pressure dominates, while
+chunked `HyperDual`s vectorize better as the input grows; the crossover
+depends on the function and CPU, so jets are never selected by default —
+benchmark, or let
+[ChunkPicker.jl](https://github.com/KristofferC/ChunkPicker.jl) decide.
+They are only sensible for small inputs: the unrolled triangle makes compile
+time grow steeply with `length(x)`, and with `simd = true` the triangle
+becomes a single `n(n+1)/2`-lane `Vec`, which degrades sharply once that
+exceeds a few machine vector widths.
 
 ### Fast math
 

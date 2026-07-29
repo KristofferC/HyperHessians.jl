@@ -138,12 +138,14 @@ end
     @test HyperDual{1, 1}(h) === h
 end
 
-# Guard against ambiguities with Base/Core methods only. Internal
-# HyperDual-vs-HyperDual pairs are only reachable with mismatched chunk sizes
-# (a nonsensical call). Clashes with other <:Real dual types (e.g.
-# ForwardDiff.Dual, if co-loaded) are mutually ambiguous but unresolvable
-# without depending on those packages, and mixing two AD systems in one op is
-# nonsensical anyway. Both are filtered out.
+# Guard against ambiguities with Base/Core methods only. Internal pairs —
+# HyperDual-vs-HyperDual with mismatched shapes, and Jet-vs-HyperDual
+# crossings — are only reachable by mixing representations that never meet
+# through the config API, so they are deliberately left ambiguous. Clashes
+# with other <:Real dual types (e.g. ForwardDiff.Dual, if co-loaded) are
+# mutually ambiguous but unresolvable without depending on those packages,
+# and mixing two AD systems in one op is nonsensical anyway. Both are
+# filtered out.
 @testset "no ambiguities against Base methods" begin
     ambs = Test.detect_ambiguities(HyperHessians; recursive = true)
     isbasecore(m) = (r = Base.moduleroot(m.module); r === Base || r === Core)

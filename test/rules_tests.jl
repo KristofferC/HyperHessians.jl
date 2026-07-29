@@ -248,6 +248,13 @@ end
             check_binary_all_orders(f, x, y, T)
         end
     end
+    # Integer exponents forward to ^ (previously dispatch-ambiguous with
+    # NaNMath.pow(::Real, ::Integer))
+    check_against_ForwardDiff(x -> NaNMath.pow(x, 3), 1.2)
+    # scalar slots promote instead of narrowing to the dual's component type
+    h32 = HyperDual(1.2f0, (1.0f0,), (1.0f0,))
+    @test NaNMath.pow(h32, 2.5).v === NaNMath.pow(1.2f0, 2.5)
+    @test NaNMath.pow(2.5, h32).v === NaNMath.pow(2.5, 1.2f0)
 end
 
 @testset "SpecialFunctions boundary rules" begin

@@ -1,7 +1,7 @@
 module HyperHessiansNaNMathExt
 
 using HyperHessians
-using HyperHessians: changeprecision, chain_rule_dual, rule_cse, HyperDual
+using HyperHessians: changeprecision, chain_rule_dual, rule_cse, HyperDual, chain_rule_jet, Jet
 using CommonSubexpressions: cse, binarize
 using NaNMath
 
@@ -80,6 +80,11 @@ for (f, f′, f′′) in NANMATH_DIFF_RULES
         $cse_expr
         return chain_rule_dual(h, f, f′, f′′)
     end
+    @eval @inline function NaNMath.$f(j::Jet{N, M, T}) where {N, M, T}
+        x = j.v
+        $cse_expr
+        return chain_rule_jet(j, f, f′, f′′)
+    end
 end
 
 for (f, fₓ, fᵧ, fₓₓ, fₓᵧ, fᵧᵧ) in NANMATH_BINARY_DIFF_RULES
@@ -97,17 +102,47 @@ for (f, fₓ, fᵧ, fₓₓ, fₓᵧ, fᵧᵧ) in NANMATH_BINARY_DIFF_RULES
     @eval @inline function NaNMath.$f(hx::HyperDual{N1, N2, T}, y_raw::Real) where {N1, N2, T}
         y_raw isa HyperDual{N1, N2} && return NaNMath.$f(promote(hx, y_raw)...)
         x = hx.v
-        y = T(y_raw)
+        y = y_raw
         $cse_expr
         return chain_rule_dual(hx, f, fₓ, fₓₓ)
     end
     @eval @inline function NaNMath.$f(x_raw::Real, hy::HyperDual{N1, N2, T}) where {N1, N2, T}
         x_raw isa HyperDual{N1, N2} && return NaNMath.$f(promote(x_raw, hy)...)
-        x = T(x_raw)
+        x = x_raw
         y = hy.v
         $cse_expr
         return chain_rule_dual(hy, f, fᵧ, fᵧᵧ)
     end
+
+    @eval @inline function NaNMath.$f(jx::Jet{N, M, T, S}, jy::Jet{N, M, T, S}) where {N, M, T, S}
+        x = jx.v
+        y = jy.v
+        $cse_expr
+        return chain_rule_jet(jx, jy, f, fₓ, fᵧ, fₓₓ, fₓᵧ, fᵧᵧ)
+    end
+    @eval @inline function NaNMath.$f(jx::Jet{N, M}, jy::Jet{N, M}) where {N, M}
+        return NaNMath.$f(promote(jx, jy)...)
+    end
+    @eval @inline function NaNMath.$f(jx::Jet{N, M, T}, y_raw::Real) where {N, M, T}
+        y_raw isa Jet{N, M} && return NaNMath.$f(promote(jx, y_raw)...)
+        x = jx.v
+        y = y_raw
+        $cse_expr
+        return chain_rule_jet(jx, f, fₓ, fₓₓ)
+    end
+    @eval @inline function NaNMath.$f(x_raw::Real, jy::Jet{N, M, T}) where {N, M, T}
+        x_raw isa Jet{N, M} && return NaNMath.$f(promote(x_raw, jy)...)
+        x = x_raw
+        y = jy.v
+        $cse_expr
+        return chain_rule_jet(jy, f, fᵧ, fᵧᵧ)
+    end
 end
+
+# NaNMath.pow(x::Real, y::Integer) forwards to ^; do the same for the dual
+# types, which also resolves the dispatch ambiguity between that method and
+# the scalar-slot methods above.
+@inline NaNMath.pow(h::HyperDual, n::Integer) = h^n
+@inline NaNMath.pow(j::Jet, n::Integer) = j^n
 
 end

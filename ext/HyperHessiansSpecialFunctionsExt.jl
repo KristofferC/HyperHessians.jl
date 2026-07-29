@@ -1,7 +1,7 @@
 module HyperHessiansSpecialFunctionsExt
 
 using HyperHessians
-using HyperHessians: rule_expr, rule_cse, chain_rule_dual, HyperDual
+using HyperHessians: rule_expr, rule_cse, chain_rule_dual, HyperDual, chain_rule_jet, Jet
 using CommonSubexpressions: cse, binarize
 using SpecialFunctions
 using SpecialFunctions: sqrtπ
@@ -47,6 +47,11 @@ for (f, f′, f′′) in SPECIALFUNCTIONS_DIFF_RULES
         x = h.v
         $cse_expr
         return chain_rule_dual(h, f, f′, f′′)
+    end
+    @eval @inline function SpecialFunctions.$f(j::Jet{N, M, T}) where {N, M, T}
+        x = j.v
+        $cse_expr
+        return chain_rule_jet(j, f, f′, f′′)
     end
 end
 
