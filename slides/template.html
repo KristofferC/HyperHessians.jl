@@ -1,0 +1,773 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HyperHessians — slide deck</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css">
+<style>
+  /* ---------- palette (shared with benchmark/why-faster/report.html) ---------- */
+  :root {
+    color-scheme: light;
+    --paper: #f7f8fa;
+    --panel: #ffffff;
+    --ink: #1a2230;
+    --muted: #5a6577;
+    --faint: #8b95a5;
+    --line: #dde2ea;
+    --accent: #2a78d6;
+    --accent-ink: #1d5aa6;
+    --s-hh: #2a78d6;
+    --s-fd8: #eb6834;
+    --s-fd12: #4a3aa7;
+    --code-bg: #eef1f6;
+    --code-ink: #303a4c;
+    --code-cm: #7c8698;
+    --bad-bg: rgba(227, 73, 72, 0.13);
+    --bad-edge: #cf3d3c;
+    --good-bg: rgba(42, 120, 214, 0.11);
+    --good-edge: #2a78d6;
+    --add-bg: rgba(42, 143, 56, 0.12);
+    --add-edge: #2a8f38;
+    --prompt: #2a8f38;
+    --chip-bg: #eceff4;
+    --grid-empty: #e4e8ee;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) {
+      color-scheme: dark;
+      --paper: #14181e;
+      --panel: #1b212b;
+      --ink: #e8ecf2;
+      --muted: #9aa4b4;
+      --faint: #6d7889;
+      --line: #2b3442;
+      --accent: #3987e5;
+      --accent-ink: #6aa7ee;
+      --s-hh: #3987e5;
+      --s-fd8: #d95926;
+      --s-fd12: #9085e9;
+      --code-bg: #10151d;
+      --code-ink: #c4cdda;
+      --code-cm: #6b7688;
+      --bad-bg: rgba(230, 103, 103, 0.14);
+      --bad-edge: #e66767;
+      --good-bg: rgba(57, 135, 229, 0.15);
+      --good-edge: #3987e5;
+      --add-bg: rgba(95, 193, 106, 0.14);
+      --add-edge: #4da858;
+      --prompt: #5fc16a;
+      --chip-bg: #232b37;
+      --grid-empty: #242c38;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --paper: #14181e;
+    --panel: #1b212b;
+    --ink: #e8ecf2;
+    --muted: #9aa4b4;
+    --faint: #6d7889;
+    --line: #2b3442;
+    --accent: #3987e5;
+    --accent-ink: #6aa7ee;
+    --s-hh: #3987e5;
+    --s-fd8: #d95926;
+    --s-fd12: #9085e9;
+    --code-bg: #10151d;
+    --code-ink: #c4cdda;
+    --code-cm: #6b7688;
+    --bad-bg: rgba(230, 103, 103, 0.14);
+    --bad-edge: #e66767;
+    --good-bg: rgba(57, 135, 229, 0.15);
+    --good-edge: #3987e5;
+    --add-bg: rgba(95, 193, 106, 0.14);
+    --add-edge: #4da858;
+    --prompt: #5fc16a;
+    --chip-bg: #232b37;
+    --grid-empty: #242c38;
+  }
+
+  /* ---------- deck chrome ---------- */
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; height: 100%; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, Roboto, sans-serif;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+  .serif { font-family: Charter, "Bitstream Charter", "Sitka Text", Cambria, Georgia, serif; }
+  code, pre, .mono {
+    font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    font-variant-numeric: tabular-nums;
+  }
+  code {
+    font-size: 0.85em;
+    background: var(--chip-bg);
+    padding: 0.08em 0.35em;
+    border-radius: 5px;
+  }
+  pre code { background: none; padding: 0; border-radius: 0; font-size: inherit; }
+
+  #viewport {
+    position: fixed; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+  }
+  #deck { width: 1280px; height: 720px; position: relative; flex: 0 0 auto; }
+
+  .slide {
+    position: absolute; inset: 0;
+    padding: 58px 84px 64px;
+    display: flex; flex-direction: column;
+    opacity: 0; visibility: hidden;
+    transition: opacity 0.22s ease;
+  }
+  .slide.current { opacity: 1; visibility: visible; }
+
+  /* fragments: step through with → */
+  .fragment { opacity: 0; transform: translateY(8px); transition: opacity 0.3s ease, transform 0.3s ease; }
+  .fragment.visible { opacity: 1; transform: none; }
+
+  /* ---------- HUD ---------- */
+  #hud {
+    position: fixed; left: 0; right: 0; bottom: 0; height: 3px;
+    background: color-mix(in srgb, var(--line) 55%, transparent);
+  }
+  #hud .bar { height: 100%; width: 0; background: var(--accent); transition: width 0.25s ease; }
+  #counter {
+    position: fixed; right: 16px; bottom: 12px;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 12px; color: var(--faint);
+    user-select: none;
+  }
+
+  /* ---------- slide typography ---------- */
+  .eyebrow {
+    font-size: 19px; font-weight: 650;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--accent-ink);
+    margin: 0 0 10px;
+  }
+  h1 {
+    font-size: 76px; font-weight: 800;
+    letter-spacing: -0.025em; line-height: 1.04;
+    margin: 0 0 22px; text-wrap: balance;
+  }
+  h2 {
+    font-size: 42px; font-weight: 750;
+    letter-spacing: -0.018em; line-height: 1.1;
+    margin: 0 0 8px; text-wrap: balance;
+  }
+  .kicker { font-size: 20px; color: var(--muted); margin: 0 0 26px; }
+  /* `safe` center: centers when content fits, but overflow grows downward
+     instead of climbing over the heading */
+  .body { flex: 1 1 auto; display: flex; flex-direction: column; justify-content: safe center; min-height: 0; }
+  /* never let flex silently compress a card and clip its bottom (pills, last code line) */
+  .body > * { flex-shrink: 0; }
+
+  ul.points { list-style: none; margin: 0; padding: 0; font-size: 27px; line-height: 1.5; }
+  ul.points li { margin: 0 0 22px; padding-left: 34px; position: relative; }
+  ul.points li::before {
+    content: ""; position: absolute; left: 4px; top: 15px;
+    width: 11px; height: 11px; border-radius: 3px; background: var(--accent);
+  }
+  ul.points li b { font-weight: 700; }
+  ul.points .sub { font-size: 21px; color: var(--muted); display: block; margin-top: 4px; }
+  mark {
+    background: var(--good-bg); color: var(--accent-ink);
+    padding: 0.05em 0.25em; border-radius: 5px; font-weight: 650;
+  }
+
+  /* ---------- tiles (factor equation) ---------- */
+  .equation { display: flex; align-items: stretch; gap: 14px; }
+  .tile {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+    padding: 24px 26px 20px; flex: 1 1 0;
+  }
+  .tile .t-label {
+    font-size: 14px; font-weight: 650; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--muted); margin-bottom: 10px;
+  }
+  .tile .t-value {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 46px; font-weight: 700; letter-spacing: -0.01em; line-height: 1.05;
+  }
+  .tile .t-note { font-size: 16px; color: var(--muted); margin-top: 10px; line-height: 1.45; }
+  .tile.result { border-color: var(--accent); background: var(--good-bg); }
+  .tile.result .t-value { color: var(--accent-ink); }
+  .op {
+    align-self: center;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 34px; color: var(--faint);
+  }
+
+  .bignum {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 200px; font-weight: 700; letter-spacing: -0.03em; line-height: 1;
+    color: var(--accent-ink);
+  }
+
+  /* ---------- panels, figures, captions ---------- */
+  .panel {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 16px;
+    padding: 28px 32px;
+  }
+  .panel.has-title { padding: 0; }
+  .panel.has-title > .panel-title {
+    padding: 14px 22px 12px; border-bottom: 1px solid var(--line);
+    font-size: 17px; font-weight: 700;
+  }
+  .panel.has-title > .panel-body { padding: 18px 28px 22px; }
+  .fig-caption { font-size: 17px; color: var(--muted); margin-top: 18px; line-height: 1.5; }
+  .fig-caption strong { color: var(--ink); }
+
+  /* bar chart */
+  .legend { display: flex; gap: 26px; margin-bottom: 20px; }
+  .legend span { display: inline-flex; align-items: center; gap: 8px; font-size: 17px; color: var(--muted); }
+  .sw { width: 14px; height: 14px; border-radius: 4px; display: inline-block; }
+  .sw.hh { background: var(--s-hh); } .sw.fd8 { background: var(--s-fd8); } .sw.fd12 { background: var(--s-fd12); }
+  .bargroup { margin-bottom: 20px; }
+  .bargroup:last-child { margin-bottom: 0; }
+  .bargroup .g-label {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 17px; font-weight: 600; margin-bottom: 6px;
+  }
+  .bar-row { display: flex; align-items: center; gap: 14px; margin-bottom: 5px; }
+  .bar-track { flex: 1 1 auto; position: relative; height: 20px; }
+  .bar { position: absolute; left: 0; top: 2px; height: 16px; border-radius: 0 5px 5px 0; min-width: 4px; }
+  .bar.hh { background: var(--s-hh); } .bar.fd8 { background: var(--s-fd8); } .bar.fd12 { background: var(--s-fd12); }
+  .bar-val {
+    flex: 0 0 110px; text-align: right;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 16px; color: var(--muted);
+  }
+
+  /* block-matrix grids */
+  .blocks-row { display: flex; gap: 70px; justify-content: center; }
+  .blocks-title { font-size: 18px; font-weight: 650; margin-bottom: 12px; }
+  .blocks-grid { display: grid; gap: 2px; width: fit-content; }
+  .blocks-grid div { width: 12px; height: 12px; border-radius: 2px; background: var(--grid-empty); }
+  .blocks-grid div.on-fd { background: var(--s-fd12); }
+  .blocks-grid div.on-hh { background: var(--s-hh); }
+  .blocks-stat { font-size: 17px; color: var(--muted); margin-top: 14px; line-height: 1.5; max-width: 420px; }
+  .blocks-stat b { color: var(--ink); font-family: ui-monospace, "SF Mono", Menlo, monospace; font-weight: 600; }
+
+  /* memory lanes */
+  .lanes { display: flex; flex-direction: column; gap: 40px; }
+  .lane-title { font-size: 18px; font-weight: 650; margin-bottom: 12px; }
+  .lane-strip { display: flex; flex-wrap: wrap; gap: 4px; row-gap: 8px; }
+  .cellgroup { display: flex; gap: 1px; }
+  .cell { width: 13px; height: 24px; border-radius: 2px; }
+  .cell.v { background: var(--faint); }
+  .cell.e1 { background: var(--s-hh); opacity: 0.55; }
+  .cell.e2 { background: var(--s-hh); opacity: 0.8; }
+  .cell.e12 { background: var(--s-hh); }
+  .cell.iv { background: var(--faint); }
+  .cell.ip { background: var(--s-fd8); }
+  .cell.straggler { background: var(--s-fd8); opacity: 0.45; }
+  .cell.f1 { background: var(--s-fd8); opacity: 0.55; }
+  .cell.f2 { background: var(--s-fd8); opacity: 0.8; }
+  .cell.f3 { background: var(--s-fd8); }
+  .legend i.cell { width: 12px; height: 12px; display: inline-block; }
+  .lane-strip.labeled { gap: 22px; align-items: flex-start; }
+  .cellcol { display: flex; flex-direction: column; align-items: center; gap: 7px; }
+  .cell-label { font-size: 15px; color: var(--muted); white-space: nowrap; }
+  /* labels sit on the surrounding text baseline; only the cubes are nudged down */
+  .fig-inline { display: inline-flex; gap: 16px; align-items: baseline; margin: 0 3px; }
+  .fig-inline > span { display: inline-flex; align-items: baseline; gap: 7px; }
+  .fig-inline .cellgroup { display: inline-flex; gap: 1px; transform: translateY(2px); }
+  .fig-inline .cell { display: inline-block; width: 11px; height: 18px; }
+  .lane-key { display: flex; gap: 20px; margin-top: 10px; font-size: 15px; color: var(--muted); }
+  .lane-key span { display: inline-flex; gap: 7px; align-items: center; }
+  .lane-key i { width: 12px; height: 12px; border-radius: 2px; display: inline-block; }
+
+  /* ---------- tables ---------- */
+  table { border-collapse: collapse; width: 100%; }
+  th, td { text-align: right; padding: 13px 18px; border-bottom: 1px solid var(--line); }
+  th:first-child, td:first-child { text-align: left; }
+  th {
+    font-size: 15px; font-weight: 650;
+    text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted);
+  }
+  td { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 20px; }
+  tr:last-child td { border-bottom: none; }
+  td.win { color: var(--accent-ink); font-weight: 700; }
+
+  /* ---------- code ---------- */
+  .codecard { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; }
+  .codecard .cc-head {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+    padding: 14px 22px 12px; border-bottom: 1px solid var(--line);
+  }
+  .cc-title { font-size: 17px; font-weight: 700; }
+  .cc-sub { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 14px; color: var(--faint); }
+  .codecard pre {
+    margin: 0; padding: 18px 0 20px;
+    background: var(--code-bg); color: var(--code-ink);
+    font-size: 19px; line-height: 1.42;
+    overflow-x: auto;
+  }
+  .codecard pre .ln { display: block; padding: 0 24px; white-space: pre; }
+  .codecard pre .cm { color: var(--code-cm); }
+  .codecard pre .k { color: var(--accent-ink); font-weight: 650; }
+  .codecard pre .prompt { color: var(--prompt); font-weight: 700; }
+  .codecard pre .fn { color: var(--s-fd12); }
+  .codecard pre .s { color: var(--s-fd8); }
+  .codecard pre .n { color: var(--accent-ink); }
+  .codecard pre .bad { background: var(--bad-bg); box-shadow: inset 4px 0 0 var(--bad-edge); }
+  .codecard pre .good { background: var(--add-bg); box-shadow: inset 4px 0 0 var(--add-edge); }
+  .codecard pre .hl { background: var(--good-bg); }
+  .codecard .cc-split { display: grid; grid-template-columns: 1fr 1fr; }
+  .codecard .cc-split pre + pre { border-left: 1px solid var(--line); }
+  .codecard .cc-split .bad .seg { background: color-mix(in srgb, var(--bad-edge) 30%, transparent); border-radius: 3px; }
+  .codecard .cc-split .good .seg { background: color-mix(in srgb, var(--add-edge) 32%, transparent); border-radius: 3px; }
+  .copybtn {
+    position: absolute; z-index: 2; opacity: 0; transition: opacity 0.15s ease;
+    font: 600 12px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    padding: 6px 10px; border-radius: 7px; border: 1px solid var(--line);
+    background: var(--panel); color: var(--muted); cursor: pointer;
+  }
+  .codecard:hover .copybtn { opacity: 1; }
+  .copybtn:hover { color: var(--ink); border-color: var(--faint); }
+  .cc-verdict {
+    display: flex; gap: 10px; flex-wrap: wrap;
+    padding: 12px 22px; border-top: 1px solid var(--line);
+    font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 15px;
+  }
+  .v-pill { border-radius: 999px; padding: 3px 13px; background: var(--chip-bg); color: var(--muted); }
+  .v-pill.bad { background: var(--bad-bg); color: var(--bad-edge); }
+  .v-pill.good { background: var(--good-bg); color: var(--good-edge); }
+
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: start; }
+
+  /* ---------- math (KaTeX, vendored in vendor/katex) ---------- */
+  .katex { font-size: 1.06em; }
+  .cols .katex { font-size: 0.9em; }  /* half-width columns: keep display math inside the box */
+  .katex-display { margin: 0.7em 0; }
+  .slide p.text:has(.katex-display) { max-width: none; }  /* center display math on the slide */
+
+  /* chips */
+  .chips { display: flex; flex-wrap: wrap; gap: 10px; }
+  .chip {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 15px; color: var(--muted);
+    background: var(--chip-bg); border-radius: 999px; padding: 6px 16px;
+    white-space: nowrap;
+  }
+  .chip svg { width: 1em; height: 1em; vertical-align: -0.14em; fill: currentColor; }
+  svg[aria-label] { width: 1em; height: 1em; vertical-align: -0.14em; fill: currentColor; }
+  a { color: var(--accent-ink); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+  .chip a { color: inherit; text-decoration: none; }
+  .chip a:hover { color: var(--accent-ink); }
+
+  #builderror {
+    position: fixed; left: 20px; right: 20px; bottom: 24px; z-index: 99;
+    margin: 0; padding: 14px 18px; border-radius: 10px;
+    background: var(--paper); border: 2px solid var(--bad-edge); color: var(--bad-edge);
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 14px; line-height: 1.5; white-space: pre-wrap;
+  }
+
+  .keys { font-size: 15px; color: var(--faint); margin-top: auto; }
+  .keys kbd {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 13px;
+    border: 1px solid var(--line); border-radius: 5px; padding: 1px 7px;
+    background: var(--panel);
+  }
+
+  /* ---------- markdown-emitted elements & layout variants ---------- */
+  .slide p.text { font-size: 26px; line-height: 1.55; max-width: 72ch; margin: 0 0 18px; }
+  .layout-center .body { align-items: center; text-align: center; }
+  .layout-center p.text { font-size: 28px; color: var(--muted); max-width: 52ch; margin-top: 18px; }
+  .layout-title h1 { margin-bottom: 22px; }
+  .layout-title .kicker { font-size: 24px; max-width: 60ch; }
+  .layout-title .chips { margin-top: 10px; }
+  .cols > div { min-width: 0; }
+  .cols ul.points { font-size: 24px; }
+
+  /* ---------- print: one slide per page ---------- */
+  @media print {
+    body { overflow: visible; }
+    #hud, #counter { display: none; }
+    #viewport { position: static; display: block; }
+    #deck { width: 1280px; height: auto; transform: none !important; }
+    .slide {
+      position: relative; opacity: 1; visibility: visible;
+      width: 1280px; height: 720px; page-break-after: always;
+    }
+    .fragment { opacity: 1 !important; transform: none !important; }
+  }
+  @page { size: 1280px 720px; margin: 0; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+
+<div id="viewport">
+<div id="deck">
+
+<!-- {{SLIDES}} -->
+
+</div>
+</div>
+
+<div id="hud"><div class="bar"></div></div>
+<div id="counter"></div>
+
+<script src="data/ops.js"></script>
+<script src="data/scaling.js"></script>
+<script src="data/fderr.js"></script>
+<script src="vendor/katex/katex.min.js"></script>
+<script src="vendor/katex/contrib/auto-render.min.js"></script>
+<script>
+// LaTeX: write $inline$ or $$display$$ anywhere in slides.md.
+// pre/code blocks are ignored automatically.
+renderMathInElement(document.getElementById("deck"), {
+  delimiters: [
+    { left: "$$", right: "$$", display: true },
+    { left: "$", right: "$", display: false },
+  ],
+  throwOnError: false,
+});
+</script>
+<script>
+// ---------------- generated figures ----------------
+// Figures below render from window.DECK_DATA.* (slides/data/*.js).
+// Regenerate the data files with `julia slides/data/generate.jl`.
+
+// bar chart (slide 5) — from data/ops.js
+(function () {
+  const D = window.DECK_DATA && window.DECK_DATA.ops;
+  const legend = document.getElementById("oplegend");
+  const root0 = document.getElementById("opchart");
+  if (!D || !legend || !root0) return;
+  D.series.forEach(function (name, k) {
+    const s = document.createElement("span");
+    s.innerHTML = '<i class="sw ' + D.colors[k] + '"></i>';
+    s.appendChild(document.createTextNode(name));
+    legend.appendChild(s);
+  });
+  const max = Math.max(...D.rows.flatMap(d => d.vals));
+  const root = document.getElementById("opchart");
+  for (const g of D.rows) {
+    const grp = document.createElement("div");
+    grp.className = "bargroup";
+    const lab = document.createElement("div");
+    lab.className = "g-label";
+    lab.textContent = g.op;
+    grp.appendChild(lab);
+    g.vals.forEach(function (v, k) {
+      const row = document.createElement("div");
+      row.className = "bar-row";
+      const track = document.createElement("div");
+      track.className = "bar-track";
+      const bar = document.createElement("div");
+      bar.className = "bar " + D.colors[k];
+      bar.style.width = (v / max * 100).toFixed(1) + "%";
+      track.appendChild(bar);
+      const val = document.createElement("div");
+      val.className = "bar-val";
+      val.textContent = v.toFixed(1) + " " + D.unit;
+      row.appendChild(track);
+      row.appendChild(val);
+      grp.appendChild(row);
+    });
+    root.appendChild(grp);
+  }
+})();
+
+// finite-difference error V-curve — from data/fderr.js
+(function () {
+  const D = window.DECK_DATA && window.DECK_DATA.fderr;
+  const root = document.getElementById("fderrchart");
+  if (!D || !root) return;
+
+  const W = 1050, H = 170, L = 80, R = 20, T = 12, B = 44;
+  const x0 = Math.log10(D.h[0]), x1 = Math.log10(D.h[D.h.length - 1]);
+  const ys = D.err.map(Math.log10);
+  const y0 = Math.floor(Math.min(...ys)), y1 = Math.ceil(Math.max(...ys));
+  const X = h => L + (Math.log10(h) - x0) / (x1 - x0) * (W - L - R);
+  const Y = e => T + (1 - (Math.log10(e) - y0) / (y1 - y0)) * (H - T - B);
+  const flabel = d => d === 0 ? "1" : "1e" + d;
+
+  let svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%; height:auto; display:block;" ' +
+            'font-family="-apple-system, system-ui, sans-serif" font-size="14">';
+  for (let d = y0; d <= y1; d += 4) {
+    const y = Y(Math.pow(10, d));
+    svg += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y + '" y2="' + y +
+           '" stroke="var(--line)" stroke-width="1"/>';
+    svg += '<text x="' + (L - 8) + '" y="' + (y + 5) + '" text-anchor="end" fill="var(--faint)">' + flabel(d) + '</text>';
+  }
+  for (let d = -16; d <= 0; d += 4) {
+    svg += '<text x="' + X(Math.pow(10, d)) + '" y="' + (H - 26) + '" text-anchor="middle" fill="var(--faint)">' + flabel(d) + '</text>';
+  }
+  // axis titles
+  svg += '<text x="' + ((L + W - R) / 2) + '" y="' + (H - 6) + '" text-anchor="middle" fill="var(--muted)">step size h</text>';
+  svg += '<text transform="translate(16, ' + ((T + H - B) / 2) + ') rotate(-90)" text-anchor="middle" ' +
+         'fill="var(--muted)">relative error</text>';
+  // the sweet spot
+  let mi = 0;
+  D.err.forEach((e, i) => { if (e < D.err[mi]) mi = i; });
+  const mx = X(D.h[mi]), my = Y(D.err[mi]);
+  svg += '<line x1="' + mx + '" x2="' + mx + '" y1="' + T + '" y2="' + (H - B) +
+         '" stroke="var(--faint)" stroke-width="1.5" stroke-dasharray="4 4"/>';
+  svg += '<text x="' + (mx + 8) + '" y="' + (T + 14) + '" fill="var(--muted)">best ≈ √eps, ~half the digits gone</text>';
+
+  // region labels
+  svg += '<text x="' + X(1e-13) + '" y="' + (T + 38) + '" text-anchor="middle" fill="var(--muted)">← cancellation</text>';
+  svg += '<text x="' + X(1e-3) + '" y="' + (T + 38) + '" text-anchor="middle" fill="var(--muted)">truncation →</text>';
+
+  const pts = D.h.map((h, i) => X(h).toFixed(1) + "," + Y(D.err[i]).toFixed(1)).join(" ");
+  svg += '<polyline points="' + pts + '" fill="none" stroke="var(--s-hh)" stroke-width="3" ' +
+         'stroke-linejoin="round" stroke-linecap="round"/>';
+  svg += '<circle cx="' + mx + '" cy="' + my + '" r="5.5" fill="var(--s-hh)" stroke="var(--panel)" stroke-width="2"/>';
+  svg += '</svg>';
+  root.innerHTML = svg;
+})();
+
+// log–log scaling chart (slide 5b) — from data/scaling.js
+(function () {
+  const D = window.DECK_DATA && window.DECK_DATA.scaling;
+  const legend = document.getElementById("scalelegend");
+  const chart = document.getElementById("scalechart");
+  if (!D || !legend || !chart) return;
+  const swatch = { hh: "var(--s-hh)", fd8: "var(--s-fd8)", fd12: "var(--s-fd12)" };
+  D.series.forEach(function (s) {
+    const el = document.createElement("span");
+    el.innerHTML = '<i class="sw ' + s.color + '"></i>';
+    el.appendChild(document.createTextNode(s.name));
+    legend.appendChild(el);
+  });
+
+  const W = 1050, H = 400, L = 78, R = 26, T = 16, B = 44;
+  const lx = D.n.map(Math.log2);
+  const x0 = Math.min(...lx), x1 = Math.max(...lx);
+  const allY = D.series.flatMap(s => s.us).map(Math.log10);
+  const y0 = Math.floor(Math.min(...allY)), y1 = Math.ceil(Math.max(...allY));
+  const X = n => L + (Math.log2(n) - x0) / (x1 - x0) * (W - L - R);
+  const Y = us => T + (1 - (Math.log10(us) - y0) / (y1 - y0)) * (H - T - B);
+  const fmt = us => us < 1 ? (us * 1000) + " ns" : us < 1000 ? us + " µs" : (us / 1000) + " ms";
+
+  let svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%; height:auto; display:block;" ' +
+            'font-family="-apple-system, system-ui, sans-serif" font-size="15">';
+
+  // horizontal decade gridlines + labels
+  for (let d = y0; d <= y1; d++) {
+    const y = Y(Math.pow(10, d));
+    svg += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y + '" y2="' + y +
+           '" stroke="var(--line)" stroke-width="1"/>';
+    svg += '<text x="' + (L - 10) + '" y="' + (y + 5) + '" text-anchor="end" fill="var(--faint)">' +
+           fmt(Math.pow(10, d)) + '</text>';
+  }
+  // x ticks at each n
+  for (const n of D.n) {
+    svg += '<text x="' + X(n) + '" y="' + (H - B + 30) + '" text-anchor="middle" fill="var(--faint)">' + n + '</text>';
+  }
+  svg += '<text x="' + ((L + W - R) / 2) + '" y="' + (H - 2) + '" text-anchor="middle" fill="var(--muted)">n</text>';
+
+  // series: line + markers
+  for (const s of D.series) {
+    const col = swatch[s.color] || "var(--accent)";
+    const pts = D.n.map((n, i) => X(n).toFixed(1) + "," + Y(s.us[i]).toFixed(1)).join(" ");
+    svg += '<polyline points="' + pts + '" fill="none" stroke="' + col + '" stroke-width="3.5" ' +
+           'stroke-linejoin="round" stroke-linecap="round"/>';
+    D.n.forEach(function (n, i) {
+      svg += '<circle cx="' + X(n) + '" cy="' + Y(s.us[i]) + '" r="5.5" fill="' + col +
+             '" stroke="var(--panel)" stroke-width="2"><title>' + s.name + ' · n=' + n + ': ' +
+             fmt(s.us[i]) + '</title></circle>';
+    });
+  }
+
+  // computed gap annotation at the largest n (assumes series[0] is the slower baseline)
+  const last = D.n.length - 1;
+  const a = D.series[0].us[last], b = D.series[1].us[last];
+  const xg = X(D.n[last]) - 14, ratio = (a / b).toFixed(1);
+  svg += '<line x1="' + xg + '" x2="' + xg + '" y1="' + Y(a) + '" y2="' + Y(b) +
+         '" stroke="var(--faint)" stroke-width="1.5" stroke-dasharray="4 4"/>';
+  svg += '<text x="' + (xg - 12) + '" y="' + ((Y(a) + Y(b)) / 2 + 5) +
+         '" text-anchor="end" font-weight="700" font-family="ui-monospace, Menlo, monospace" ' +
+         'fill="var(--accent-ink)">' + ratio + '×</text>';
+
+  svg += '</svg>';
+  chart.innerHTML = svg;
+})();
+
+// block grids (slide 6)
+(function () {
+  const fd = document.getElementById("grid-fd");
+  const hh0 = document.getElementById("grid-hh");
+  if (!fd || !hh0) return;
+  fd.style.gridTemplateColumns = "repeat(32, 12px)";
+  for (let i = 0; i < 32; i++)
+    for (let j = 0; j < 32; j++) {
+      const d = document.createElement("div");
+      d.className = "on-fd";
+      fd.appendChild(d);
+    }
+  const hh = document.getElementById("grid-hh");
+  hh.style.gridTemplateColumns = "repeat(32, 12px)";
+  for (let i = 0; i < 32; i++)
+    for (let j = 0; j < 32; j++) {
+      const d = document.createElement("div");
+      if (j >= i) d.className = "on-hh";
+      hh.appendChild(d);
+    }
+})();
+
+// memory lanes (slide 12)
+(function () {
+  function group(parent, cells) {
+    const g = document.createElement("div");
+    g.className = "cellgroup";
+    for (const c of cells) {
+      const d = document.createElement("div");
+      d.className = "cell " + c;
+      g.appendChild(d);
+    }
+    parent.appendChild(g);
+  }
+  const hh = document.getElementById("lane-hh");
+  const fdlane = document.getElementById("lane-fd");
+  if (!hh || !fdlane) return;
+  group(hh, ["v"]);
+  group(hh, Array(8).fill("e1"));
+  group(hh, Array(8).fill("e2"));
+  for (let r = 0; r < 8; r++) group(hh, Array(8).fill("e12"));
+
+  const fd = document.getElementById("lane-fd");
+  for (let r = 0; r < 9; r++)
+    group(fd, ["iv"].concat(Array(7).fill("ip"), ["straggler"]));
+})();
+
+// copy-to-clipboard buttons on code cards (visible on hover)
+(function () {
+  for (const pre of document.querySelectorAll(".codecard pre")) {
+    const card = pre.closest(".codecard");
+    card.style.position = "relative";
+    const btn = document.createElement("button");
+    btn.className = "copybtn";
+    btn.type = "button";
+    btn.textContent = "copy";
+    // anchor to the card (not the pre) so it doesn't scroll with wide code;
+    // right offset accounts for split-diff columns
+    btn.style.top = (pre.offsetTop + 8) + "px";
+    btn.style.right = (card.clientWidth - pre.offsetLeft - pre.clientWidth + 12) + "px";
+    btn.addEventListener("click", async () => {
+      const text = Array.from(pre.querySelectorAll(".ln"))
+        .map(s => s.textContent === " " ? "" : s.textContent)
+        .join("\n");
+      try {
+        await navigator.clipboard.writeText(text);
+      } catch (e) {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        ta.remove();
+      }
+      btn.textContent = "copied ✓";
+      setTimeout(() => { btn.textContent = "copy"; }, 1200);
+    });
+    card.appendChild(btn);
+  }
+})();
+
+// ---------------- deck engine ----------------
+(function () {
+  const slides = Array.from(document.querySelectorAll(".slide"));
+  const bar = document.querySelector("#hud .bar");
+  const counter = document.getElementById("counter");
+  const deck = document.getElementById("deck");
+  let cur = -1;
+
+  function fit() {
+    const s = Math.min(window.innerWidth / 1280, window.innerHeight / 720);
+    deck.style.transform = "scale(" + s + ")";
+  }
+  window.addEventListener("resize", fit);
+  fit();
+
+  // Long `!big` text: shrink to fit the slide width (slides are laid out even
+  // while hidden — visibility: hidden, not display: none — so this measures).
+  document.querySelectorAll(".bignum").forEach(function (el) {
+    const max = el.parentElement.clientWidth;
+    if (max > 0 && el.scrollWidth > max) {
+      const size = parseFloat(getComputedStyle(el).fontSize);
+      el.style.fontSize = Math.floor(size * max / el.scrollWidth * 0.98) + "px";
+    }
+  });
+
+  function show(i) {
+    i = Math.max(0, Math.min(slides.length - 1, i));
+    if (i === cur) return;
+    if (cur >= 0) slides[cur].classList.remove("current");
+    cur = i;
+    slides[cur].classList.add("current");
+    history.replaceState(null, "", "#" + (cur + 1));
+    bar.style.width = ((cur + 1) / slides.length * 100) + "%";
+    counter.textContent = (cur + 1) + " / " + slides.length;
+  }
+
+  function next() {
+    const frag = slides[cur].querySelector(".fragment:not(.visible)");
+    if (frag) { frag.classList.add("visible"); return; }
+    show(cur + 1);
+  }
+  function prev() {
+    const vis = slides[cur].querySelectorAll(".fragment.visible");
+    if (vis.length) { vis[vis.length - 1].classList.remove("visible"); return; }
+    show(cur - 1);
+  }
+
+  document.addEventListener("keydown", function (e) {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    switch (e.key) {
+      case "ArrowRight": case "ArrowDown": case " ": case "PageDown": next(); e.preventDefault(); break;
+      case "ArrowLeft": case "ArrowUp": case "PageUp": prev(); e.preventDefault(); break;
+      case "Home": show(0); e.preventDefault(); break;
+      case "End": show(slides.length - 1); e.preventDefault(); break;
+      case "f": if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen(); break;
+      case "t": {
+        const r = document.documentElement;
+        const now = r.getAttribute("data-theme");
+        const dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+        const effectiveDark = now === "dark" || (now !== "light" && dark);
+        r.setAttribute("data-theme", effectiveDark ? "light" : "dark");
+        break;
+      }
+    }
+  });
+
+  const fromHash = parseInt(location.hash.slice(1), 10);
+  show(isFinite(fromHash) ? fromHash - 1 : 0);
+})();
+
+// ---------------- live reload (only when served by slides/serve.jl) ----------------
+(function () {
+  if (!location.protocol.startsWith("http")) return;
+  let stamp = null, overlay = null;
+  function showError(msg) {
+    if (!overlay) {
+      overlay = document.createElement("pre");
+      overlay.id = "builderror";
+      document.body.appendChild(overlay);
+    }
+    overlay.textContent = "build error — deck shows the last good build\n\n" + msg;
+  }
+  function clearError() { if (overlay) { overlay.remove(); overlay = null; } }
+  setInterval(async function () {
+    try {
+      const t = await (await fetch("/__version", { cache: "no-store" })).text();
+      if (t.startsWith("error:")) { showError(t.slice(6)); return; }
+      clearError();
+      if (stamp === null) stamp = t;
+      else if (t !== stamp) location.reload();
+    } catch (e) { /* server gone; keep quiet */ }
+  }, 500);
+})();
+</script>
+</body>
+</html>
