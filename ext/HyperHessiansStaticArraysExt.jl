@@ -12,7 +12,7 @@ using StaticArrays
     return quote
         $(Expr(:meta, :inline))
         seeds = construct_seeds(NTuple{$N, $T})
-        V = StaticArrays.similar_type(x, HyperDual{$N, $N, $T})
+        V = StaticArrays.similar_type(x, HyperDual{$N, $N, $T, false})
         return V($(Expr(:tuple, dual_exprs...)))
     end
 end
@@ -27,7 +27,7 @@ end
     return quote
         $(Expr(:meta, :inline))
         seeds = construct_seeds(NTuple{$N, $T})
-        V = StaticArrays.similar_type(x, HyperDual{$N, $M, $T})
+        V = StaticArrays.similar_type(x, HyperDual{$N, $M, $T, false})
         return V($(Expr(:tuple, dual_exprs...)))
     end
 end

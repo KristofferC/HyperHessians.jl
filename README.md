@@ -28,8 +28,9 @@ It works similarly to `ForwardDiff.hessian` but should have better run-time and 
 
 | Type | Description |
 | ---- | ----------- |
-| `HessianConfig(x, chunk)` | Config for Hessian calls |
-| `ThreadedHessianConfig(x, chunk; ntasks)` | Config for multithreaded Hessian calls |
+| `HessianConfig(x, chunk; simd)` | Config for Hessian calls |
+| `HessianConfig(x, Jet; simd)` | Config using the symmetric `Jet` representation |
+| `ThreadedHessianConfig(x, chunk; ntasks, simd)` | Config for multithreaded Hessian calls |
 | `HVPConfig(x, chunk)` | Config for Hessian–vector products |
 | `VHVPConfig(x, v)` | Config for vector-Hessian-vector products |
 | `Chunk{N}()` | Specify chunk size `N` |
@@ -60,6 +61,29 @@ julia> f(x) = exp(x) / sqrt(sin(x)^3 + cos(x)^3);
 julia> HyperHessians.hessian(f, 2.0)
 82.55705026089272
 ```
+
+### Jets
+
+Passing `HyperHessians.Jet` instead of a `Chunk` selects a symmetric "jet"
+number: the whole Hessian is computed in a single evaluation of `f`, and since
+both derivative directions then carry the same seeds, the jet stores the
+gradient once and only the upper triangle of the Hessian
+(1 + n + n(n+1)/2 floats instead of `HyperDual{n,n}`'s 1 + 2n + n²):
+
+```julia
+cfg = HyperHessians.HessianConfig(x, HyperHessians.Jet)              # jet representation
+cfg = HyperHessians.HessianConfig(x, HyperHessians.Jet; simd = true) # with SIMD.Vec arithmetic
+```
+
+Jets tend to win for small inputs where register pressure dominates, while
+chunked `HyperDual`s vectorize better as the input grows; the crossover
+depends on the function and CPU, so jets are never selected by default —
+benchmark, or let
+[ChunkPicker.jl](https://github.com/KristofferC/ChunkPicker.jl) decide.
+They are only sensible for small inputs: the unrolled triangle makes compile
+time grow steeply with `length(x)`, and with `simd = true` the triangle
+becomes a single `n(n+1)/2`-lane `Vec`, which degrades sharply once that
+exceeds a few machine vector widths.
 
 ### Fast math
 
@@ -98,11 +122,22 @@ The larger the chunk size the larger part of the Hessian is computed on every ca
 the input vector, the whole hessian is computed in one call to `f`).
 However, with a larger chunk size the special numbers HyperHessians uses become larger and if they become too large this can lead to inefficient execution.
 
-A choice of a chunk size is, therefore, a trade-off and the optimal one is likely to be dependent on the particular function getting differentiated.
-A decent overall choice seems to be a chunk size of 8.
-It is also in general a good idea to pick a chunk size as a multiple of 4 to use SIMD effectively.
+A choice of a chunk size is, therefore, a trade-off and the optimal one is likely to be dependent on the particular function getting differentiated:
+cheap functions favor small chunks (the dual size dominates), expensive ones favor SIMD-width multiples like 8, and
+[ChunkPicker.jl](https://github.com/KristofferC/ChunkPicker.jl) can benchmark the candidates for *your* function.
 
-The `chunk_size` argument can be left out and HyperHessians will try to determine a reasonable choice.
+The `chunk_size` argument can be left out, in which case HyperHessians uses a
+measured function-agnostic default: the whole Hessian in one evaluation for
+small inputs (`length(x) <= 10`, or 12 for `Float32`), then a small chunk
+(4, or 6 for large inputs and `Float32`).
+
+`HessianConfig` (and `ThreadedHessianConfig`) also accept a `simd` keyword:
+`simd = true` forces SIMD.Vec-based arithmetic for the derivative components
+(`Float32`/`Float64` only) instead of relying on the auto-vectorizer. Whether
+this is faster depends on the function, the chunk size and the CPU (it tends
+to win big on AVX512 and for chunk sizes the auto-vectorizer handles poorly);
+[ChunkPicker.jl](https://github.com/KristofferC/ChunkPicker.jl) can benchmark
+the combinations and recommend a configuration.
 
 If the chunk size `c` is smaller than the input vector with length `n`, the function will be called `k = ceil(Int, n / c); k(k+1)÷2` times, each time computing a part of the hessian:
 

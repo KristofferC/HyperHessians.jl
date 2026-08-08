@@ -216,7 +216,7 @@ Apply chain rule to HyperDual `h` given primal `f`, first derivative `f′`, and
 Returns a new HyperDual with properly propagated derivatives.
 """
 @inline chain_rule_dual(h::HyperDual, f, f′, f′′) =
-    chain_rule_dual(IEEE_MODE, h, f, f′, f′′)
+    chain_rule_dual(_ieee_mode(h), h, f, f′, f′′)
 
 @inline function chain_rule_dual(
         mode::ArithmeticMode,
@@ -227,7 +227,7 @@ Returns a new HyperDual with properly propagated derivatives.
     ) where {N1, N2}
     x23 = _outer(mode, _mul(mode, f′′, h.ϵ1), h.ϵ2)
     ϵ12 = ntuple(i -> _muladd(mode, f′, h.ϵ12[i], x23[i]), Val(N1))
-    return HyperDual(f, _mul(mode, h.ϵ1, f′), _mul(mode, h.ϵ2, f′), ϵ12)
+    return hyperdual(mode, f, _mul(mode, h.ϵ1, f′), _mul(mode, h.ϵ2, f′), ϵ12)
 end
 
 """
@@ -237,7 +237,7 @@ Apply chain rule to a scalar function of two HyperDual inputs given first and
 second partial derivatives.
 """
 @inline chain_rule_dual(hx::HyperDual, hy::HyperDual, f, fₓ, fᵧ, fₓₓ, fₓᵧ, fᵧᵧ) =
-    chain_rule_dual(IEEE_MODE, hx, hy, f, fₓ, fᵧ, fₓₓ, fₓᵧ, fᵧᵧ)
+    chain_rule_dual(_ieee_mode(hx), hx, hy, f, fₓ, fᵧ, fₓₓ, fₓᵧ, fᵧᵧ)
 
 @inline function chain_rule_dual(
         mode::ArithmeticMode,
@@ -260,7 +260,7 @@ second partial derivatives.
         acc = _muladd(mode, yterm, hy.ϵ2, acc)
         acc
     end
-    return HyperDual(f, ϵ1, ϵ2, ntuple(g, Val(N1)))
+    return hyperdual(mode, f, ϵ1, ϵ2, ntuple(g, Val(N1)))
 end
 
 @inline function Base.sin(h::HyperDual{N1, N2}) where {N1, N2}
@@ -274,34 +274,59 @@ end
 end
 
 @inline function Base.FastMath.sin_fast(h::HyperDual)
+    mode = _fast_mode(h)
     s = Base.FastMath.sin_fast(h.v)
     c = Base.FastMath.cos_fast(h.v)
-    return chain_rule_dual(FAST_MODE, h, s, c, _neg(FAST_MODE, s))
+    return chain_rule_dual(mode, h, s, c, _neg(mode, s))
 end
 
 @inline function Base.FastMath.cos_fast(h::HyperDual)
+    mode = _fast_mode(h)
     s = Base.FastMath.sin_fast(h.v)
     c = Base.FastMath.cos_fast(h.v)
     return chain_rule_dual(
-        FAST_MODE,
+        mode,
         h,
         c,
-        _neg(FAST_MODE, s),
-        _neg(FAST_MODE, c),
+        _neg(mode, s),
+        _neg(mode, c),
     )
 end
 
 @inline function Base.FastMath.sincos_fast(h::HyperDual)
+    mode = _fast_mode(h)
     s, c = Base.FastMath.sincos_fast(h.v)
-    hs = chain_rule_dual(FAST_MODE, h, s, c, _neg(FAST_MODE, s))
+    hs = chain_rule_dual(mode, h, s, c, _neg(mode, s))
     hc = chain_rule_dual(
-        FAST_MODE,
+        mode,
         h,
         c,
-        _neg(FAST_MODE, s),
-        _neg(FAST_MODE, c),
+        _neg(mode, s),
+        _neg(mode, c),
     )
     return hs, hc
+end
+
+@inline function Base.FastMath.sin_fast(j::Jet)
+    mode = _fast_mode(j)
+    s = Base.FastMath.sin_fast(j.v)
+    c = Base.FastMath.cos_fast(j.v)
+    return chain_rule_jet(mode, j, s, c, _neg(mode, s))
+end
+
+@inline function Base.FastMath.cos_fast(j::Jet)
+    mode = _fast_mode(j)
+    s = Base.FastMath.sin_fast(j.v)
+    c = Base.FastMath.cos_fast(j.v)
+    return chain_rule_jet(mode, j, c, _neg(mode, s), _neg(mode, c))
+end
+
+@inline function Base.FastMath.sincos_fast(j::Jet)
+    mode = _fast_mode(j)
+    s, c = Base.FastMath.sincos_fast(j.v)
+    js = chain_rule_jet(mode, j, s, c, _neg(mode, s))
+    jc = chain_rule_jet(mode, j, c, _neg(mode, s), _neg(mode, c))
+    return js, jc
 end
 
 @inline function Base.sinpi(h::HyperDual{N1, N2}) where {N1, N2}
@@ -359,7 +384,16 @@ for (f, f′, f′′) in DIFF_RULES
         x = h.v
         @fastmath begin
             $fast_cse_expr
-            return chain_rule_dual(FAST_MODE, h, f, f′, f′′)
+            return chain_rule_dual(_fast_mode(h), h, f, f′, f′′)
+        end
+    end
+    @eval @inline function Base.FastMath.$fast_sym(
+            j::Jet{N, M, T}
+        ) where {N, M, T}
+        x = j.v
+        @fastmath begin
+            $fast_cse_expr
+            return chain_rule_jet(_fast_mode(j), j, f, f′, f′′)
         end
     end
 end
@@ -367,44 +401,51 @@ end
 for (f, fₓ, fᵧ, fₓₓ, fₓᵧ, fᵧᵧ) in BINARY_DIFF_RULES
     expr = binary_rule_expr(f, fₓ, fᵧ, fₓₓ, fₓᵧ, fᵧᵧ)
     cse_expr = rule_cse(expr; warn = false)
-    @eval @inline function Base.$f(hx::HyperDual{N1, N2, T}, hy::HyperDual{N1, N2, T}) where {N1, N2, T}
+    # The same-S constraint sends mixed-backend pairs through promotion; the
+    # `isa HyperDual{N1, N2}` guards catch same-shape duals in a `Real` slot
+    # (they would otherwise be differentiated as constants).
+    @eval @inline function Base.$f(hx::HyperDual{N1, N2, T, S}, hy::HyperDual{N1, N2, T, S}) where {N1, N2, T, S}
         x = hx.v
         y = hy.v
         $cse_expr
         return chain_rule_dual(hx, hy, f, fₓ, fᵧ, fₓₓ, fₓᵧ, fᵧᵧ)
     end
-    @eval @inline function Base.$f(hx::HyperDual{N1, N2, T1}, hy::HyperDual{N1, N2, T2}) where {N1, N2, T1, T2}
+    @eval @inline function Base.$f(hx::HyperDual{N1, N2}, hy::HyperDual{N1, N2}) where {N1, N2}
         return Base.$f(promote(hx, hy)...)
     end
     @eval @inline function Base.$f(hx::HyperDual{N1, N2, T}, y_raw::Real) where {N1, N2, T}
+        y_raw isa HyperDual{N1, N2} && return Base.$f(promote(hx, y_raw)...)
         x = hx.v
         y = y_raw
         $cse_expr
         return chain_rule_dual(hx, f, fₓ, fₓₓ)
     end
     @eval @inline function Base.$f(x_raw::Real, hy::HyperDual{N1, N2, T}) where {N1, N2, T}
+        x_raw isa HyperDual{N1, N2} && return Base.$f(promote(x_raw, hy)...)
         x = x_raw
         y = hy.v
         $cse_expr
         return chain_rule_dual(hy, f, fᵧ, fᵧᵧ)
     end
 
-    @eval @inline function Base.$f(jx::Jet{N, M, T}, jy::Jet{N, M, T}) where {N, M, T}
+    @eval @inline function Base.$f(jx::Jet{N, M, T, S}, jy::Jet{N, M, T, S}) where {N, M, T, S}
         x = jx.v
         y = jy.v
         $cse_expr
         return chain_rule_jet(jx, jy, f, fₓ, fᵧ, fₓₓ, fₓᵧ, fᵧᵧ)
     end
-    @eval @inline function Base.$f(jx::Jet{N, M, T1}, jy::Jet{N, M, T2}) where {N, M, T1, T2}
+    @eval @inline function Base.$f(jx::Jet{N, M}, jy::Jet{N, M}) where {N, M}
         return Base.$f(promote(jx, jy)...)
     end
     @eval @inline function Base.$f(jx::Jet{N, M, T}, y_raw::Real) where {N, M, T}
+        y_raw isa Jet{N, M} && return Base.$f(promote(jx, y_raw)...)
         x = jx.v
         y = y_raw
         $cse_expr
         return chain_rule_jet(jx, f, fₓ, fₓₓ)
     end
     @eval @inline function Base.$f(x_raw::Real, jy::Jet{N, M, T}) where {N, M, T}
+        x_raw isa Jet{N, M} && return Base.$f(promote(x_raw, jy)...)
         x = x_raw
         y = jy.v
         $cse_expr
@@ -415,38 +456,78 @@ for (f, fₓ, fᵧ, fₓₓ, fₓᵧ, fᵧᵧ) in BINARY_DIFF_RULES
     fast_expr = binary_rule_expr(:(Base.FastMath.$fast_sym), fₓ, fᵧ, fₓₓ, fₓᵧ, fᵧᵧ)
     fast_cse_expr = rule_cse(fast_expr; warn = false)
     @eval @inline function Base.FastMath.$fast_sym(
-            hx::HyperDual{N1, N2, T}, hy::HyperDual{N1, N2, T}
-        ) where {N1, N2, T}
+            hx::HyperDual{N1, N2, T, S}, hy::HyperDual{N1, N2, T, S}
+        ) where {N1, N2, T, S}
         x = hx.v
         y = hy.v
         @fastmath begin
             $fast_cse_expr
-            return chain_rule_dual(FAST_MODE, hx, hy, f, fₓ, fᵧ, fₓₓ, fₓᵧ, fᵧᵧ)
+            return chain_rule_dual(_fast_mode(hx), hx, hy, f, fₓ, fᵧ, fₓₓ, fₓᵧ, fᵧᵧ)
         end
     end
     @eval @inline function Base.FastMath.$fast_sym(
-            hx::HyperDual{N1, N2, T1}, hy::HyperDual{N1, N2, T2}
-        ) where {N1, N2, T1, T2}
+            hx::HyperDual{N1, N2}, hy::HyperDual{N1, N2}
+        ) where {N1, N2}
         return Base.FastMath.$fast_sym(promote(hx, hy)...)
     end
     @eval @inline function Base.FastMath.$fast_sym(
             hx::HyperDual{N1, N2, T}, y_raw::Real
         ) where {N1, N2, T}
+        y_raw isa HyperDual{N1, N2} && return Base.FastMath.$fast_sym(promote(hx, y_raw)...)
         x = hx.v
         y = y_raw
         @fastmath begin
             $fast_cse_expr
-            return chain_rule_dual(FAST_MODE, hx, f, fₓ, fₓₓ)
+            return chain_rule_dual(_fast_mode(hx), hx, f, fₓ, fₓₓ)
         end
     end
     @eval @inline function Base.FastMath.$fast_sym(
             x_raw::Real, hy::HyperDual{N1, N2, T}
         ) where {N1, N2, T}
+        x_raw isa HyperDual{N1, N2} && return Base.FastMath.$fast_sym(promote(x_raw, hy)...)
         x = x_raw
         y = hy.v
         @fastmath begin
             $fast_cse_expr
-            return chain_rule_dual(FAST_MODE, hy, f, fᵧ, fᵧᵧ)
+            return chain_rule_dual(_fast_mode(hy), hy, f, fᵧ, fᵧᵧ)
+        end
+    end
+
+    @eval @inline function Base.FastMath.$fast_sym(
+            jx::Jet{N, M, T, S}, jy::Jet{N, M, T, S}
+        ) where {N, M, T, S}
+        x = jx.v
+        y = jy.v
+        @fastmath begin
+            $fast_cse_expr
+            return chain_rule_jet(_fast_mode(jx), jx, jy, f, fₓ, fᵧ, fₓₓ, fₓᵧ, fᵧᵧ)
+        end
+    end
+    @eval @inline function Base.FastMath.$fast_sym(
+            jx::Jet{N, M}, jy::Jet{N, M}
+        ) where {N, M}
+        return Base.FastMath.$fast_sym(promote(jx, jy)...)
+    end
+    @eval @inline function Base.FastMath.$fast_sym(
+            jx::Jet{N, M, T}, y_raw::Real
+        ) where {N, M, T}
+        y_raw isa Jet{N, M} && return Base.FastMath.$fast_sym(promote(jx, y_raw)...)
+        x = jx.v
+        y = y_raw
+        @fastmath begin
+            $fast_cse_expr
+            return chain_rule_jet(_fast_mode(jx), jx, f, fₓ, fₓₓ)
+        end
+    end
+    @eval @inline function Base.FastMath.$fast_sym(
+            x_raw::Real, jy::Jet{N, M, T}
+        ) where {N, M, T}
+        x_raw isa Jet{N, M} && return Base.FastMath.$fast_sym(promote(x_raw, jy)...)
+        x = x_raw
+        y = jy.v
+        @fastmath begin
+            $fast_cse_expr
+            return chain_rule_jet(_fast_mode(jy), jy, f, fᵧ, fᵧᵧ)
         end
     end
 end
