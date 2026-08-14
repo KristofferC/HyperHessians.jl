@@ -1,5 +1,10 @@
 # Slides
 
+This slide setup also exists as a standalone template repo —
+[github.com/KristofferC/deckmd](https://github.com/KristofferC/deckmd)
+([live demo](https://kristofferc.github.io/deckmd/)) — start new decks from
+there rather than copying files out of here.
+
 ## The loop
 
 ```
@@ -38,6 +43,7 @@ Slides are separated by `---`. Within a slide (colons after `@keys` optional):
 @keys <kbd>→</kbd> next             small footer line
 
 + stepped bullet (fragment)         - always-visible bullet
+  - nested bullet (indent a - or +)
   ~ muted sub-line for the bullet above
 
 **bold** *italic* `code` ==highlight==
@@ -49,6 +55,9 @@ $\varepsilon_1^2 = 0$ inline and $$ H_{ij} = \dots $$ display math (KaTeX)
 ?> caption text                     figure caption (after tables/figures)
 
 !big 4.39×                          giant number
+
+@gap                                vertical spacer (24px); @gap 40 or @gap 2em
+                                    for a specific size
 
 ```julia title="..." sub="..."      code card; also ```diff and ```julia>
 hessian!(H, f, x, cfg)  #!hl          #!hl spotlights a line
@@ -63,6 +72,7 @@ Layout containers:
 ```markdown
 ::: cols            two columns, split by  :: col  (or +++)
 ::: panel Title     boxed panel with an optional title
+::: fragment        click-to-reveal block (steps like a + bullet)
 :::                 closes a container
 ```
 
@@ -75,5 +85,15 @@ lines of plain Julia, so extending the syntax is fair game.
 
 `→`/`←` navigate (fragments step first), `f` fullscreen, `t` light/dark,
 `Home`/`End` jump, the URL hash deep-links a slide, and printing gives one
-slide per page (PDF export). `deck.html` + `data/` + `vendor/` is all you
+slide per page (PDF export). On touch screens: tap the right/left edge or
+swipe to navigate. `deck.html` + `data/` + `vendor/` is all you
 need on the presentation machine — no network.
+
+`julia slides/build.jl --pdf` emits **`deck.pdf`** (one slide per page, light
+theme, fragments shown) via headless Chrome — the scripted version of
+printing the deck from the browser.
+
+`julia slides/build.jl --single` additionally emits **`deck-single.html`**:
+the same deck with KaTeX, its fonts (woff2, as data: URIs), and the figure
+data all inlined — one ~700 KB file with no other requirements, for mailing
+or hosting anywhere.

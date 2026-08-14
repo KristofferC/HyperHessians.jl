@@ -67,6 +67,41 @@ let
     )
 end
 
+# ---- throughput per flop: HyperDual{n,n} vs nested Dual multiply ------------
+# From benchmark/mul_scaling.jl (benchmark/results/mulscale-*.tsv). Both layouts
+# carry (1+n)^2 floats and their product rules do the same 7n^2 + 6n + 1 flops,
+# so GFLOP/s differences are pure data layout / codegen.
+let
+    ns = 1:12
+    flops = [7n^2 + 6n + 1 for n in ns]
+    # ns per multiply, BenchmarkTools minimum, single core.
+    # "simd" is HyperDual with explicit SIMD.Vec arithmetic (simd = true).
+    m4_hh = [0.93, 0.92, 1.99, 2.51, 5.21, 6.39, 14.42, 17.36, 29.11, 41.88, 40.42, 54.04]
+    m4_simd = [0.93, 1.04, 2.04, 2.66, 4.99, 6.57, 14.36, 21.67, 32.69, 34.37, 43.24, 49.8]
+    m4_fd = [1.08, 1.36, 3.07, 4.32, 7.45, 9.38, 16.64, 25.43, 31.62, 36.46, 47.72, 54.62]
+    zen4_hh = [1.25, 9.4, 17.36, 9.02, 18.12, 20.03, 22.04, 17.02, 38.29, 31.37, 55.1, 43.53]
+    zen4_simd = [1.25, 2.12, 4.72, 5.34, 11.22, 12.44, 17.73, 16.6, 25.95, 28.91, 39.08, 40.1]
+    zen4_fd = [1.21, 9.46, 17.87, 10.36, 16.04, 23.96, 34.01, 53.55, 72.73, 63.46, 72.19, 92.97]
+    gf(ts) = [round(flops[i] / ts[i]; digits = 2) for i in eachindex(ts)]
+    series(hh, simd, fd) = """
+    [
+          { "name": "HyperDual{n,n}",         "color": "hh",   "gflops": $(jslist(gf(hh))) },
+          { "name": "HyperDual + SIMD.Vec",   "color": "simd", "gflops": $(jslist(gf(simd))) },
+          { "name": "nested Dual{Dual}",      "color": "fd8",  "gflops": $(jslist(gf(fd))) }
+        ]"""
+
+    write_js(
+        "mulflops.js", "mulflops", """
+        {
+          "n": $(jslist(collect(ns))),
+          "machines": [
+            { "name": "Apple M4 — 128-bit NEON", "series": $(series(m4_hh, m4_simd, m4_fd)) },
+            { "name": "AMD Zen 4 — AVX-512",     "series": $(series(zen4_hh, zen4_simd, zen4_fd)) }
+          ]
+        }"""
+    )
+end
+
 # ---- scaling line chart (deck slide: figure from a data file) ---------------
 # ackley full Hessian, benchmark/results/summary.md (arrowlake-s), times in µs.
 n = [2, 4, 8, 16, 32, 64, 128, 256]
@@ -83,5 +118,23 @@ write_js(
         { "name": "ForwardDiff",   "color": "fd8", "us": $(jslist(fd)) },
         { "name": "HyperHessians", "color": "hh",  "us": $(jslist(hh)) }
       ]
+    }"""
+)
+
+# ---- threaded Hessian scaling (deck slide: threaded Hessians) ---------------
+# ackley n = 512, Chunk{8}, Apple M4 Pro, julia -t N, BenchmarkTools minimum
+# in ms; serial = HessianConfig, threaded = ThreadedHessianConfig (ntasks = N).
+# Measured up to 14 threads; shown up to the 8 performance cores (beyond:
+# 10.93, 10.04, 9.7 ms at 10, 12, 14 — flat once the small cores join).
+threads = [1, 2, 4, 6, 8]
+tms = [78.82, 40.61, 19.77, 15.62, 10.49]
+
+write_js(
+    "threads.js", "threads", """
+    {
+      "func": "ackley", "n": 512, "chunk": 8,
+      "serial_ms": 83.69,
+      "threads": $(jslist(threads)),
+      "ms": $(jslist(tms))
     }"""
 )

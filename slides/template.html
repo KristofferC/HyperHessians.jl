@@ -20,6 +20,7 @@
     --s-hh: #2a78d6;
     --s-fd8: #eb6834;
     --s-fd12: #4a3aa7;
+    --s-simd: #116d47;
     --code-bg: #eef1f6;
     --code-ink: #303a4c;
     --code-cm: #7c8698;
@@ -47,6 +48,7 @@
       --s-hh: #3987e5;
       --s-fd8: #d95926;
       --s-fd12: #9085e9;
+      --s-simd: #279a63;
       --code-bg: #10151d;
       --code-ink: #c4cdda;
       --code-cm: #6b7688;
@@ -74,6 +76,7 @@
     --s-hh: #3987e5;
     --s-fd8: #d95926;
     --s-fd12: #9085e9;
+    --s-simd: #279a63;
     --code-bg: #10151d;
     --code-ink: #c4cdda;
     --code-cm: #6b7688;
@@ -90,7 +93,9 @@
 
   /* ---------- deck chrome ---------- */
   * { box-sizing: border-box; }
-  html, body { margin: 0; padding: 0; height: 100%; }
+  /* touch-action: keep pinch-zoom but drop the double-tap-zoom delay so
+     successive taps advance slides immediately */
+  html, body { margin: 0; padding: 0; height: 100%; touch-action: manipulation; }
   body {
     background: var(--paper);
     color: var(--ink);
@@ -119,7 +124,7 @@
 
   .slide {
     position: absolute; inset: 0;
-    padding: 58px 84px 64px;
+    padding: 20px 84px 64px;
     display: flex; flex-direction: column;
     opacity: 0; visibility: hidden;
     transition: opacity 0.22s ease;
@@ -137,9 +142,9 @@
   }
   #hud .bar { height: 100%; width: 0; background: var(--accent); transition: width 0.25s ease; }
   #counter {
-    position: fixed; right: 16px; bottom: 12px;
+    position: fixed; right: 18px; bottom: 14px;
     font-family: ui-monospace, "SF Mono", Menlo, monospace;
-    font-size: 12px; color: var(--faint);
+    font-size: 25px; color: var(--faint);
     user-select: none;
   }
 
@@ -168,16 +173,45 @@
   .body > * { flex-shrink: 0; }
 
   ul.points { list-style: none; margin: 0; padding: 0; font-size: 27px; line-height: 1.5; }
-  ul.points li { margin: 0 0 22px; padding-left: 34px; position: relative; }
+  ul.points li { margin: 0 0 0px; padding-left: 34px; position: relative; }
   ul.points li::before {
     content: ""; position: absolute; left: 4px; top: 15px;
     width: 11px; height: 11px; border-radius: 3px; background: var(--accent);
   }
   ul.points li b { font-weight: 700; }
   ul.points .sub { font-size: 21px; color: var(--muted); display: block; margin-top: 4px; }
+  /* nested bullets: indented `- `/`+ ` lines in slides.md */
+  ul.points ul.points { font-size: 0.85em; margin: 6px 0 2px; }
+  ul.points ul.points li { margin: 0 0 4px; padding-left: 28px; }
+  ul.points ul.points li::before { width: 8px; height: 8px; top: 11px; left: 6px; opacity: 0.6; }
+  .vgap { flex: 0 0 auto; }
+
+  /* theme-dependent images: pair a .light-only and .dark-only <img>, the
+     active theme shows one (mirrors the palette's three-state theme logic) */
+  .dark-only { display: none; }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) .light-only { display: none; }
+    :root:where(:not([data-theme="light"])) .dark-only { display: block; }
+  }
+  :root[data-theme="dark"] .light-only { display: none; }
+  :root[data-theme="dark"] .dark-only { display: block; }
+  img.fig { max-width: 100%; height: auto; }
+
+  /* QR code (@fig svg data/qr-slides.svg): always black-on-white so it scans
+     in dark mode too */
+  /* .slide prefix outranks the svg[aria-label] icon sizing rule below */
+  .slide svg.qr { width: 230px; height: 230px; border-radius: 12px; }
+  .slide.layout-title svg.qr { position: absolute; right: 48px; bottom: 40px; width: 200px; height: 200px; }
+  .slide.layout-center svg.qr { display: block; margin: 30px auto 0; width: 280px; height: 280px; }
   mark {
     background: var(--good-bg); color: var(--accent-ink);
     padding: 0.05em 0.25em; border-radius: 5px; font-weight: 650;
+  }
+  /* picked-config annotation under a table cell's speedup (benchmark tables) */
+  td .cfg {
+    display: block; font-size: 12px; font-weight: 400; margin-top: 1px;
+    color: var(--faint);
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
   }
 
   /* ---------- tiles (factor equation) ---------- */
@@ -227,7 +261,7 @@
   .legend { display: flex; gap: 26px; margin-bottom: 20px; }
   .legend span { display: inline-flex; align-items: center; gap: 8px; font-size: 17px; color: var(--muted); }
   .sw { width: 14px; height: 14px; border-radius: 4px; display: inline-block; }
-  .sw.hh { background: var(--s-hh); } .sw.fd8 { background: var(--s-fd8); } .sw.fd12 { background: var(--s-fd12); }
+  .sw.hh { background: var(--s-hh); } .sw.fd8 { background: var(--s-fd8); } .sw.fd12 { background: var(--s-fd12); } .sw.simd { background: var(--s-simd); }
   .bargroup { margin-bottom: 20px; }
   .bargroup:last-child { margin-bottom: 0; }
   .bargroup .g-label {
@@ -260,16 +294,22 @@
   .lane-strip { display: flex; flex-wrap: wrap; gap: 4px; row-gap: 8px; }
   .cellgroup { display: flex; gap: 1px; }
   .cell { width: 13px; height: 24px; border-radius: 2px; }
+  /* one hue per semantic role, shared by both number types:
+     gray value · blue gradient chunk 1 · green gradient chunk 2 · orange Hessian */
   .cell.v { background: var(--faint); }
-  .cell.e1 { background: var(--s-hh); opacity: 0.55; }
-  .cell.e2 { background: var(--s-hh); opacity: 0.8; }
-  .cell.e12 { background: var(--s-hh); }
+  .cell.e1 { background: var(--s-hh); }
+  .cell.e2 { background: var(--s-simd); }
+  .cell.e12 { background: var(--s-fd8); }
   .cell.iv { background: var(--faint); }
   .cell.ip { background: var(--s-fd8); }
   .cell.straggler { background: var(--s-fd8); opacity: 0.45; }
-  .cell.f1 { background: var(--s-fd8); opacity: 0.55; }
-  .cell.f2 { background: var(--s-fd8); opacity: 0.8; }
+  .cell.f1 { background: var(--s-hh); }
+  .cell.f2 { background: var(--s-simd); }
   .cell.f3 { background: var(--s-fd8); }
+  /* derivative-order coloring for the scalar-track figures:
+     blue = first derivative, orange = second */
+  .cell.d1 { background: var(--s-hh); }
+  .cell.d2 { background: var(--s-fd8); }
   .legend i.cell { width: 12px; height: 12px; display: inline-block; }
   .lane-strip.labeled { gap: 22px; align-items: flex-start; }
   .cellcol { display: flex; flex-direction: column; align-items: center; gap: 7px; }
@@ -418,7 +458,9 @@
 
 <script src="data/ops.js"></script>
 <script src="data/scaling.js"></script>
+<script src="data/threads.js"></script>
 <script src="data/fderr.js"></script>
+<script src="data/mulflops.js"></script>
 <script src="vendor/katex/katex.min.js"></script>
 <script src="vendor/katex/contrib/auto-render.min.js"></script>
 <script>
@@ -594,6 +636,129 @@ renderMathInElement(document.getElementById("deck"), {
   chart.innerHTML = svg;
 })();
 
+// thread-scaling chart (speedup vs threads) — from data/threads.js
+(function () {
+  const D = window.DECK_DATA && window.DECK_DATA.threads;
+  const chart = document.getElementById("threadschart");
+  if (!D || !chart) return;
+  const speedup = D.ms.map(t => D.serial_ms / t);
+  // sized to match its display width (see the slide's max-width) so the
+  // labels render at their nominal font size instead of being scaled down
+  const W = 760, H = 300, L = 64, R = 22, T = 16, B = 56;
+  const x1 = Math.max(...D.threads);
+  const ymax = Math.ceil(Math.max(...speedup)) + 1;
+  const X = t => L + (t - 1) / (x1 - 1) * (W - L - R);
+  const Y = s => T + (1 - s / ymax) * (H - T - B);
+
+  let svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%; height:auto; display:block;" ' +
+            'font-family="-apple-system, system-ui, sans-serif" font-size="15">';
+  // horizontal gridlines + labels
+  for (let s = 0; s <= ymax; s += 2) {
+    const y = Y(s);
+    svg += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y + '" y2="' + y +
+           '" stroke="var(--line)" stroke-width="1"/>';
+    svg += '<text x="' + (L - 10) + '" y="' + (y + 5) + '" text-anchor="end" fill="var(--faint)">' + s + '×</text>';
+  }
+  for (const t of D.threads) {
+    svg += '<text x="' + X(t) + '" y="' + (H - B + 26) + '" text-anchor="middle" fill="var(--faint)">' + t + '</text>';
+  }
+  svg += '<text x="' + ((L + W - R) / 2) + '" y="' + (H - 4) + '" text-anchor="middle" fill="var(--muted)">threads (ntasks)</text>';
+
+  // ideal linear scaling, clipped to the plot
+  const tid = Math.min(x1, ymax);
+  svg += '<line x1="' + X(1) + '" y1="' + Y(1) + '" x2="' + X(tid) + '" y2="' + Y(tid) +
+         '" stroke="var(--faint)" stroke-width="1.5" stroke-dasharray="5 5"/>';
+  const tl = 1 + (tid - 1) * 0.72;   // label partway along the line, clear of the edge
+  svg += '<text x="' + (X(tl) + 10) + '" y="' + (Y(tl) - 8) + '" fill="var(--faint)">ideal</text>';
+
+  // measured speedup: line + markers
+  const pts = D.threads.map((t, i) => X(t).toFixed(1) + "," + Y(speedup[i]).toFixed(1)).join(" ");
+  svg += '<polyline points="' + pts + '" fill="none" stroke="var(--s-hh)" stroke-width="3.5" ' +
+         'stroke-linejoin="round" stroke-linecap="round"/>';
+  D.threads.forEach(function (t, i) {
+    svg += '<circle cx="' + X(t) + '" cy="' + Y(speedup[i]) + '" r="5.5" fill="var(--s-hh)" ' +
+           'stroke="var(--panel)" stroke-width="2"><title>' + t + ' threads: ' +
+           speedup[i].toFixed(1) + '× (' + D.ms[i].toFixed(1) + ' ms)</title></circle>';
+  });
+  const last = D.threads.length - 1;
+  svg += '<text x="' + (X(D.threads[last]) - 12) + '" y="' + (Y(speedup[last]) - 12) +
+         '" text-anchor="end" font-weight="700" font-family="ui-monospace, Menlo, monospace" ' +
+         'fill="var(--accent-ink)">' + speedup[last].toFixed(1) + '×</text>';
+  svg += '</svg>';
+  chart.innerHTML = svg;
+})();
+
+// throughput-per-flop small multiples — from data/mulflops.js
+(function () {
+  const D = window.DECK_DATA && window.DECK_DATA.mulflops;
+  const legend = document.getElementById("mulflopslegend");
+  const chart = document.getElementById("mulflopschart");
+  if (!D || !legend || !chart) return;
+  const swatch = { hh: "var(--s-hh)", fd8: "var(--s-fd8)", simd: "var(--s-simd)" };
+  D.machines[0].series.forEach(function (s) {
+    const el = document.createElement("span");
+    el.innerHTML = '<i class="sw ' + s.color + '"></i>';
+    el.appendChild(document.createTextNode(s.name));
+    legend.appendChild(el);
+  });
+
+  const W = 1050, H = 330, T = 30, B = 46, L = 64, GAP = 52, R = 10;
+  const PW = (W - L - GAP - R) / 2;
+  const ymax = Math.ceil(Math.max(...D.machines.flatMap(m => m.series.flatMap(s => s.gflops))) / 10) * 10;
+  const n0 = D.n[0], n1 = D.n[D.n.length - 1];
+  const Y = g => T + (1 - g / ymax) * (H - T - B);
+
+  let svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%; height:auto; display:block;" ' +
+            'font-family="-apple-system, system-ui, sans-serif" font-size="15">';
+  svg += '<text transform="translate(16, ' + ((T + H - B) / 2) + ') rotate(-90)" text-anchor="middle" ' +
+         'fill="var(--muted)">GFLOP/s (one core)</text>';
+
+  D.machines.forEach(function (m, k) {
+    const PL = L + k * (PW + GAP);
+    const X = n => PL + (n - n0) / (n1 - n0) * PW;
+
+    for (let g = 0; g <= ymax; g += 10) {
+      svg += '<line x1="' + PL + '" x2="' + (PL + PW) + '" y1="' + Y(g) + '" y2="' + Y(g) +
+             '" stroke="var(--line)" stroke-width="1"/>';
+      if (k === 0)
+        svg += '<text x="' + (PL - 10) + '" y="' + (Y(g) + 5) + '" text-anchor="end" fill="var(--faint)">' + g + '</text>';
+    }
+    for (const n of D.n) {
+      svg += '<text x="' + X(n) + '" y="' + (H - B + 26) + '" text-anchor="middle" fill="var(--faint)">' + n + '</text>';
+    }
+    svg += '<text x="' + (PL + PW / 2) + '" y="' + (H - 4) + '" text-anchor="middle" fill="var(--muted)">n</text>';
+    svg += '<text x="' + PL + '" y="' + (T - 12) + '" font-weight="700" fill="var(--ink)">' + m.name + '</text>';
+
+    for (const s of m.series) {
+      const col = swatch[s.color] || "var(--accent)";
+      const pts = D.n.map((n, i) => X(n).toFixed(1) + "," + Y(s.gflops[i]).toFixed(1)).join(" ");
+      svg += '<polyline points="' + pts + '" fill="none" stroke="' + col + '" stroke-width="3" ' +
+             'stroke-linejoin="round" stroke-linecap="round"/>';
+      D.n.forEach(function (n, i) {
+        svg += '<circle cx="' + X(n) + '" cy="' + Y(s.gflops[i]) + '" r="5" fill="' + col +
+               '" stroke="var(--panel)" stroke-width="2"><title>' + m.name + ' · ' + s.name +
+               ' · n=' + n + ': ' + s.gflops[i] + ' GFLOP/s</title></circle>';
+      });
+    }
+
+    // computed annotation at the n with the largest best-HyperDual-over-nested
+    // ratio (the last series is the nested-Dual baseline)
+    const b = m.series[m.series.length - 1].gflops;
+    const a = D.n.map((_, i) => Math.max(...m.series.slice(0, -1).map(s => s.gflops[i])));
+    let mi = 0;
+    D.n.forEach(function (_, i) { if (a[i] / b[i] > a[mi] / b[mi]) mi = i; });
+    const xg = X(D.n[mi]), ratio = (a[mi] / b[mi]).toFixed(1);
+    svg += '<line x1="' + xg + '" x2="' + xg + '" y1="' + Y(a[mi]) + '" y2="' + Y(b[mi]) +
+           '" stroke="var(--faint)" stroke-width="1.5" stroke-dasharray="4 4"/>';
+    svg += '<text x="' + xg + '" y="' + (Y(a[mi]) - 12) + '" text-anchor="middle" ' +
+           'font-weight="700" font-family="ui-monospace, Menlo, monospace" ' +
+           'fill="var(--accent-ink)">' + ratio + '×</text>';
+  });
+
+  svg += '</svg>';
+  chart.innerHTML = svg;
+})();
+
 // block grids (slide 6)
 (function () {
   const fd = document.getElementById("grid-fd");
@@ -740,6 +905,29 @@ renderMathInElement(document.getElementById("deck"), {
       }
     }
   });
+
+  // touch: tap the right/left edge to advance/go back (fragments step first,
+  // like the arrow keys), or swipe horizontally; taps in the middle, on
+  // links, and on the copy buttons are left alone
+  let touchX = null, touchY = null;
+  document.addEventListener("touchstart", function (e) {
+    if (e.touches.length !== 1) { touchX = null; return; }
+    touchX = e.touches[0].clientX;
+    touchY = e.touches[0].clientY;
+  }, { passive: true });
+  document.addEventListener("touchend", function (e) {
+    if (touchX === null || e.changedTouches.length !== 1) return;
+    if (e.target.closest("a, button")) return;
+    const dx = e.changedTouches[0].clientX - touchX;
+    const dy = e.changedTouches[0].clientY - touchY;
+    touchX = null;
+    if (Math.abs(dx) > 45 && Math.abs(dx) > 1.5 * Math.abs(dy)) {   // swipe
+      if (dx < 0) next(); else prev();
+    } else if (Math.abs(dx) < 10 && Math.abs(dy) < 10) {            // tap
+      const x = e.changedTouches[0].clientX / window.innerWidth;
+      if (x > 0.6) next(); else if (x < 0.25) prev();
+    }
+  }, { passive: true });
 
   const fromHash = parseInt(location.hash.slice(1), 10);
   show(isFinite(fromHash) ? fromHash - 1 : 0);

@@ -1,6 +1,10 @@
 # Build slides/deck.html from slides/slides.md + slides/template.html.
 #
 #     julia slides/build.jl          # or: jld run slides/build.jl
+#     julia slides/build.jl --single # also emit deck-single.html: one file,
+#                                    # KaTeX + fonts + figure data all inlined
+#     julia slides/build.jl --pdf    # also emit deck.pdf (one slide per page,
+#                                    # light theme) via headless Chrome
 #
 # slides.md syntax
 # ----------------
@@ -13,6 +17,7 @@
 #   @keys html             small footer line (raw HTML allowed)
 #   - bullet               always-visible bullet        (ul.points)
 #   + bullet               stepped bullet (.fragment)
+#     - nested bullet      indented `- `/`+ ` = sub-list of the bullet above
 #     ~ sub line           muted sub-line for the bullet above
 #   **b** *i* `c` ==mark== inline formatting · [text](url) links
 #   :github: :mail:        inline icons (octicons, follow text color)
@@ -21,6 +26,7 @@
 #   ==2.3×==               table cell rendered as the accent .win column
 #   ?> text                figure caption (also directly after a table)
 #   !big 4.39×             giant number
+#   @gap [24 | 2em]        vertical spacer (bare number = px, default 24)
 #   ```julia title="..." sub="..." size="16"   code card (julia | julia> | diff |
 #                          anything); size overrides the 19px code font (px or any CSS unit)
 #   ```julia> | caption              REPL block; `lang | text` is title shorthand
@@ -29,16 +35,20 @@
 #   @pills good:a | bad:b | c        verdict pills, directly after a fence
 #   ::: panel [title] ... :::        panel box (optional title)
 #   ::: cols ... :::       columns, split by `:: col` (or `+++`) lines
+#   ::: fragment ... :::   click-to-reveal block (steps like a `+` bullet)
 #   ~~~ ... ~~~            raw HTML passthrough (escape hatch)
 #   <div ...>              a line starting with < is also passed through raw
 #   @fig lane-hh           generated figure (lane-hh | lane-fd | lane-hh4 |
 #                          lane-jet4 | lane-jet | lane-legend): memory-layout cell strips
+#   @fig svg data/foo.svg  inline an svg file from slides/ (e.g. the QR code)
 #   @fig cells v = value | e1*8 = gradient   ad-hoc strip: groups split by |,
 #                          cells are class[*count] tokens, optional = label;
 #                          also works mid-text (e.g. in a bullet) — then cells
 #                          shrink to text height and labels sit beside them;
 #                          bare @fig runs to end of line — use @fig{...} to
 #                          delimit it, e.g. two figs on one line
+
+using Base64: base64encode   # stdlib
 
 const DIR = @__DIR__
 
@@ -81,10 +91,11 @@ function inline_md(s::AbstractString)
     toks = String[]
     # inline figures: `@fig{...}` is delimited (several per line); a bare
     # `@fig ...` consumes the rest of the line (see render_figure_inline)
+    # code spans first: anything in backticks stays literal (incl. `@fig ...`)
+    s = stash(s, r"`([^`]+)`", toks, m -> "<code>" * escape_html(m.captures[1]) * "</code>")
     s = stash(s, r"@fig\{([^{}]*)\}", toks, m -> render_figure_inline(strip(m.captures[1])))
     s = stash(s, r"@fig:?\s+(.+)$", toks, m -> render_figure_inline(strip(m.captures[1])))
     s = stash(s, r":(github|mail):", toks, m -> icon_svg(m.captures[1]))
-    s = stash(s, r"`([^`]+)`", toks, m -> "<code>" * escape_html(m.captures[1]) * "</code>")
     # LaTeX math passes through untouched (KaTeX renders it in the browser)
     s = stash(s, r"\$\$.+?\$\$", toks, m -> escape_html(m.match))
     s = stash(s, r"\$[^\$\s](?:[^\$]*[^\$\s])?\$", toks, m -> escape_html(m.match))
@@ -325,16 +336,20 @@ end
 function render_figure(name)
     cell(c) = "<div class=\"cell " * c * "\"></div>"
     group(cs) = "<div class=\"cellgroup\">" * join(cell.(cs)) * "</div>"
+    # @fig svg data/foo.svg — inline an svg file (stays self-contained in
+    # the --single build; e.g. the QR code from data/qr-slides.svg)
+    if (sm = match(r"^svg\s+(\S+)$", name)) !== nothing
+        return read(joinpath(DIR, split(String(sm.captures[1]), '/')...), String)
+    end
     if name == "lane-legend"
         items = [
-            ("value", "v", "v"),
-            ("gradient chunk 1 (8)", "e1", "f1"),
-            ("gradient chunk 2 (8)", "e2", "f2"),
-            ("Hessian block (8×8)", "e12", "f3"),
+            ("value", "v"),
+            ("gradient chunk 1 (8)", "e1"),
+            ("gradient chunk 2 (8)", "e2"),
+            ("Hessian block (8×8)", "e12"),
         ]
-        spans = map(items) do (label, chh, cfd)
-            "<span><i class=\"cell " * chh * "\"></i><i class=\"cell " * cfd *
-                "\"></i> " * escape_html(label) * "</span>"
+        spans = map(items) do (label, c)
+            "<span><i class=\"cell " * c * "\"></i> " * escape_html(label) * "</span>"
         end
         return "<div class=\"legend\">\n" * join(spans, "\n") * "\n</div>"
     end
@@ -413,10 +428,16 @@ function render_table(rows, caption)
 end
 
 function render_list(items)
-    lis = map(items) do (frag, text, sub)
+    lis = map(items) do (frag, text, sub, kids)
         s = frag ? "<li class=\"fragment\">" : "<li>"
         s *= inline_md(text)
         sub !== nothing && (s *= "\n    <span class=\"sub\">" * inline_md(sub) * "</span>")
+        if !isempty(kids)
+            kl = map(kids) do (kfrag, ktext)
+                (kfrag ? "<li class=\"fragment\">" : "<li>") * inline_md(ktext) * "</li>"
+            end
+            s *= "\n    <ul class=\"points\">\n    " * join(kl, "\n    ") * "\n    </ul>"
+        end
         s * "</li>"
     end
     return "<ul class=\"points\">\n" * join(lis, "\n") * "\n</ul>"
@@ -479,7 +500,7 @@ function render_content(lines)
         elseif (cm = match(r"^:::\s*(\w+)\s*(.*)$", st)) !== nothing
             name = cm.captures[1]
             extra = strip(cm.captures[2])
-            name in ("cols", "panel") || error("unknown container ::: $name")
+            name in ("cols", "panel", "fragment") || error("unknown container ::: $name")
             depth = 1
             j = i + 1
             buf = String[]
@@ -514,6 +535,8 @@ function render_content(lines)
                 length(parts) > 1 && all(isempty ∘ strip, parts[1]) && popfirst!(parts)
                 cells = ["<div>\n" * render_content(p) * "\n</div>" for p in parts]
                 push!(out, "<div class=\"cols\">\n" * join(cells, "\n") * "\n</div>")
+            elseif name == "fragment"
+                push!(out, "<div class=\"fragment\">\n" * render_content(buf) * "\n</div>")
             elseif isempty(extra)
                 push!(out, "<div class=\"panel\">\n" * render_content(buf) * "\n</div>")
             else
@@ -547,8 +570,11 @@ function render_content(lines)
             items = Vector{Any}[]
             while i <= n
                 s2 = strip(lines[i])
-                if startswith(s2, "- ") || startswith(s2, "+ ")
-                    push!(items, Any[startswith(s2, "+ "), strip(s2[3:end]), nothing])
+                indented = startswith(lines[i], " ")   # nested: indented `- `/`+ `
+                if (startswith(s2, "- ") || startswith(s2, "+ ")) && indented && !isempty(items)
+                    push!(items[end][4], (startswith(s2, "+ "), strip(s2[3:end])))
+                elseif startswith(s2, "- ") || startswith(s2, "+ ")
+                    push!(items, Any[startswith(s2, "+ "), strip(s2[3:end]), nothing, Any[]])
                 elseif startswith(s2, "~ ") && !isempty(items)
                     items[end][3] = strip(s2[3:end])
                 else
@@ -556,7 +582,13 @@ function render_content(lines)
                 end
                 i += 1
             end
-            push!(out, render_list([(a, b, c) for (a, b, c) in items]))
+            push!(out, render_list([(a, b, c, d) for (a, b, c, d) in items]))
+        elseif (gm = match(r"^@gap:?\s*(\S+)?\s*$", st)) !== nothing
+            h = gm.captures[1] === nothing ? "24px" :
+                occursin(r"^[\d.]+$", gm.captures[1]) ? gm.captures[1] * "px" :
+                String(gm.captures[1])
+            push!(out, "<div class=\"vgap\" style=\"height: " * escape_html(h) * "\"></div>")
+            i += 1
         elseif (fm = match(r"^@fig:?\s+(.+?)\s*$", st)) !== nothing
             push!(out, render_figure(String(fm.captures[1])))
             i += 1
@@ -667,9 +699,48 @@ function split_slides(src)
     return [s for s in slides if !isempty(strip(s))]
 end
 
+# ---------------- single-file build ----------------
+
+# Inline everything deck.html references (KaTeX css + its woff2 fonts, the
+# KaTeX js, the data/*.js figure data) so the whole deck is one file that can
+# be mailed or dropped on any static host. Fonts become data: URIs; the
+# woff/ttf fallbacks are dropped (every current browser takes woff2).
+function inline_assets(html)
+    css = read(joinpath(DIR, "vendor", "katex", "katex.min.css"), String)
+    css = replace(
+        css, r"src:url\(fonts/([^)]+\.woff2)\) format\(\"woff2\"\)[^;}]*" => m -> begin
+            file = match(r"fonts/([^)]+\.woff2)", m).captures[1]
+            data = base64encode(read(joinpath(DIR, "vendor", "katex", "fonts", file)))
+            "src:url(data:font/woff2;base64," * data * ") format(\"woff2\")"
+        end
+    )
+    html = replace(
+        html, "<link rel=\"stylesheet\" href=\"vendor/katex/katex.min.css\">" =>
+            "<style>\n" * css * "\n</style>"
+    )
+    # scripts are synchronous and in document order, so inlining them in
+    # place preserves execution order exactly
+    html = replace(
+        html, r"<script src=\"([^\"]+)\"></script>" => m -> begin
+            src = match(r"\"([^\"]+)\"", m).captures[1]
+            "<script>\n" * read(joinpath(DIR, split(src, '/')...), String) * "</script>"
+        end
+    )
+    # local images become data: URIs
+    mime(f) = endswith(f, ".png") ? "image/png" : endswith(f, ".webp") ? "image/webp" :
+        endswith(f, ".svg") ? "image/svg+xml" : "image/jpeg"
+    return replace(
+        html, r"src=\"((?:data|gslides)/[^\"]+\.(?:png|webp|jpe?g|svg))\"" => m -> begin
+            src = match(r"\"([^\"]+)\"", m).captures[1]
+            data = base64encode(read(joinpath(DIR, split(src, '/')...)))
+            "src=\"data:" * mime(src) * ";base64," * data * "\""
+        end
+    )
+end
+
 # ---------------- main ----------------
 
-function build()
+function build(; single::Bool = false)
     md = read(joinpath(DIR, "slides.md"), String)
     template = read(joinpath(DIR, "template.html"), String)
     slides = split_slides(md)
@@ -684,9 +755,39 @@ function build()
     out = replace(template, "<!-- {{SLIDES}} -->" => html)
     banner = "<!-- GENERATED from slides/slides.md by slides/build.jl — do not edit by hand. -->\n"
     out = replace(out, "<!doctype html>\n" => "<!doctype html>\n" * banner; count = 1)
-    write(joinpath(DIR, "deck.html"), out)
-    return println("deck.html rebuilt: ", length(slides), " slides")
+    single && (out = inline_assets(out))
+    name = single ? "deck-single.html" : "deck.html"
+    write(joinpath(DIR, name), out)
+    return println(name, " rebuilt: ", length(slides), " slides")
+end
+
+# ---------------- pdf export ----------------
+
+# One slide per page via the @media print rules; headless Chrome resolves the
+# light theme (no dark preference), which is the right look for a handout.
+function build_pdf()
+    candidates = [
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        "/Applications/Chromium.app/Contents/MacOS/Chromium",
+        "google-chrome", "chromium", "chromium-browser",
+    ]
+    i = findfirst(c -> isabspath(c) ? isfile(c) : Sys.which(c) !== nothing, candidates)
+    i === nothing && error("PDF export needs Chrome or Chromium")
+    chrome = isabspath(candidates[i]) ? candidates[i] : Sys.which(candidates[i])
+    pdf = joinpath(DIR, "deck.pdf")
+    url = "file://" * joinpath(DIR, "deck.html")
+    run(
+        pipeline(
+            `$chrome --headless --disable-gpu --no-pdf-header-footer --print-to-pdf=$pdf $url`;
+            stdout = devnull, stderr = devnull
+        )
+    )
+    return println("deck.pdf rebuilt: ", round(Int, filesize(pdf) / 1024), " KB")
 end
 
 # serve.jl includes this file to get build() without triggering a build here
-get(ENV, "SLIDES_NO_AUTOBUILD", "") == "1" || build()
+if get(ENV, "SLIDES_NO_AUTOBUILD", "") != "1"
+    build()
+    "--single" in ARGS && build(single = true)
+    "--pdf" in ARGS && build_pdf()
+end

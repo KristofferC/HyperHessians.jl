@@ -1,0 +1,3635 @@
+[meta]
+arch = "x86_64"
+bench_seconds = 1.0
+blas_threads = 1
+cpu = "AMD EPYC 9354 32-Core Processor"
+date = "2026-08-08 13:41"
+differentiationinterface_version = "0.7.21"
+forwarddiff_version = "1.4.5"
+host = "demeter6"
+hyperhessians_rev = "0.3.0 @ fc3cd80+dirty"
+julia = "1.12.6"
+nthreads = 1
+os = "Linux"
+pick_seconds = 0.25
+
+[[results]]
+check_passed = true
+func = "ackley"
+n = 4
+op = "hessian"
+speedup = 2.470708065587264
+
+    [results.fd]
+    chunk = 4
+    config = "AutoForwardDiff(chunksize = 4)"
+    time = 2.731460317460317e-7
+
+        [[results.fd.sweep]]
+        chunk = 1
+        kind = "chunk"
+        simd = false
+        time = 1.394e-6
+        [[results.fd.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = false
+        time = 6.096609195402299e-7
+        [[results.fd.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = false
+        time = 7.837961165048543e-7
+        [[results.fd.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = false
+        time = 2.8641528239202657e-7
+
+    [results.hh]
+    chunk = 4
+    config = "HyperHessians.HessianConfig(x, HyperHessians.Jet; simd = true)"
+    kind = "jet"
+    simd = true
+    time = 1.1055374592833875e-7
+
+        [[results.hh.sweep]]
+        chunk = 1
+        kind = "chunk"
+        simd = false
+        time = 6.746516129032257e-7
+        [[results.hh.sweep]]
+        chunk = 1
+        kind = "chunk"
+        simd = true
+        time = 6.765e-7
+        [[results.hh.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = false
+        time = 3.392522123893805e-7
+        [[results.hh.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = true
+        time = 3.04859437751004e-7
+        [[results.hh.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = false
+        time = 4.0365499999999997e-7
+        [[results.hh.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = true
+        time = 4.00205e-7
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = false
+        time = 1.560452261306533e-7
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = true
+        time = 1.1468518518518519e-7
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "jet"
+        simd = false
+        time = 1.360586206896552e-7
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "jet"
+        simd = true
+        time = 1.1201414581066376e-7
+[[results]]
+check_passed = true
+func = "ackley"
+n = 16
+op = "hessian"
+speedup = 2.30886372510738
+
+    [results.fd]
+    chunk = 16
+    config = "AutoForwardDiff(chunksize = 16)"
+    time = 6.57e-6
+
+        [[results.fd.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = false
+        time = 1.918e-5
+        [[results.fd.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = false
+        time = 1.098e-5
+        [[results.fd.sweep]]
+        chunk = 6
+        kind = "chunk"
+        simd = false
+        time = 9.84e-6
+        [[results.fd.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = false
+        time = 7.9525e-6
+        [[results.fd.sweep]]
+        chunk = 12
+        kind = "chunk"
+        simd = false
+        time = 1.389e-5
+        [[results.fd.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = false
+        time = 6.51e-6
+
+    [results.hh]
+    chunk = 16
+    config = "HyperHessians.HessianConfig(x, HyperHessians.Jet)"
+    kind = "jet"
+    simd = false
+    time = 2.8455555555555555e-6
+
+        [[results.hh.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = false
+        time = 9.45e-6
+        [[results.hh.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = true
+        time = 8.84e-6
+        [[results.hh.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = false
+        time = 7.385e-6
+        [[results.hh.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = true
+        time = 7.505e-6
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = false
+        time = 4.888571428571428e-6
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = true
+        time = 3.6475e-6
+        [[results.hh.sweep]]
+        chunk = 6
+        kind = "chunk"
+        simd = false
+        time = 4.86e-6
+        [[results.hh.sweep]]
+        chunk = 6
+        kind = "chunk"
+        simd = true
+        time = 5.073333333333333e-6
+        [[results.hh.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = false
+        time = 3.32625e-6
+        [[results.hh.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = true
+        time = 3.26375e-6
+        [[results.hh.sweep]]
+        chunk = 12
+        kind = "chunk"
+        simd = false
+        time = 5.921666666666667e-6
+        [[results.hh.sweep]]
+        chunk = 12
+        kind = "chunk"
+        simd = true
+        time = 1.158e-5
+        [[results.hh.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = false
+        time = 1.038e-5
+        [[results.hh.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = true
+        time = 2.7566666666666664e-6
+        [[results.hh.sweep]]
+        chunk = 16
+        kind = "jet"
+        simd = false
+        time = 2.7477777777777778e-6
+[[results]]
+check_passed = true
+func = "ackley"
+n = 64
+op = "hessian"
+speedup = 2.8594844170834937
+
+    [results.fd]
+    chunk = 11
+    config = "AutoForwardDiff(chunksize = 11)"
+    time = 0.000297272
+
+        [[results.fd.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = false
+        time = 0.000578014
+        [[results.fd.sweep]]
+        chunk = 6
+        kind = "chunk"
+        simd = false
+        time = 0.000416843
+        [[results.fd.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = false
+        time = 0.000368183
+        [[results.fd.sweep]]
+        chunk = 10
+        kind = "chunk"
+        simd = false
+        time = 0.000380693
+        [[results.fd.sweep]]
+        chunk = 11
+        kind = "chunk"
+        simd = false
+        time = 0.000298183
+        [[results.fd.sweep]]
+        chunk = 12
+        kind = "chunk"
+        simd = false
+        time = 0.000398433
+        [[results.fd.sweep]]
+        chunk = 13
+        kind = "chunk"
+        simd = false
+        time = 0.000333132
+        [[results.fd.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = false
+        time = 0.000311212
+
+    [results.hh]
+    chunk = 16
+    config = "HyperHessians.HessianConfig(x, HyperHessians.Chunk{16}(); simd = true)"
+    kind = "chunk"
+    simd = true
+    time = 0.00010396
+
+        [[results.hh.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = false
+        time = 0.000477473
+        [[results.hh.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = true
+        time = 0.000460413
+        [[results.hh.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = false
+        time = 0.000305313
+        [[results.hh.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = true
+        time = 0.000305482
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = false
+        time = 0.000217112
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = true
+        time = 0.000156971
+        [[results.hh.sweep]]
+        chunk = 6
+        kind = "chunk"
+        simd = false
+        time = 0.000165841
+        [[results.hh.sweep]]
+        chunk = 6
+        kind = "chunk"
+        simd = true
+        time = 0.000176061
+        [[results.hh.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = false
+        time = 0.00011123
+        [[results.hh.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = true
+        time = 0.000106501
+        [[results.hh.sweep]]
+        chunk = 12
+        kind = "chunk"
+        simd = false
+        time = 0.000125501
+        [[results.hh.sweep]]
+        chunk = 12
+        kind = "chunk"
+        simd = true
+        time = 0.000281682
+        [[results.hh.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = false
+        time = 0.000395983
+        [[results.hh.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = true
+        time = 0.000103941
+[[results]]
+check_passed = true
+func = "ackley"
+n = 256
+op = "hessian"
+speedup = 3.610287429787419
+
+    [results.fd]
+    chunk = 16
+    config = "AutoForwardDiff(chunksize = 16)"
+    time = 0.018151684
+
+        [[results.fd.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = false
+        time = 0.035258121
+        [[results.fd.sweep]]
+        chunk = 6
+        kind = "chunk"
+        simd = false
+        time = 0.023453084
+        [[results.fd.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = false
+        time = 0.020675593
+        [[results.fd.sweep]]
+        chunk = 12
+        kind = "chunk"
+        simd = false
+        time = 0.019014661
+        [[results.fd.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = false
+        time = 0.017888743
+
+    [results.hh]
+    chunk = 16
+    config = "HyperHessians.HessianConfig(x, HyperHessians.Chunk{16}(); simd = true)"
+    kind = "chunk"
+    simd = true
+    time = 0.005027767
+
+        [[results.hh.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = false
+        time = 0.028752793
+        [[results.hh.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = true
+        time = 0.027746656
+        [[results.hh.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = false
+        time = 0.017243588
+        [[results.hh.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = true
+        time = 0.017765212
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = false
+        time = 0.012999496
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = true
+        time = 0.009046177
+        [[results.hh.sweep]]
+        chunk = 6
+        kind = "chunk"
+        simd = false
+        time = 0.008895666
+        [[results.hh.sweep]]
+        chunk = 6
+        kind = "chunk"
+        simd = true
+        time = 0.00947056
+        [[results.hh.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = false
+        time = 0.005883594
+        [[results.hh.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = true
+        time = 0.005597292
+        [[results.hh.sweep]]
+        chunk = 12
+        kind = "chunk"
+        simd = false
+        time = 0.00543228
+        [[results.hh.sweep]]
+        chunk = 12
+        kind = "chunk"
+        simd = true
+        time = 0.013001096
+        [[results.hh.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = false
+        time = 0.020519313
+        [[results.hh.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = true
+        time = 0.004943337
+[[results]]
+check_passed = true
+func = "rosenbrock"
+n = 4
+op = "hessian"
+speedup = 4.266856137175412
+
+    [results.fd]
+    chunk = 4
+    config = "AutoForwardDiff(chunksize = 4)"
+    time = 2.2036037735849056e-7
+
+        [[results.fd.sweep]]
+        chunk = 1
+        kind = "chunk"
+        simd = false
+        time = 7.341985294117648e-7
+        [[results.fd.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = false
+        time = 3.500047846889952e-7
+        [[results.fd.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = false
+        time = 4.901589743589744e-7
+        [[results.fd.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = false
+        time = 2.321361788617886e-7
+
+    [results.hh]
+    chunk = 4
+    config = "HyperHessians.HessianConfig(x, HyperHessians.Chunk{4}(); simd = true)"
+    kind = "chunk"
+    simd = true
+    time = 5.164467005076142e-8
+
+        [[results.hh.sweep]]
+        chunk = 1
+        kind = "chunk"
+        simd = false
+        time = 2.489122340425532e-7
+        [[results.hh.sweep]]
+        chunk = 1
+        kind = "chunk"
+        simd = true
+        time = 2.4753886010362696e-7
+        [[results.hh.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = false
+        time = 1.9646103896103896e-7
+        [[results.hh.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = true
+        time = 1.5216503667481663e-7
+        [[results.hh.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = false
+        time = 2.7928057553956837e-7
+        [[results.hh.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = true
+        time = 2.0827454545454546e-7
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = false
+        time = 1.3414776632302405e-7
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = true
+        time = 5.4105691056910574e-8
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "jet"
+        simd = false
+        time = 1.2841863075196407e-7
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "jet"
+        simd = true
+        time = 8.992767295597484e-8
+[[results]]
+check_passed = true
+func = "rosenbrock"
+n = 16
+op = "hessian"
+speedup = 2.90161662817552
+
+    [results.fd]
+    chunk = 16
+    config = "AutoForwardDiff(chunksize = 16)"
+    time = 6.98e-6
+
+        [[results.fd.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = false
+        time = 1.374e-5
+        [[results.fd.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = false
+        time = 1.144e-5
+        [[results.fd.sweep]]
+        chunk = 6
+        kind = "chunk"
+        simd = false
+        time = 1.0581e-5
+        [[results.fd.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = false
+        time = 9.88e-6
+        [[results.fd.sweep]]
+        chunk = 12
+        kind = "chunk"
+        simd = false
+        time = 1.952e-5
+        [[results.fd.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = false
+        time = 7.18275e-6
+
+    [results.hh]
+    chunk = 4
+    config = "HyperHessians.HessianConfig(x, HyperHessians.Chunk{4}(); simd = true)"
+    kind = "chunk"
+    simd = true
+    time = 2.4055555555555555e-6
+
+        [[results.hh.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = false
+        time = 6.606e-6
+        [[results.hh.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = true
+        time = 4.897142857142857e-6
+        [[results.hh.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = false
+        time = 6.95775e-6
+        [[results.hh.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = true
+        time = 4.527285714285715e-6
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = false
+        time = 6.24e-6
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = true
+        time = 2.404444444444444e-6
+        [[results.hh.sweep]]
+        chunk = 6
+        kind = "chunk"
+        simd = false
+        time = 6.39e-6
+        [[results.hh.sweep]]
+        chunk = 6
+        kind = "chunk"
+        simd = true
+        time = 3.9685714285714284e-6
+        [[results.hh.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = false
+        time = 4.2142857142857145e-6
+        [[results.hh.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = true
+        time = 2.697777777777778e-6
+        [[results.hh.sweep]]
+        chunk = 12
+        kind = "chunk"
+        simd = false
+        time = 6.624e-6
+        [[results.hh.sweep]]
+        chunk = 12
+        kind = "chunk"
+        simd = true
+        time = 6.151666666666667e-6
+        [[results.hh.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = false
+        time = 1.347e-5
+        [[results.hh.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = true
+        time = 2.7244444444444445e-6
+        [[results.hh.sweep]]
+        chunk = 16
+        kind = "jet"
+        simd = false
+        time = 4.3e-6
+[[results]]
+check_passed = true
+func = "rosenbrock"
+n = 64
+op = "hessian"
+speedup = 4.113590965394873
+
+    [results.fd]
+    chunk = 16
+    config = "AutoForwardDiff(chunksize = 16)"
+    time = 0.000368623
+
+        [[results.fd.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = false
+        time = 0.000650645
+        [[results.fd.sweep]]
+        chunk = 6
+        kind = "chunk"
+        simd = false
+        time = 0.000503454
+        [[results.fd.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = false
+        time = 0.000523973
+        [[results.fd.sweep]]
+        chunk = 10
+        kind = "chunk"
+        simd = false
+        time = 0.000646405
+        [[results.fd.sweep]]
+        chunk = 11
+        kind = "chunk"
+        simd = false
+        time = 0.000500944
+        [[results.fd.sweep]]
+        chunk = 12
+        kind = "chunk"
+        simd = false
+        time = 0.000650915
+        [[results.fd.sweep]]
+        chunk = 13
+        kind = "chunk"
+        simd = false
+        time = 0.000562915
+        [[results.fd.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = false
+        time = 0.000368453
+
+    [results.hh]
+    chunk = 8
+    config = "HyperHessians.HessianConfig(x, HyperHessians.Chunk{8}(); simd = true)"
+    kind = "chunk"
+    simd = true
+    time = 8.9611e-5
+
+        [[results.hh.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = false
+        time = 0.000356093
+        [[results.hh.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = true
+        time = 0.000231281
+        [[results.hh.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = false
+        time = 0.000312702
+        [[results.hh.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = true
+        time = 0.000191511
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = false
+        time = 0.000319862
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = true
+        time = 0.000101341
+        [[results.hh.sweep]]
+        chunk = 6
+        kind = "chunk"
+        simd = false
+        time = 0.000254702
+        [[results.hh.sweep]]
+        chunk = 6
+        kind = "chunk"
+        simd = true
+        time = 0.000145371
+        [[results.hh.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = false
+        time = 0.000168971
+        [[results.hh.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = true
+        time = 8.7881e-5
+        [[results.hh.sweep]]
+        chunk = 12
+        kind = "chunk"
+        simd = false
+        time = 0.000157951
+        [[results.hh.sweep]]
+        chunk = 12
+        kind = "chunk"
+        simd = true
+        time = 0.000143141
+        [[results.hh.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = false
+        time = 0.000569615
+        [[results.hh.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = true
+        time = 0.000102161
+[[results]]
+check_passed = true
+func = "rosenbrock"
+n = 256
+op = "hessian"
+speedup = 4.850829051769481
+
+    [results.fd]
+    chunk = 16
+    config = "AutoForwardDiff(chunksize = 16)"
+    time = 0.022521303
+
+        [[results.fd.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = false
+        time = 0.040720044
+        [[results.fd.sweep]]
+        chunk = 6
+        kind = "chunk"
+        simd = false
+        time = 0.029575073
+        [[results.fd.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = false
+        time = 0.031176645
+        [[results.fd.sweep]]
+        chunk = 12
+        kind = "chunk"
+        simd = false
+        time = 0.033520743
+        [[results.fd.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = false
+        time = 0.022816155
+
+    [results.hh]
+    chunk = 8
+    config = "HyperHessians.HessianConfig(x, HyperHessians.Chunk{8}(); simd = true)"
+    kind = "chunk"
+    simd = true
+    time = 0.004642774
+
+        [[results.hh.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = false
+        time = 0.021987399
+        [[results.hh.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = true
+        time = 0.01375615
+        [[results.hh.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = false
+        time = 0.018359464
+        [[results.hh.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = true
+        time = 0.010969279
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = false
+        time = 0.019500662
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = true
+        time = 0.005868942
+        [[results.hh.sweep]]
+        chunk = 6
+        kind = "chunk"
+        simd = false
+        time = 0.014228733
+        [[results.hh.sweep]]
+        chunk = 6
+        kind = "chunk"
+        simd = true
+        time = 0.007963547
+        [[results.hh.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = false
+        time = 0.009491989
+        [[results.hh.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = true
+        time = 0.004627933
+        [[results.hh.sweep]]
+        chunk = 12
+        kind = "chunk"
+        simd = false
+        time = 0.007204753
+        [[results.hh.sweep]]
+        chunk = 12
+        kind = "chunk"
+        simd = true
+        time = 0.006371266
+        [[results.hh.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = false
+        time = 0.030806243
+        [[results.hh.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = true
+        time = 0.004835115
+[[results]]
+check_passed = true
+func = "logsumexp"
+n = 4
+op = "hessian"
+speedup = 1.9837877287491086
+
+    [results.fd]
+    chunk = 4
+    config = "AutoForwardDiff(chunksize = 4)"
+    time = 1.5853974358974358e-7
+
+        [[results.fd.sweep]]
+        chunk = 1
+        kind = "chunk"
+        simd = false
+        time = 1.137e-6
+        [[results.fd.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = false
+        time = 4.1054455445544556e-7
+        [[results.fd.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = false
+        time = 4.646700507614213e-7
+        [[results.fd.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = false
+        time = 1.5789079754601226e-7
+
+    [results.hh]
+    chunk = 4
+    config = "HyperHessians.HessianConfig(x, HyperHessians.Chunk{4}())"
+    kind = "chunk"
+    simd = false
+    time = 7.991769547325103e-8
+
+        [[results.hh.sweep]]
+        chunk = 1
+        kind = "chunk"
+        simd = false
+        time = 5.168947368421053e-7
+        [[results.hh.sweep]]
+        chunk = 1
+        kind = "chunk"
+        simd = true
+        time = 5.152331606217616e-7
+        [[results.hh.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = false
+        time = 2.2942130750605327e-7
+        [[results.hh.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = true
+        time = 2.2686991869918699e-7
+        [[results.hh.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = false
+        time = 2.9756400000000003e-7
+        [[results.hh.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = true
+        time = 4.414972375690608e-7
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = false
+        time = 7.367662203913492e-8
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = true
+        time = 1.1346315789473684e-7
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "jet"
+        simd = false
+        time = 7.677089783281734e-8
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "jet"
+        simd = true
+        time = 8.048755186721992e-8
+[[results]]
+check_passed = true
+func = "logsumexp"
+n = 16
+op = "hessian"
+speedup = 1.816691304932133
+
+    [results.fd]
+    chunk = 16
+    config = "AutoForwardDiff(chunksize = 16)"
+    time = 4.291428571428571e-6
+
+        [[results.fd.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = false
+        time = 9.97e-6
+        [[results.fd.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = false
+        time = 5.315e-6
+        [[results.fd.sweep]]
+        chunk = 6
+        kind = "chunk"
+        simd = false
+        time = 5.87e-6
+        [[results.fd.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = false
+        time = 7.278e-6
+        [[results.fd.sweep]]
+        chunk = 12
+        kind = "chunk"
+        simd = false
+        time = 9.581e-6
+        [[results.fd.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = false
+        time = 4.378571428571429e-6
+
+    [results.hh]
+    chunk = 16
+    config = "HyperHessians.HessianConfig(x, HyperHessians.Jet)"
+    kind = "jet"
+    simd = false
+    time = 2.362222222222222e-6
+
+        [[results.hh.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = false
+        time = 5.505e-6
+        [[results.hh.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = true
+        time = 5.8342e-6
+        [[results.hh.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = false
+        time = 5.776666666666667e-6
+        [[results.hh.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = true
+        time = 8.751e-6
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = false
+        time = 2.6233333333333333e-6
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = true
+        time = 3.805e-6
+        [[results.hh.sweep]]
+        chunk = 6
+        kind = "chunk"
+        simd = false
+        time = 3.185e-6
+        [[results.hh.sweep]]
+        chunk = 6
+        kind = "chunk"
+        simd = true
+        time = 5.918571428571428e-6
+        [[results.hh.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = false
+        time = 3.58125e-6
+        [[results.hh.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = true
+        time = 3.32375e-6
+        [[results.hh.sweep]]
+        chunk = 12
+        kind = "chunk"
+        simd = false
+        time = 6.418e-6
+        [[results.hh.sweep]]
+        chunk = 12
+        kind = "chunk"
+        simd = true
+        time = 5.715e-6
+        [[results.hh.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = false
+        time = 5.938e-6
+        [[results.hh.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = true
+        time = 2.6155555555555556e-6
+        [[results.hh.sweep]]
+        chunk = 16
+        kind = "jet"
+        simd = false
+        time = 2.2033333333333336e-6
+[[results]]
+check_passed = true
+func = "logsumexp"
+n = 64
+op = "hessian"
+speedup = 1.9039916405433648
+
+    [results.fd]
+    chunk = 16
+    config = "AutoForwardDiff(chunksize = 16)"
+    time = 0.000182212
+
+        [[results.fd.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = false
+        time = 0.000213151
+        [[results.fd.sweep]]
+        chunk = 6
+        kind = "chunk"
+        simd = false
+        time = 0.000218061
+        [[results.fd.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = false
+        time = 0.000266912
+        [[results.fd.sweep]]
+        chunk = 10
+        kind = "chunk"
+        simd = false
+        time = 0.000256172
+        [[results.fd.sweep]]
+        chunk = 11
+        kind = "chunk"
+        simd = false
+        time = 0.000238751
+        [[results.fd.sweep]]
+        chunk = 12
+        kind = "chunk"
+        simd = false
+        time = 0.000255212
+        [[results.fd.sweep]]
+        chunk = 13
+        kind = "chunk"
+        simd = false
+        time = 0.000215671
+        [[results.fd.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = false
+        time = 0.000193291
+
+    [results.hh]
+    chunk = 4
+    config = "HyperHessians.HessianConfig(x, HyperHessians.Chunk{4}())"
+    kind = "chunk"
+    simd = false
+    time = 9.57e-5
+
+        [[results.hh.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = false
+        time = 0.000236081
+        [[results.hh.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = true
+        time = 0.000251511
+        [[results.hh.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = false
+        time = 0.000219992
+        [[results.hh.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = true
+        time = 0.000367202
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = false
+        time = 9.6281e-5
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = true
+        time = 0.000164331
+        [[results.hh.sweep]]
+        chunk = 6
+        kind = "chunk"
+        simd = false
+        time = 9.6801e-5
+        [[results.hh.sweep]]
+        chunk = 6
+        kind = "chunk"
+        simd = true
+        time = 0.000224232
+        [[results.hh.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = false
+        time = 0.000129091
+        [[results.hh.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = true
+        time = 0.000114311
+        [[results.hh.sweep]]
+        chunk = 12
+        kind = "chunk"
+        simd = false
+        time = 0.000142701
+        [[results.hh.sweep]]
+        chunk = 12
+        kind = "chunk"
+        simd = true
+        time = 0.000126051
+        [[results.hh.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = false
+        time = 0.000230812
+        [[results.hh.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = true
+        time = 0.000102551
+[[results]]
+check_passed = true
+func = "logsumexp"
+n = 256
+op = "hessian"
+speedup = 2.0196129352617276
+
+    [results.fd]
+    chunk = 16
+    config = "AutoForwardDiff(chunksize = 16)"
+    time = 0.009549867
+
+        [[results.fd.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = false
+        time = 0.011926035
+        [[results.fd.sweep]]
+        chunk = 6
+        kind = "chunk"
+        simd = false
+        time = 0.011206879
+        [[results.fd.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = false
+        time = 0.014601514
+        [[results.fd.sweep]]
+        chunk = 12
+        kind = "chunk"
+        simd = false
+        time = 0.011755493
+        [[results.fd.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = false
+        time = 0.010099142
+
+    [results.hh]
+    chunk = 16
+    config = "HyperHessians.HessianConfig(x, HyperHessians.Chunk{16}(); simd = true)"
+    kind = "chunk"
+    simd = true
+    time = 0.004728563
+
+        [[results.hh.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = false
+        time = 0.013497365
+        [[results.hh.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = true
+        time = 0.014643324
+        [[results.hh.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = false
+        time = 0.012335767
+        [[results.hh.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = true
+        time = 0.021266441
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = false
+        time = 0.005339908
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = true
+        time = 0.009447507
+        [[results.hh.sweep]]
+        chunk = 6
+        kind = "chunk"
+        simd = false
+        time = 0.004983555
+        [[results.hh.sweep]]
+        chunk = 6
+        kind = "chunk"
+        simd = true
+        time = 0.012474589
+        [[results.hh.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = false
+        time = 0.00702541
+        [[results.hh.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = true
+        time = 0.006148823
+        [[results.hh.sweep]]
+        chunk = 12
+        kind = "chunk"
+        simd = false
+        time = 0.006208354
+        [[results.hh.sweep]]
+        chunk = 12
+        kind = "chunk"
+        simd = true
+        time = 0.005269197
+        [[results.hh.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = false
+        time = 0.011566122
+        [[results.hh.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = true
+        time = 0.004735763
+[[results]]
+check_passed = true
+func = "self_weighted_logit"
+n = 4
+op = "hessian"
+speedup = 1.5916881413946742
+
+    [results.fd]
+    chunk = 4
+    config = "AutoForwardDiff(chunksize = 4)"
+    time = 2.408177458033573e-7
+
+        [[results.fd.sweep]]
+        chunk = 1
+        kind = "chunk"
+        simd = false
+        time = 1.1064285714285712e-6
+        [[results.fd.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = false
+        time = 4.626530612244898e-7
+        [[results.fd.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = false
+        time = 6.654658385093168e-7
+        [[results.fd.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = false
+        time = 2.4059058823529413e-7
+
+    [results.hh]
+    chunk = 4
+    config = "HyperHessians.HessianConfig(x, HyperHessians.Chunk{4}(); simd = true)"
+    kind = "chunk"
+    simd = true
+    time = 1.5129706601466993e-7
+
+        [[results.hh.sweep]]
+        chunk = 1
+        kind = "chunk"
+        simd = false
+        time = 4.457121212121212e-7
+        [[results.hh.sweep]]
+        chunk = 1
+        kind = "chunk"
+        simd = true
+        time = 4.4585858585858584e-7
+        [[results.hh.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = false
+        time = 3.5066509433962267e-7
+        [[results.hh.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = true
+        time = 4.856930693069307e-7
+        [[results.hh.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = false
+        time = 5.002124352331606e-7
+        [[results.hh.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = true
+        time = 5.476315789473684e-7
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = false
+        time = 1.950014792899408e-7
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = true
+        time = 1.51308261405672e-7
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "jet"
+        simd = false
+        time = 1.86284178187404e-7
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "jet"
+        simd = true
+        time = 2.126421319796954e-7
+[[results]]
+check_passed = true
+func = "self_weighted_logit"
+n = 16
+op = "hessian"
+speedup = 1.9413127413127413
+
+    [results.fd]
+    chunk = 16
+    config = "AutoForwardDiff(chunksize = 16)"
+    time = 5.586666666666667e-6
+
+        [[results.fd.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = false
+        time = 1.502e-5
+        [[results.fd.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = false
+        time = 1.005e-5
+        [[results.fd.sweep]]
+        chunk = 6
+        kind = "chunk"
+        simd = false
+        time = 1.0826666666666666e-5
+        [[results.fd.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = false
+        time = 9.003333333333334e-6
+        [[results.fd.sweep]]
+        chunk = 12
+        kind = "chunk"
+        simd = false
+        time = 1.225e-5
+        [[results.fd.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = false
+        time = 5.626666666666667e-6
+
+    [results.hh]
+    chunk = 16
+    config = "HyperHessians.HessianConfig(x, HyperHessians.Jet)"
+    kind = "jet"
+    simd = false
+    time = 2.877777777777778e-6
+
+        [[results.hh.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = false
+        time = 1.258e-5
+        [[results.hh.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = true
+        time = 1.597e-5
+        [[results.hh.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = false
+        time = 1.02e-5
+        [[results.hh.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = true
+        time = 9.909e-6
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = false
+        time = 7.328e-6
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = true
+        time = 4.785714285714285e-6
+        [[results.hh.sweep]]
+        chunk = 6
+        kind = "chunk"
+        simd = false
+        time = 5.396666666666667e-6
+        [[results.hh.sweep]]
+        chunk = 6
+        kind = "chunk"
+        simd = true
+        time = 5.858e-6
+        [[results.hh.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = false
+        time = 3.74e-6
+        [[results.hh.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = true
+        time = 3.75375e-6
+        [[results.hh.sweep]]
+        chunk = 12
+        kind = "chunk"
+        simd = false
+        time = 6.68e-6
+        [[results.hh.sweep]]
+        chunk = 12
+        kind = "chunk"
+        simd = true
+        time = 7.37525e-6
+        [[results.hh.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = false
+        time = 3.61625e-6
+        [[results.hh.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = true
+        time = 3.27375e-6
+        [[results.hh.sweep]]
+        chunk = 16
+        kind = "jet"
+        simd = false
+        time = 2.598888888888889e-6
+[[results]]
+check_passed = true
+func = "self_weighted_logit"
+n = 64
+op = "hessian"
+speedup = 1.7710073745989285
+
+    [results.fd]
+    chunk = 13
+    config = "AutoForwardDiff(chunksize = 13)"
+    time = 0.000242311
+
+        [[results.fd.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = false
+        time = 0.000529863
+        [[results.fd.sweep]]
+        chunk = 6
+        kind = "chunk"
+        simd = false
+        time = 0.000429103
+        [[results.fd.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = false
+        time = 0.000400413
+        [[results.fd.sweep]]
+        chunk = 10
+        kind = "chunk"
+        simd = false
+        time = 0.000382093
+        [[results.fd.sweep]]
+        chunk = 11
+        kind = "chunk"
+        simd = false
+        time = 0.000345843
+        [[results.fd.sweep]]
+        chunk = 12
+        kind = "chunk"
+        simd = false
+        time = 0.000362332
+        [[results.fd.sweep]]
+        chunk = 13
+        kind = "chunk"
+        simd = false
+        time = 0.000249572
+        [[results.fd.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = false
+        time = 0.000270182
+
+    [results.hh]
+    chunk = 16
+    config = "HyperHessians.HessianConfig(x, HyperHessians.Chunk{16}(); simd = true)"
+    kind = "chunk"
+    simd = true
+    time = 0.000136821
+
+        [[results.hh.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = false
+        time = 0.000671894
+        [[results.hh.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = true
+        time = 0.000830716
+        [[results.hh.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = false
+        time = 0.000429533
+        [[results.hh.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = true
+        time = 0.000412283
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = false
+        time = 0.000354912
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = true
+        time = 0.000207422
+        [[results.hh.sweep]]
+        chunk = 6
+        kind = "chunk"
+        simd = false
+        time = 0.000186551
+        [[results.hh.sweep]]
+        chunk = 6
+        kind = "chunk"
+        simd = true
+        time = 0.000204551
+        [[results.hh.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = false
+        time = 0.000130272
+        [[results.hh.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = true
+        time = 0.000130931
+        [[results.hh.sweep]]
+        chunk = 12
+        kind = "chunk"
+        simd = false
+        time = 0.000148181
+        [[results.hh.sweep]]
+        chunk = 12
+        kind = "chunk"
+        simd = true
+        time = 0.000164351
+        [[results.hh.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = false
+        time = 0.000126391
+        [[results.hh.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = true
+        time = 0.000122121
+[[results]]
+check_passed = true
+func = "self_weighted_logit"
+n = 256
+op = "hessian"
+speedup = 2.583232082222017
+
+    [results.fd]
+    chunk = 16
+    config = "AutoForwardDiff(chunksize = 16)"
+    time = 0.015490718
+
+        [[results.fd.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = false
+        time = 0.032559386
+        [[results.fd.sweep]]
+        chunk = 6
+        kind = "chunk"
+        simd = false
+        time = 0.02454259
+        [[results.fd.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = false
+        time = 0.022980639
+        [[results.fd.sweep]]
+        chunk = 12
+        kind = "chunk"
+        simd = false
+        time = 0.017718853
+        [[results.fd.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = false
+        time = 0.015125485
+
+    [results.hh]
+    chunk = 16
+    config = "HyperHessians.HessianConfig(x, HyperHessians.Chunk{16}(); simd = true)"
+    kind = "chunk"
+    simd = true
+    time = 0.005996642
+
+        [[results.hh.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = false
+        time = 0.041359218
+        [[results.hh.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = true
+        time = 0.050563001
+        [[results.hh.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = false
+        time = 0.024943863
+        [[results.hh.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = true
+        time = 0.023170281
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = false
+        time = 0.021519169
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = true
+        time = 0.011995843
+        [[results.hh.sweep]]
+        chunk = 6
+        kind = "chunk"
+        simd = false
+        time = 0.010265581
+        [[results.hh.sweep]]
+        chunk = 6
+        kind = "chunk"
+        simd = true
+        time = 0.011219768
+        [[results.hh.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = false
+        time = 0.00710785
+        [[results.hh.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = true
+        time = 0.007046329
+        [[results.hh.sweep]]
+        chunk = 12
+        kind = "chunk"
+        simd = false
+        time = 0.006496235
+        [[results.hh.sweep]]
+        chunk = 12
+        kind = "chunk"
+        simd = true
+        time = 0.006986648
+        [[results.hh.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = false
+        time = 0.006295823
+        [[results.hh.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = true
+        time = 0.006065642
+[[results]]
+check_passed = true
+func = "ackley"
+n = 4
+op = "hvp"
+speedup = 1.9274003752534545
+
+    [results.fd]
+    chunk = 4
+    config = "AutoForwardDiff(chunksize = 4)"
+    time = 1.6135723598435463e-7
+
+        [[results.fd.sweep]]
+        chunk = 1
+        kind = "chunk"
+        simd = false
+        time = 3.3788479262672807e-7
+        [[results.fd.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = false
+        time = 1.9899316239316238e-7
+        [[results.fd.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = false
+        time = 2.6690712074303406e-7
+        [[results.fd.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = false
+        time = 1.6427770534550193e-7
+
+    [results.hh]
+    chunk = 4
+    config = "HyperHessians.HVPConfig(x, v, HyperHessians.Chunk{4}(); simd = true)"
+    kind = "chunk"
+    simd = true
+    time = 8.371754932502596e-8
+
+        [[results.hh.sweep]]
+        chunk = 1
+        kind = "chunk"
+        simd = false
+        time = 2.65e-7
+        [[results.hh.sweep]]
+        chunk = 1
+        kind = "chunk"
+        simd = true
+        time = 2.646951219512195e-7
+        [[results.hh.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = false
+        time = 1.6549801324503312e-7
+        [[results.hh.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = true
+        time = 1.5402625e-7
+        [[results.hh.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = false
+        time = 1.858704268292683e-7
+        [[results.hh.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = true
+        time = 1.9225e-7
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = false
+        time = 1.1159263271939328e-7
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = true
+        time = 8.987578288100209e-8
+[[results]]
+check_passed = true
+func = "ackley"
+n = 16
+op = "hvp"
+speedup = 2.3481105340230295
+
+    [results.fd]
+    chunk = 16
+    config = "AutoForwardDiff(chunksize = 16)"
+    time = 1.143e-6
+
+        [[results.fd.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = false
+        time = 1.9541e-6
+        [[results.fd.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = false
+        time = 2.1611111111111114e-6
+        [[results.fd.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = false
+        time = 2.074e-6
+        [[results.fd.sweep]]
+        chunk = 6
+        kind = "chunk"
+        simd = false
+        time = 1.899e-6
+        [[results.fd.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = false
+        time = 1.497e-6
+        [[results.fd.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = false
+        time = 1.154e-6
+
+    [results.hh]
+    chunk = 16
+    config = "HyperHessians.HVPConfig(x, v, HyperHessians.Chunk{16}(); simd = true)"
+    kind = "chunk"
+    simd = true
+    time = 4.867743589743589e-7
+
+        [[results.hh.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = false
+        time = 1.836e-6
+        [[results.hh.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = true
+        time = 1.56e-6
+        [[results.hh.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = false
+        time = 1.456e-6
+        [[results.hh.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = true
+        time = 1.611e-6
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = false
+        time = 1.1450999999999998e-6
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = true
+        time = 8.25657894736842e-7
+        [[results.hh.sweep]]
+        chunk = 6
+        kind = "chunk"
+        simd = false
+        time = 1.059e-6
+        [[results.hh.sweep]]
+        chunk = 6
+        kind = "chunk"
+        simd = true
+        time = 1.068e-6
+        [[results.hh.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = false
+        time = 1.0e-6
+        [[results.hh.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = true
+        time = 8.734067796610169e-7
+        [[results.hh.sweep]]
+        chunk = 12
+        kind = "chunk"
+        simd = false
+        time = 1.16e-6
+        [[results.hh.sweep]]
+        chunk = 12
+        kind = "chunk"
+        simd = true
+        time = 1.088e-6
+        [[results.hh.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = false
+        time = 5.12140625e-7
+        [[results.hh.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = true
+        time = 5.068092783505154e-7
+[[results]]
+check_passed = true
+func = "ackley"
+n = 64
+op = "hvp"
+speedup = 2.0027100271002714
+
+    [results.fd]
+    chunk = 13
+    config = "AutoForwardDiff(chunksize = 13)"
+    time = 1.478e-5
+
+        [[results.fd.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = false
+        time = 2.744e-5
+        [[results.fd.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = false
+        time = 2.702e-5
+        [[results.fd.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = false
+        time = 1.953e-5
+        [[results.fd.sweep]]
+        chunk = 10
+        kind = "chunk"
+        simd = false
+        time = 1.97e-5
+        [[results.fd.sweep]]
+        chunk = 11
+        kind = "chunk"
+        simd = false
+        time = 1.826e-5
+        [[results.fd.sweep]]
+        chunk = 13
+        kind = "chunk"
+        simd = false
+        time = 1.487e-5
+        [[results.fd.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = false
+        time = 1.578e-5
+        [[results.fd.sweep]]
+        chunk = 22
+        kind = "chunk"
+        simd = false
+        time = 1.6111e-5
+        [[results.fd.sweep]]
+        chunk = 32
+        kind = "chunk"
+        simd = false
+        time = 1.715e-5
+
+    [results.hh]
+    chunk = 16
+    config = "HyperHessians.HVPConfig(x, v, HyperHessians.Chunk{16}(); simd = true)"
+    kind = "chunk"
+    simd = true
+    time = 7.38e-6
+
+        [[results.hh.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = false
+        time = 2.647e-5
+        [[results.hh.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = true
+        time = 2.255e-5
+        [[results.hh.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = false
+        time = 1.848e-5
+        [[results.hh.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = true
+        time = 2.036e-5
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = false
+        time = 1.612e-5
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = true
+        time = 1.137e-5
+        [[results.hh.sweep]]
+        chunk = 6
+        kind = "chunk"
+        simd = false
+        time = 1.1629e-5
+        [[results.hh.sweep]]
+        chunk = 6
+        kind = "chunk"
+        simd = true
+        time = 1.2e-5
+        [[results.hh.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = false
+        time = 1.179e-5
+        [[results.hh.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = true
+        time = 1.008e-5
+        [[results.hh.sweep]]
+        chunk = 12
+        kind = "chunk"
+        simd = false
+        time = 1.021e-5
+        [[results.hh.sweep]]
+        chunk = 12
+        kind = "chunk"
+        simd = true
+        time = 9.9e-6
+        [[results.hh.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = false
+        time = 7.7125e-6
+        [[results.hh.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = true
+        time = 7.465e-6
+[[results]]
+check_passed = true
+func = "ackley"
+n = 256
+op = "hvp"
+speedup = 2.065355686285341
+
+    [results.fd]
+    chunk = 16
+    config = "AutoForwardDiff(chunksize = 16)"
+    time = 0.000224341
+
+        [[results.fd.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = false
+        time = 0.000422233
+        [[results.fd.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = false
+        time = 0.000403653
+        [[results.fd.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = false
+        time = 0.000289732
+        [[results.fd.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = false
+        time = 0.000224802
+
+    [results.hh]
+    chunk = 16
+    config = "HyperHessians.HVPConfig(x, v, HyperHessians.Chunk{16}(); simd = true)"
+    kind = "chunk"
+    simd = true
+    time = 0.000108621
+
+        [[results.hh.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = false
+        time = 0.000419653
+        [[results.hh.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = true
+        time = 0.000345822
+        [[results.hh.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = false
+        time = 0.000279632
+        [[results.hh.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = true
+        time = 0.000311353
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = false
+        time = 0.000250991
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = true
+        time = 0.000173961
+        [[results.hh.sweep]]
+        chunk = 6
+        kind = "chunk"
+        simd = false
+        time = 0.000164871
+        [[results.hh.sweep]]
+        chunk = 6
+        kind = "chunk"
+        simd = true
+        time = 0.000169551
+        [[results.hh.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = false
+        time = 0.000176601
+        [[results.hh.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = true
+        time = 0.000144581
+        [[results.hh.sweep]]
+        chunk = 12
+        kind = "chunk"
+        simd = false
+        time = 0.000131631
+        [[results.hh.sweep]]
+        chunk = 12
+        kind = "chunk"
+        simd = true
+        time = 0.000123661
+        [[results.hh.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = false
+        time = 0.000114411
+        [[results.hh.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = true
+        time = 0.000108631
+[[results]]
+check_passed = true
+func = "rosenbrock"
+n = 4
+op = "hvp"
+speedup = 2.1363709109702222
+
+    [results.fd]
+    chunk = 4
+    config = "AutoForwardDiff(chunksize = 4)"
+    time = 8.411825726141078e-8
+
+        [[results.fd.sweep]]
+        chunk = 1
+        kind = "chunk"
+        simd = false
+        time = 1.684478021978022e-7
+        [[results.fd.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = false
+        time = 1.0003287380699894e-7
+        [[results.fd.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = false
+        time = 1.3660975609756098e-7
+        [[results.fd.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = false
+        time = 8.160621761658031e-8
+
+    [results.hh]
+    chunk = 4
+    config = "HyperHessians.HVPConfig(x, v, HyperHessians.Chunk{4}(); simd = true)"
+    kind = "chunk"
+    simd = true
+    time = 3.937436932391524e-8
+
+        [[results.hh.sweep]]
+        chunk = 1
+        kind = "chunk"
+        simd = false
+        time = 9.616438356164383e-8
+        [[results.hh.sweep]]
+        chunk = 1
+        kind = "chunk"
+        simd = true
+        time = 9.399264705882353e-8
+        [[results.hh.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = false
+        time = 8.476246023329798e-8
+        [[results.hh.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = true
+        time = 5.66531027466938e-8
+        [[results.hh.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = false
+        time = 1.003095744680851e-7
+        [[results.hh.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = true
+        time = 8.667711598746082e-8
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = false
+        time = 6.397750511247444e-8
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = true
+        time = 4.035317860746721e-8
+[[results]]
+check_passed = true
+func = "rosenbrock"
+n = 16
+op = "hvp"
+speedup = 1.9271646132785762
+
+    [results.fd]
+    chunk = 16
+    config = "AutoForwardDiff(chunksize = 16)"
+    time = 8.532083333333334e-7
+
+        [[results.fd.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = false
+        time = 1.032e-6
+        [[results.fd.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = false
+        time = 1.184e-6
+        [[results.fd.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = false
+        time = 1.092e-6
+        [[results.fd.sweep]]
+        chunk = 6
+        kind = "chunk"
+        simd = false
+        time = 1.121e-6
+        [[results.fd.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = false
+        time = 9.657894736842105e-7
+        [[results.fd.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = false
+        time = 8.674545454545455e-7
+
+    [results.hh]
+    chunk = 4
+    config = "HyperHessians.HVPConfig(x, v, HyperHessians.Chunk{4}(); simd = true)"
+    kind = "chunk"
+    simd = true
+    time = 4.4272727272727276e-7
+
+        [[results.hh.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = false
+        time = 1.003e-6
+        [[results.hh.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = true
+        time = 6.342321428571428e-7
+        [[results.hh.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = false
+        time = 1.006e-6
+        [[results.hh.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = true
+        time = 8.447826086956521e-7
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = false
+        time = 8.941875e-7
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = true
+        time = 4.315656565656566e-7
+        [[results.hh.sweep]]
+        chunk = 6
+        kind = "chunk"
+        simd = false
+        time = 9.651904761904762e-7
+        [[results.hh.sweep]]
+        chunk = 6
+        kind = "chunk"
+        simd = true
+        time = 7.187769784172661e-7
+        [[results.hh.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = false
+        time = 1.069e-6
+        [[results.hh.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = true
+        time = 8.859574468085107e-7
+        [[results.hh.sweep]]
+        chunk = 12
+        kind = "chunk"
+        simd = false
+        time = 1.2061e-6
+        [[results.hh.sweep]]
+        chunk = 12
+        kind = "chunk"
+        simd = true
+        time = 1.098e-6
+        [[results.hh.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = false
+        time = 7.138920863309353e-7
+        [[results.hh.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = true
+        time = 4.938826530612245e-7
+[[results]]
+check_passed = true
+func = "rosenbrock"
+n = 64
+op = "hvp"
+speedup = 1.9348236775818637
+
+    [results.fd]
+    chunk = 13
+    config = "AutoForwardDiff(chunksize = 13)"
+    time = 1.229e-5
+
+        [[results.fd.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = false
+        time = 1.478e-5
+        [[results.fd.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = false
+        time = 1.3629e-5
+        [[results.fd.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = false
+        time = 1.257e-5
+        [[results.fd.sweep]]
+        chunk = 10
+        kind = "chunk"
+        simd = false
+        time = 1.32e-5
+        [[results.fd.sweep]]
+        chunk = 11
+        kind = "chunk"
+        simd = false
+        time = 1.236e-5
+        [[results.fd.sweep]]
+        chunk = 13
+        kind = "chunk"
+        simd = false
+        time = 1.233e-5
+        [[results.fd.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = false
+        time = 1.269e-5
+        [[results.fd.sweep]]
+        chunk = 22
+        kind = "chunk"
+        simd = false
+        time = 1.478e-5
+        [[results.fd.sweep]]
+        chunk = 32
+        kind = "chunk"
+        simd = false
+        time = 1.498e-5
+
+    [results.hh]
+    chunk = 4
+    config = "HyperHessians.HVPConfig(x, v, HyperHessians.Chunk{4}(); simd = true)"
+    kind = "chunk"
+    simd = true
+    time = 6.352e-6
+
+        [[results.hh.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = false
+        time = 1.545e-5
+        [[results.hh.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = true
+        time = 9.549e-6
+        [[results.hh.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = false
+        time = 1.454e-5
+        [[results.hh.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = true
+        time = 1.175e-5
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = false
+        time = 1.399e-5
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = true
+        time = 6.276e-6
+        [[results.hh.sweep]]
+        chunk = 6
+        kind = "chunk"
+        simd = false
+        time = 1.159e-5
+        [[results.hh.sweep]]
+        chunk = 6
+        kind = "chunk"
+        simd = true
+        time = 7.86e-6
+        [[results.hh.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = false
+        time = 1.482e-5
+        [[results.hh.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = true
+        time = 1.172e-5
+        [[results.hh.sweep]]
+        chunk = 12
+        kind = "chunk"
+        simd = false
+        time = 1.227e-5
+        [[results.hh.sweep]]
+        chunk = 12
+        kind = "chunk"
+        simd = true
+        time = 1.105e-5
+        [[results.hh.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = false
+        time = 1.133e-5
+        [[results.hh.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = true
+        time = 7.4e-6
+[[results]]
+check_passed = true
+func = "rosenbrock"
+n = 256
+op = "hvp"
+speedup = 1.8445972094918017
+
+    [results.fd]
+    chunk = 16
+    config = "AutoForwardDiff(chunksize = 16)"
+    time = 0.000181121
+
+        [[results.fd.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = false
+        time = 0.000233671
+        [[results.fd.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = false
+        time = 0.000204551
+        [[results.fd.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = false
+        time = 0.000184661
+        [[results.fd.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = false
+        time = 0.000181791
+
+    [results.hh]
+    chunk = 4
+    config = "HyperHessians.HVPConfig(x, v, HyperHessians.Chunk{4}(); simd = true)"
+    kind = "chunk"
+    simd = true
+    time = 9.819e-5
+
+        [[results.hh.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = false
+        time = 0.000246182
+        [[results.hh.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = true
+        time = 0.000149181
+        [[results.hh.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = false
+        time = 0.000227002
+        [[results.hh.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = true
+        time = 0.000181401
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = false
+        time = 0.000222361
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = true
+        time = 9.765e-5
+        [[results.hh.sweep]]
+        chunk = 6
+        kind = "chunk"
+        simd = false
+        time = 0.000168401
+        [[results.hh.sweep]]
+        chunk = 6
+        kind = "chunk"
+        simd = true
+        time = 0.000109881
+        [[results.hh.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = false
+        time = 0.000229792
+        [[results.hh.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = true
+        time = 0.000177231
+        [[results.hh.sweep]]
+        chunk = 12
+        kind = "chunk"
+        simd = false
+        time = 0.000163791
+        [[results.hh.sweep]]
+        chunk = 12
+        kind = "chunk"
+        simd = true
+        time = 0.000144831
+        [[results.hh.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = false
+        time = 0.000174191
+        [[results.hh.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = true
+        time = 0.000110341
+[[results]]
+check_passed = true
+func = "logsumexp"
+n = 4
+op = "hvp"
+speedup = 1.6265973007361971
+
+    [results.fd]
+    chunk = 4
+    config = "AutoForwardDiff(chunksize = 4)"
+    time = 1.0399256900212315e-7
+
+        [[results.fd.sweep]]
+        chunk = 1
+        kind = "chunk"
+        simd = false
+        time = 2.851590106007067e-7
+        [[results.fd.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = false
+        time = 1.466984505363528e-7
+        [[results.fd.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = false
+        time = 1.738326417704011e-7
+        [[results.fd.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = false
+        time = 9.70116156282999e-8
+
+    [results.hh]
+    chunk = 4
+    config = "HyperHessians.HVPConfig(x, v, HyperHessians.Chunk{4}(); simd = true)"
+    kind = "chunk"
+    simd = true
+    time = 6.393258426966291e-8
+
+        [[results.hh.sweep]]
+        chunk = 1
+        kind = "chunk"
+        simd = false
+        time = 1.8738738738738738e-7
+        [[results.hh.sweep]]
+        chunk = 1
+        kind = "chunk"
+        simd = true
+        time = 1.866127080181543e-7
+        [[results.hh.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = false
+        time = 1.0839374325782093e-7
+        [[results.hh.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = true
+        time = 1.0684656652360515e-7
+        [[results.hh.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = false
+        time = 1.234011111111111e-7
+        [[results.hh.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = true
+        time = 1.1686790393013101e-7
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = false
+        time = 7.050256410256411e-8
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = true
+        time = 6.426046986721144e-8
+[[results]]
+check_passed = true
+func = "logsumexp"
+n = 16
+op = "hvp"
+speedup = 2.617640194053227
+
+    [results.fd]
+    chunk = 16
+    config = "AutoForwardDiff(chunksize = 16)"
+    time = 7.47015748031496e-7
+
+        [[results.fd.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = false
+        time = 1.349e-6
+        [[results.fd.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = false
+        time = 1.435e-6
+        [[results.fd.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = false
+        time = 1.08e-6
+        [[results.fd.sweep]]
+        chunk = 6
+        kind = "chunk"
+        simd = false
+        time = 1.0489e-6
+        [[results.fd.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = false
+        time = 1.016e-6
+        [[results.fd.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = false
+        time = 7.663716814159291e-7
+
+    [results.hh]
+    chunk = 16
+    config = "HyperHessians.HVPConfig(x, v, HyperHessians.Chunk{16}(); simd = true)"
+    kind = "chunk"
+    simd = true
+    time = 2.853775510204082e-7
+
+        [[results.hh.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = false
+        time = 1.047e-6
+        [[results.hh.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = true
+        time = 1.069e-6
+        [[results.hh.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = false
+        time = 8.730508474576272e-7
+        [[results.hh.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = true
+        time = 9.286666666666666e-7
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = false
+        time = 5.846123595505618e-7
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = true
+        time = 5.8095e-7
+        [[results.hh.sweep]]
+        chunk = 6
+        kind = "chunk"
+        simd = false
+        time = 7.411463414634146e-7
+        [[results.hh.sweep]]
+        chunk = 6
+        kind = "chunk"
+        simd = true
+        time = 7.498333333333334e-7
+        [[results.hh.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = false
+        time = 5.694590163934427e-7
+        [[results.hh.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = true
+        time = 5.594594594594595e-7
+        [[results.hh.sweep]]
+        chunk = 12
+        kind = "chunk"
+        simd = false
+        time = 7.278333333333333e-7
+        [[results.hh.sweep]]
+        chunk = 12
+        kind = "chunk"
+        simd = true
+        time = 7.1774e-7
+        [[results.hh.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = false
+        time = 4.23235807860262e-7
+        [[results.hh.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = true
+        time = 4.0609578544061307e-7
+[[results]]
+check_passed = true
+func = "logsumexp"
+n = 64
+op = "hvp"
+speedup = 2.6098191214470283
+
+    [results.fd]
+    chunk = 22
+    config = "AutoForwardDiff(chunksize = 22)"
+    time = 1.01e-5
+
+        [[results.fd.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = false
+        time = 1.632e-5
+        [[results.fd.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = false
+        time = 1.186e-5
+        [[results.fd.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = false
+        time = 1.217e-5
+        [[results.fd.sweep]]
+        chunk = 10
+        kind = "chunk"
+        simd = false
+        time = 1.2151e-5
+        [[results.fd.sweep]]
+        chunk = 11
+        kind = "chunk"
+        simd = false
+        time = 1.137e-5
+        [[results.fd.sweep]]
+        chunk = 13
+        kind = "chunk"
+        simd = false
+        time = 1.1509e-5
+        [[results.fd.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = false
+        time = 1.038e-5
+        [[results.fd.sweep]]
+        chunk = 22
+        kind = "chunk"
+        simd = false
+        time = 1.0131e-5
+        [[results.fd.sweep]]
+        chunk = 32
+        kind = "chunk"
+        simd = false
+        time = 1.098e-5
+
+    [results.hh]
+    chunk = 16
+    config = "HyperHessians.HVPConfig(x, v, HyperHessians.Chunk{16}(); simd = true)"
+    kind = "chunk"
+    simd = true
+    time = 3.87e-6
+
+        [[results.hh.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = false
+        time = 1.3071e-5
+        [[results.hh.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = true
+        time = 1.308e-5
+        [[results.hh.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = false
+        time = 9.689e-6
+        [[results.hh.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = true
+        time = 1.074e-5
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = false
+        time = 7.08e-6
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = true
+        time = 7.0225e-6
+        [[results.hh.sweep]]
+        chunk = 6
+        kind = "chunk"
+        simd = false
+        time = 6.986e-6
+        [[results.hh.sweep]]
+        chunk = 6
+        kind = "chunk"
+        simd = true
+        time = 7.1025e-6
+        [[results.hh.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = false
+        time = 5.48e-6
+        [[results.hh.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = true
+        time = 5.218333333333333e-6
+        [[results.hh.sweep]]
+        chunk = 12
+        kind = "chunk"
+        simd = false
+        time = 5.596666666666667e-6
+        [[results.hh.sweep]]
+        chunk = 12
+        kind = "chunk"
+        simd = true
+        time = 5.181666666666667e-6
+        [[results.hh.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = false
+        time = 4.162857142857143e-6
+        [[results.hh.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = true
+        time = 3.79125e-6
+[[results]]
+check_passed = true
+func = "logsumexp"
+n = 256
+op = "hvp"
+speedup = 2.8683660933660935
+
+    [results.fd]
+    chunk = 16
+    config = "AutoForwardDiff(chunksize = 16)"
+    time = 0.000140091
+
+        [[results.fd.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = false
+        time = 0.000241361
+        [[results.fd.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = false
+        time = 0.000169861
+        [[results.fd.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = false
+        time = 0.000174001
+        [[results.fd.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = false
+        time = 0.000142821
+
+    [results.hh]
+    chunk = 16
+    config = "HyperHessians.HVPConfig(x, v, HyperHessians.Chunk{16}(); simd = true)"
+    kind = "chunk"
+    simd = true
+    time = 4.884e-5
+
+        [[results.hh.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = false
+        time = 0.000195402
+        [[results.hh.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = true
+        time = 0.000195581
+        [[results.hh.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = false
+        time = 0.000139881
+        [[results.hh.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = true
+        time = 0.000160341
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = false
+        time = 0.00010393
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = true
+        time = 0.000103931
+        [[results.hh.sweep]]
+        chunk = 6
+        kind = "chunk"
+        simd = false
+        time = 9.0291e-5
+        [[results.hh.sweep]]
+        chunk = 6
+        kind = "chunk"
+        simd = true
+        time = 9.2711e-5
+        [[results.hh.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = false
+        time = 7.5401e-5
+        [[results.hh.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = true
+        time = 6.851e-5
+        [[results.hh.sweep]]
+        chunk = 12
+        kind = "chunk"
+        simd = false
+        time = 6.039e-5
+        [[results.hh.sweep]]
+        chunk = 12
+        kind = "chunk"
+        simd = true
+        time = 5.486e-5
+        [[results.hh.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = false
+        time = 5.585e-5
+        [[results.hh.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = true
+        time = 4.919e-5
+[[results]]
+check_passed = true
+func = "self_weighted_logit"
+n = 4
+op = "hvp"
+speedup = 1.1851406005405247
+
+    [results.fd]
+    chunk = 4
+    config = "AutoForwardDiff(chunksize = 4)"
+    time = 1.2003314917127074e-7
+
+        [[results.fd.sweep]]
+        chunk = 1
+        kind = "chunk"
+        simd = false
+        time = 2.366294536817102e-7
+        [[results.fd.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = false
+        time = 2.0030420168067227e-7
+        [[results.fd.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = false
+        time = 1.7978714285714287e-7
+        [[results.fd.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = false
+        time = 1.2110497237569061e-7
+
+    [results.hh]
+    chunk = 4
+    config = "HyperHessians.HVPConfig(x, v, HyperHessians.Chunk{4}())"
+    kind = "chunk"
+    simd = false
+    time = 1.0128177966101695e-7
+
+        [[results.hh.sweep]]
+        chunk = 1
+        kind = "chunk"
+        simd = false
+        time = 1.8004460431654676e-7
+        [[results.hh.sweep]]
+        chunk = 1
+        kind = "chunk"
+        simd = true
+        time = 1.8015714285714284e-7
+        [[results.hh.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = false
+        time = 1.707513661202186e-7
+        [[results.hh.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = true
+        time = 1.494591346153846e-7
+        [[results.hh.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = false
+        time = 1.752333333333333e-7
+        [[results.hh.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = true
+        time = 2.454874651810585e-7
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = false
+        time = 9.737170010559661e-8
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = true
+        time = 1.4167840375586855e-7
+[[results]]
+check_passed = true
+func = "self_weighted_logit"
+n = 16
+op = "hvp"
+speedup = 1.355042531710465
+
+    [results.fd]
+    chunk = 16
+    config = "AutoForwardDiff(chunksize = 16)"
+    time = 8.351219512195121e-7
+
+        [[results.fd.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = false
+        time = 2.3188888888888885e-6
+        [[results.fd.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = false
+        time = 1.3609000000000002e-6
+        [[results.fd.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = false
+        time = 1.441e-6
+        [[results.fd.sweep]]
+        chunk = 6
+        kind = "chunk"
+        simd = false
+        time = 1.072e-6
+        [[results.fd.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = false
+        time = 9.536363636363636e-7
+        [[results.fd.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = false
+        time = 8.383333333333334e-7
+
+    [results.hh]
+    chunk = 16
+    config = "HyperHessians.HVPConfig(x, v, HyperHessians.Chunk{16}())"
+    kind = "chunk"
+    simd = false
+    time = 6.163068181818182e-7
+
+        [[results.hh.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = false
+        time = 2.0766666666666665e-6
+        [[results.hh.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = true
+        time = 1.391e-6
+        [[results.hh.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = false
+        time = 1.599e-6
+        [[results.hh.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = true
+        time = 1.948888888888889e-6
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = false
+        time = 1.178e-6
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = true
+        time = 1.535e-6
+        [[results.hh.sweep]]
+        chunk = 6
+        kind = "chunk"
+        simd = false
+        time = 1.517e-6
+        [[results.hh.sweep]]
+        chunk = 6
+        kind = "chunk"
+        simd = true
+        time = 1.552e-6
+        [[results.hh.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = false
+        time = 1.135e-6
+        [[results.hh.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = true
+        time = 1.246e-6
+        [[results.hh.sweep]]
+        chunk = 12
+        kind = "chunk"
+        simd = false
+        time = 1.446e-6
+        [[results.hh.sweep]]
+        chunk = 12
+        kind = "chunk"
+        simd = true
+        time = 1.398e-6
+        [[results.hh.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = false
+        time = 6.159827586206897e-7
+        [[results.hh.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = true
+        time = 6.798064516129031e-7
+[[results]]
+check_passed = true
+func = "self_weighted_logit"
+n = 64
+op = "hvp"
+speedup = 1.1049949031600408
+
+    [results.fd]
+    chunk = 11
+    config = "AutoForwardDiff(chunksize = 11)"
+    time = 1.084e-5
+
+        [[results.fd.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = false
+        time = 3.397e-5
+        [[results.fd.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = false
+        time = 1.843e-5
+        [[results.fd.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = false
+        time = 1.151e-5
+        [[results.fd.sweep]]
+        chunk = 10
+        kind = "chunk"
+        simd = false
+        time = 1.236e-5
+        [[results.fd.sweep]]
+        chunk = 11
+        kind = "chunk"
+        simd = false
+        time = 1.056e-5
+        [[results.fd.sweep]]
+        chunk = 13
+        kind = "chunk"
+        simd = false
+        time = 1.087e-5
+        [[results.fd.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = false
+        time = 1.1409e-5
+        [[results.fd.sweep]]
+        chunk = 22
+        kind = "chunk"
+        simd = false
+        time = 1.184e-5
+        [[results.fd.sweep]]
+        chunk = 32
+        kind = "chunk"
+        simd = false
+        time = 1.379e-5
+
+    [results.hh]
+    chunk = 16
+    config = "HyperHessians.HVPConfig(x, v, HyperHessians.Chunk{16}(); simd = true)"
+    kind = "chunk"
+    simd = true
+    time = 9.81e-6
+
+        [[results.hh.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = false
+        time = 3.14e-5
+        [[results.hh.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = true
+        time = 1.956e-5
+        [[results.hh.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = false
+        time = 2.185e-5
+        [[results.hh.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = true
+        time = 2.506e-5
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = false
+        time = 1.748e-5
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = true
+        time = 2.163e-5
+        [[results.hh.sweep]]
+        chunk = 6
+        kind = "chunk"
+        simd = false
+        time = 1.8851e-5
+        [[results.hh.sweep]]
+        chunk = 6
+        kind = "chunk"
+        simd = true
+        time = 1.79e-5
+        [[results.hh.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = false
+        time = 1.478e-5
+        [[results.hh.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = true
+        time = 1.425e-5
+        [[results.hh.sweep]]
+        chunk = 12
+        kind = "chunk"
+        simd = false
+        time = 1.444e-5
+        [[results.hh.sweep]]
+        chunk = 12
+        kind = "chunk"
+        simd = true
+        time = 1.321e-5
+        [[results.hh.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = false
+        time = 9.58e-6
+        [[results.hh.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = true
+        time = 9.46e-6
+[[results]]
+check_passed = true
+func = "self_weighted_logit"
+n = 256
+op = "hvp"
+speedup = 1.1811061646419678
+
+    [results.fd]
+    chunk = 16
+    config = "AutoForwardDiff(chunksize = 16)"
+    time = 0.000156532
+
+        [[results.fd.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = false
+        time = 0.000533394
+        [[results.fd.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = false
+        time = 0.000275022
+        [[results.fd.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = false
+        time = 0.000163842
+        [[results.fd.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = false
+        time = 0.000154901
+
+    [results.hh]
+    chunk = 16
+    config = "HyperHessians.HVPConfig(x, v, HyperHessians.Chunk{16}())"
+    kind = "chunk"
+    simd = false
+    time = 0.00013253
+
+        [[results.hh.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = false
+        time = 0.000495103
+        [[results.hh.sweep]]
+        chunk = 2
+        kind = "chunk"
+        simd = true
+        time = 0.000300342
+        [[results.hh.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = false
+        time = 0.000337682
+        [[results.hh.sweep]]
+        chunk = 3
+        kind = "chunk"
+        simd = true
+        time = 0.000379683
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = false
+        time = 0.000275212
+        [[results.hh.sweep]]
+        chunk = 4
+        kind = "chunk"
+        simd = true
+        time = 0.000336362
+        [[results.hh.sweep]]
+        chunk = 6
+        kind = "chunk"
+        simd = false
+        time = 0.000278702
+        [[results.hh.sweep]]
+        chunk = 6
+        kind = "chunk"
+        simd = true
+        time = 0.000263971
+        [[results.hh.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = false
+        time = 0.000220662
+        [[results.hh.sweep]]
+        chunk = 8
+        kind = "chunk"
+        simd = true
+        time = 0.000210341
+        [[results.hh.sweep]]
+        chunk = 12
+        kind = "chunk"
+        simd = false
+        time = 0.000194461
+        [[results.hh.sweep]]
+        chunk = 12
+        kind = "chunk"
+        simd = true
+        time = 0.000173261
+        [[results.hh.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = false
+        time = 0.000133331
+        [[results.hh.sweep]]
+        chunk = 16
+        kind = "chunk"
+        simd = true
+        time = 0.00014211
