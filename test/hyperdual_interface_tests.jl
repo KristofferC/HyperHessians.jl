@@ -156,6 +156,24 @@ end
     @test isempty(external)
 end
 
+@testset "floating point introspection acts on the primal type" begin
+    for T in (Float32, Float64), S in (false, true)
+        H = HyperDual{2, 2, T, S}
+        h = H(one(T))
+        @test eps(h) == eps(T) && eps(H) == eps(T)
+        @test precision(h) == precision(T) && precision(H) == precision(T)
+        @test precision(H; base = 10) == precision(T; base = 10)
+        @test floatmin(H) == floatmin(T) && floatmax(H) == floatmax(T)
+        @test typemin(H) == typemin(T) && typemax(H) == typemax(T)
+        @test floatmin(H) isa H && typemax(H) isa H
+        @test Base.rtoldefault(H) == Base.rtoldefault(T)
+    end
+    h = HyperDual(1.0, (2.0,), (3.0,), ((4.0,),))
+    @test nextfloat(h).v == nextfloat(1.0) && prevfloat(h).v == prevfloat(1.0)
+    @test nextfloat(h).ϵ1 == h.ϵ1 && prevfloat(h).ϵ12 == h.ϵ12
+    @test h ≈ nextfloat(h)
+end
+
 @testset "conversions" begin
     h32 = HyperDual(2.0f0, (1.0f0,), (1.0f0,), ((0.5f0,),))
     h64 = HyperDual{1, 1, Float64}(h32)

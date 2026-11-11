@@ -451,6 +451,21 @@ for f in (:isnan, :isinf, :isfinite, :signbit, :isinteger, :iseven, :isodd)
     @eval @inline Base.$f(h::HyperDual) = $f(h.v)
 end
 
+# Floating point introspection acts on the primal type, as for ForwardDiff.Dual.
+Base.eps(h::HyperDual) = eps(h.v)
+Base.eps(::Type{<:HyperDual{<:Any, <:Any, T}}) where {T} = eps(T)
+Base.precision(h::HyperDual; base::Integer = 2) = precision(h.v; base)
+Base.precision(::Type{<:HyperDual{<:Any, <:Any, T}}; base::Integer = 2) where {T} = precision(T; base)
+Base.rtoldefault(::Type{<:HyperDual{<:Any, <:Any, T}}) where {T} = Base.rtoldefault(T)
+for f in (:typemin, :typemax, :floatmin, :floatmax)
+    @eval Base.$f(::Type{HyperDual{N1, N2, T, S}}) where {N1, N2, T, S} = HyperDual{N1, N2, T, S}($f(T))
+end
+# Neighbouring floats keep the derivative parts.
+for f in (:nextfloat, :prevfloat)
+    @eval @inline Base.$f(h::HyperDual{N1, N2, T, S}) where {N1, N2, T, S} =
+        hyperdual(Val(S), $f(h.v), h.ϵ1, h.ϵ2, h.ϵ12)
+end
+
 # Rounding: derivative is zero almost everywhere.
 for f in (:floor, :ceil, :trunc)
     @eval @inline function Base.$f(h::HyperDual{N1, N2, T, S}) where {N1, N2, T, S}
